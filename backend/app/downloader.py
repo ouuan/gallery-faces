@@ -1,6 +1,28 @@
 """gallery-dl entry point with compatibility for X's details.full_text payload."""
 
 
+def date_options(start=None, end=None):
+    """Translate inclusive UTC lower / exclusive upper bounds to gallery-dl."""
+    from datetime import datetime, timedelta, timezone
+
+    options = []
+    if start:
+        lower = datetime.fromisoformat(start.replace("Z", "+00:00")).astimezone(timezone.utc)
+        # gallery-dl compares second-resolution dates strictly after this value.
+        options += ["--date-after", (lower - timedelta(seconds=1)).isoformat()]
+    if end:
+        options += ["--date-before", end]
+    if start or end:
+        predicate = "locals().get('date')"
+        if start:
+            bound = f"datetime({lower.year}, {lower.month}, {lower.day}, {lower.hour}, {lower.minute}, {lower.second})"
+            # Run before the native date predicate: an old pinned post must not
+            # stop extraction of the chronological feed that follows it.
+            predicate += f" and (not locals().get('pinned') or date >= {bound})"
+        options += ["--post-filter", predicate]
+    return options
+
+
 def normalize_twitter_text(tweet):
     details = tweet.get("details")
     if not isinstance(details, dict):

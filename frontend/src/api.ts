@@ -92,3 +92,5 @@ export const dateLabel = (value: string) =>
     month: "2-digit",
     day: "2-digit",
   }).format(new Date(value));
+
+export type ImportResult = { value: string; status: "queued" | "duplicate" | "invalid"; task_id?: number };

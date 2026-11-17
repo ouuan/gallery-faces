@@ -1284,8 +1284,8 @@ def import_create(body: ImportInput, _: None = Depends(admin)):
                 continue
             seen.add(url)
             active = db.execute(
-                "SELECT id FROM tasks WHERE kind='download' AND json_extract(payload,'$.url')=? AND status IN ('queued','running')",
-                (url,),
+                "SELECT id FROM tasks WHERE kind='download' AND json_extract(payload,'$.url')=? AND json_extract(payload,'$.start') IS ? AND json_extract(payload,'$.end') IS ? AND status IN ('queued','running')",
+                (url, start, end),
             ).fetchone()
             if active:
                 results.append(

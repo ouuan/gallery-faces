@@ -191,6 +191,8 @@ def _import_task(task, attempt=None):
             "--filter",
             "extension not in ('mp4', 'webm', 'gif')",
         ]
+        from .downloader import date_options
+        command += date_options(payload.get("start"), payload.get("end"))
         cookie = DATA / "cookies" / f"{platform}.txt"
         if cookie.exists():
             snapshot = attempt / "cookies.txt"

@@ -110,6 +110,8 @@ def metadata(raw, filename):
 
 def import_file(path, raw, start=None, end=None):
     meta = metadata(raw, path.name)
+    if (start or end) and not meta["date"]:
+        return None
     if meta["date"] and (
         (start and meta["date"] < start) or (end and meta["date"] >= end)
     ):
