@@ -35,6 +35,7 @@ const store = useLibrary(),
   facePeople = ref<Record<number, number | null>>({}),
   box = ref(""),
   savingBox = ref(false),
+  savingFaces = ref(false),
   sourceEdit = ref<any>(null);
 const newPersonFace = ref<any>(null),
   newPersonName = ref(""),
@@ -128,7 +129,7 @@ const actionIds = computed(() =>
   selected.value.length ? selected.value : active.value ? [active.value.id] : [],
 );
 const actionsDisabled = computed(() =>
-  !actionIds.value.length || loading.value || deleting.value || acting.value || savingBox.value,
+  !actionIds.value.length || loading.value || deleting.value || acting.value || savingBox.value || savingFaces.value,
 );
 const visibilityAction = computed(() =>
   (selected.value.length ? state.value === "hidden" : active.value?.hidden) ? "show" : "hide",
@@ -201,25 +202,58 @@ function faceConfirmed(face: any): boolean {
   const personId = facePerson(face);
   return personId === (face.person_id ?? null) && (!!face.locked || personId === null);
 }
-async function edit(face: any, remove = false) {
-  if (!remove && faceConfirmed(face)) return;
+const pendingFaces = computed(() =>
+  visibleFaces.value.filter((face: any) => !faceConfirmed(face)),
+);
+async function saveFace(face: any, remove = false) {
   const personId = remove ? null : facePerson(face);
+  await send(
+    `/admin/faces/${face.id}`,
+    {
+      revision: face.revision,
+      person_id: personId,
+      ignored: remove,
+      locked: remove || personId !== null,
+    },
+    "PUT",
+  );
+  Object.assign(face, { person_id: personId, ignored: remove, locked: remove || personId !== null, revision: face.revision + 1 });
+  delete facePeople.value[face.id];
+}
+async function edit(face: any, remove = false) {
+  if (savingFaces.value || (!remove && faceConfirmed(face))) return;
+  savingFaces.value = true;
   try {
-    await send(
-      `/admin/faces/${face.id}`,
-      {
-        revision: face.revision,
-        person_id: personId,
-        ignored: remove,
-        locked: remove || personId !== null,
-      },
-      "PUT",
-    );
-    delete facePeople.value[face.id];
+    await saveFace(face, remove);
     message.success(remove ? "人脸已删除" : "判断已保存");
     await load();
   } catch (e) {
     message.error((e as Error).message);
+  } finally {
+    savingFaces.value = false;
+  }
+}
+async function confirmAll() {
+  if (actionsDisabled.value || !pendingFaces.value.length) return;
+  const faces = [...pendingFaces.value];
+  savingFaces.value = true;
+  let saved = 0;
+  const failures: string[] = [];
+  try {
+    for (const face of faces) {
+      try {
+        await saveFace(face);
+        saved++;
+      } catch (e) {
+        failures.push(`人脸 #${face.id}：${(e as Error).message}`);
+      }
+    }
+    if (failures.length)
+      message.error(`已确认 ${saved} 个人脸，${failures.length} 个失败。${failures.join("；")}`, { duration: 8000 });
+    else message.success(`已确认 ${saved} 个人脸`);
+    await load();
+  } finally {
+    savingFaces.value = false;
   }
 }
 async function action(value: string) {
@@ -321,7 +355,7 @@ onMounted(load);
     <div class="review-filter">
       <n-select
         aria-label="审核状态"
-        :disabled="savingBox || acting || deleting"
+        :disabled="savingBox || savingFaces || acting || deleting"
         v-model:value="state"
         @update:value="load"
         :options="[
@@ -386,7 +420,7 @@ onMounted(load);
           "
         /><button
           @click="current = i"
-          :disabled="savingBox"
+          :disabled="savingBox || savingFaces"
           :aria-label="`审核图片 ${image.id}`"
           :aria-current="i === current ? 'true' : undefined"
         >
@@ -399,11 +433,11 @@ onMounted(load);
         <h3>图片 #{{ active.id }}</h3>
         <div class="review-navigation">
           <span class="muted">{{ current + 1 }} / {{ images.length }}</span>
-          <n-button :disabled="savingBox || current === 0" @click="current--"
+          <n-button :disabled="savingBox || savingFaces || current === 0" @click="current--"
             >上一张</n-button
           >
           <n-button
-            :disabled="savingBox || current >= images.length - 1"
+            :disabled="savingBox || savingFaces || current >= images.length - 1"
             @click="current++"
             >下一张</n-button
           >
@@ -423,7 +457,7 @@ onMounted(load);
               :key="active.id"
               :image="editorImage"
               v-model="box"
-              :disabled="savingBox"
+              :disabled="savingBox || savingFaces"
             />
           </div>
           <p class="hint">
@@ -436,16 +470,16 @@ onMounted(load);
               v-if="box"
               v-model="boxPerson"
               accessible-label="为新框选择人物"
-              :disabled="savingBox"
+              :disabled="savingBox || savingFaces"
             />
             <div class="inline-form">
               <n-button
-                :disabled="!box || savingBox"
+                :disabled="!box || savingBox || savingFaces"
                 :loading="savingBox"
                 @click="addBox"
                 >补框与标签</n-button
               >
-              <n-button v-if="box" :disabled="savingBox" @click="box = ''"
+              <n-button v-if="box" :disabled="savingBox || savingFaces" @click="box = ''"
                 >取消补框</n-button
               >
             </div>
@@ -454,9 +488,19 @@ onMounted(load);
         <div class="review-details">
           <FeedbackPanel :key="active.id" :image-id="active.id" :pending-count="active.pending_feedback_count" admin @changed="load" />
           <section class="review-faces" aria-labelledby="review-faces-title">
-            <h3 id="review-faces-title">
-              人脸审核 <span class="muted">（{{ visibleFaces.length }}）</span>
-            </h3>
+            <div class="review-heading">
+              <h3 id="review-faces-title">
+                人脸审核 <span class="muted">（{{ visibleFaces.length }}）</span>
+              </h3>
+              <n-button
+                :disabled="actionsDisabled || !pendingFaces.length"
+                :loading="savingFaces"
+                aria-label="全部确认"
+                title="确认当前图片中所有待确认的人脸，采用当前选择的人物"
+                @click="confirmAll"
+                >全部确认</n-button
+              >
+            </div>
             <div
               v-for="face in visibleFaces"
               :key="face.id"
@@ -472,6 +516,7 @@ onMounted(load);
                   <h4>人脸 #{{ face.id }}</h4>
                   <PersonSelect
                     :model-value="facePerson(face)"
+                    :disabled="savingFaces"
                     :accessible-label="`人脸 #${face.id} 的人物`"
                     @update:model-value="selectFacePerson(face.id, $event)"
                   />
@@ -484,6 +529,7 @@ onMounted(load);
               >
                 <button
                   class="text-button"
+                  :disabled="savingFaces"
                   @click="selectFacePerson(face.id, candidate.person_id)"
                 >
                   {{
@@ -495,17 +541,17 @@ onMounted(load);
               <div class="button-row">
                 <n-button
                   type="primary"
-                  :disabled="faceConfirmed(face)"
+                  :disabled="savingFaces || faceConfirmed(face)"
                   @click="edit(face)"
                   >确认</n-button
                 >
                 <n-button
-                  :disabled="facePerson(face) === (face.person_id ?? null)"
+                  :disabled="savingFaces || facePerson(face) === (face.person_id ?? null)"
                   @click="undoFacePerson(face.id)"
                   >撤销</n-button
                 >
-                <n-button @click="openNewPerson(face)">添加新人物</n-button>
-                <n-button type="error" secondary @click="edit(face, true)"
+                <n-button :disabled="savingFaces" @click="openNewPerson(face)">添加新人物</n-button>
+                <n-button type="error" secondary :disabled="savingFaces" @click="edit(face, true)"
                   >删除</n-button
                 >
               </div>
