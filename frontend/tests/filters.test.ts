@@ -16,6 +16,10 @@ describe("gallery state", () => {
     expect(fromQuery(toQuery(f))).toEqual(f);
     expect(toQuery(emptyFilter())).toEqual({});
   });
+  it.each([{ people: [] }, { people: [1] }, { people: [1, 2] }])("preserves all-person matching for $people", ({ people }) => {
+    const filter = { ...emptyFilter(), people, match: "all" as const };
+    expect(fromQuery(toQuery(filter))).toEqual(filter);
+  });
   it("renders source text safely while preserving links and newlines", () => {
     const wrapper = mount(SourceText, {
       props: { text: "<script>alert(1)</script>\n🐈 https://example.com" },

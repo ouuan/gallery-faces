@@ -36,7 +36,7 @@ export function fromQuery(q: Record<string, any>): Filter {
 export function toQuery(f: Filter) {
   const q: Record<string, string> = {};
   if (f.people.length) q.people = f.people.join(",");
-  if (f.people.length > 1 && f.match === "all") q.match = "all";
+  if (f.match === "all") q.match = "all";
   if (f.publishers.length) q.publishers = f.publishers.join(",");
   if (f.start) q.start = f.start;
   if (f.end) q.end = f.end;
