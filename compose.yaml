@@ -1,0 +1,38 @@
+services:
+  web:
+    image: ghcr.io/ouuan/gallery-faces
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      REQUEST_RATE_PER_SECOND: ${REQUEST_RATE_PER_SECOND:-10}
+      REQUEST_GLOBAL_RATE_PER_SECOND: ${REQUEST_GLOBAL_RATE_PER_SECOND:-50}
+      REQUEST_MAX_CONCURRENCY: ${REQUEST_MAX_CONCURRENCY:-64}
+      FEEDBACK_RATE_LIMIT_PER_MINUTE: ${FEEDBACK_RATE_LIMIT_PER_MINUTE:-5}
+      FEEDBACK_RATE_LIMIT_PER_DAY: ${FEEDBACK_RATE_LIMIT_PER_DAY:-50}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,::1}
+    volumes:
+      - gallery-data:/data
+      - ${IMPORT_PATH:-./imports}:/imports:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  worker:
+    image: ghcr.io/ouuan/gallery-faces
+    command: ["python", "-m", "app.worker"]
+    environment:
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-auto}
+    stop_grace_period: 5m
+    volumes:
+      - gallery-data:/data
+      - ${IMPORT_PATH:-./imports}:/imports:ro
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+volumes:
+  gallery-data:

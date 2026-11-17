@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+node_modules/
+dist/
+.impeccable/
+.agents/skills/impeccable
+data/
+.env
+playwright-report/
+test-results/
+coverage/
+*.tsbuildinfo
+.ruff_cache/

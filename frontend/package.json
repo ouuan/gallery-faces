@@ -1,0 +1,32 @@
+{
+  "name": "gallery-faces-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vue-tsc -b && vite build",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "types": "openapi-typescript ../docs/openapi.json -o src/schema.d.ts"
+  },
+  "dependencies": {
+    "naive-ui": "2.45.3",
+    "pinia": "4.1.0",
+    "vue": "3.5.45",
+    "vue-router": "5.5.1",
+    "@lucide/vue": "1.74.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@vitejs/plugin-vue": "6.0.11",
+    "@vue/test-utils": "2.6.0",
+    "jsdom": "31.0.1",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.8",
+    "vitest": "5.1.0",
+    "vue-tsc": "3.3.14"
+  },
+  "packageManager": "pnpm@12.21.0"
+}

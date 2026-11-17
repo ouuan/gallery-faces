@@ -1,0 +1,6 @@
+allowBuilds:
+  fsevents: true
+
+# Keep the already pinned current release; retain the default cooldown elsewhere.
+minimumReleaseAgeExclude:
+  - '@lucide/vue@1.74.0'

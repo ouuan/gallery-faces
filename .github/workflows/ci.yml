@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.13.9'
+          python-version: '3.14'
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: uv sync --frozen
+      - run: uv run --frozen pytest
+
+  frontend:
+    name: Frontend tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm run build
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.13.9'
+          python-version: '3.14'
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: uv sync --frozen
+        working-directory: backend
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: End-to-end tests
+        env:
+          DATA_DIR: ${{ runner.temp }}/gallery-faces-e2e/data
+          IMPORT_DIR: ${{ runner.temp }}/gallery-faces-e2e/imports
+          ADMIN_PASSWORD: test-password
+          COOKIE_SECURE: 'false'
+        run: |
+          mkdir -p "$DATA_DIR" "$IMPORT_DIR"
+          uv run --directory ../backend --frozen uvicorn app.main:app --host 127.0.0.1 --port 8000 > "$RUNNER_TEMP/backend.log" 2>&1 &
+          backend_pid=$!
+          pnpm dev --host 127.0.0.1 --port 5173 --strictPort > "$RUNNER_TEMP/frontend.log" 2>&1 &
+          frontend_pid=$!
+          trap 'kill "$backend_pid" "$frontend_pid" 2>/dev/null || true' EXIT
+          curl --fail --retry 30 --retry-connrefused --retry-delay 1 --retry-max-time 60 http://127.0.0.1:8000/api/v1/health
+          curl --fail --retry 30 --retry-connrefused --retry-delay 1 --retry-max-time 60 --output /dev/null http://127.0.0.1:5173
+          pnpm run test:e2e --trace retain-on-failure
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frontend-test-diagnostics
+          retention-days: 7
+          path: |
+            frontend/test-results/
+            /tmp/gallery-faces/*.png
+            ${{ runner.temp }}/backend.log
+            ${{ runner.temp }}/frontend.log
+
+  image:
+    name: Build and publish image
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Image settings
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+          PUBLISH: ${{ github.event_name != 'pull_request' && (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || startsWith(github.ref, 'refs/tags/v')) }}
+        run: |
+          echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        if: steps.image.outputs.publish == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        id: meta
+        with:
+          images: ${{ steps.image.outputs.name }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+            type=ref,event=branch
+            type=ref,event=tag
+            type=ref,event=pr
+            type=sha,format=long
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: ${{ steps.image.outputs.publish == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

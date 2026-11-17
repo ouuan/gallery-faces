@@ -1,0 +1,571 @@
+<script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted } from "vue";
+import { useRoute } from "vue-router";
+import {
+  NButton,
+  NInput,
+  NSelect,
+  NAlert,
+  NInputNumber,
+  useMessage,
+} from "naive-ui";
+import { Download, Users, ScanFace, Copy, Settings, LogOut } from "@lucide/vue";
+import { api, send, platformLabel, type Source } from "./api";
+import { useLibrary } from "./store";
+import People from "./People.vue";
+import Review from "./Review.vue";
+import CookieGuide from "./CookieGuide.vue";
+const store = useLibrary();
+function publisherName(source: Source) {
+  return store.publisherName(source);
+}
+const route = useRoute(),
+  message = useMessage(),
+  authenticated = ref(false),
+  checking = ref(true),
+  password = ref(""),
+  error = ref(""),
+  busy = ref(false),
+  urls = ref(""),
+  directory = ref<string | null>(null),
+  directories = ref<string[]>([]),
+  tasks = ref<any[]>([]),
+  taskPage = ref(1),
+  taskTotal = ref(0),
+  tasksLoading = ref(false),
+  tasksError = ref(""),
+  results = ref<any[]>([]),
+  start = ref(""),
+  end = ref(""),
+  settings = ref<any>(null),
+  savingSettings = ref(false),
+  duplicates = ref<any[]>([]),
+  dupZoom = ref(1);
+const section = computed(() => String(route.params.section || "import"));
+const taskPageSize = 20;
+const taskPageCount = computed(() =>
+  Math.max(1, Math.ceil(taskTotal.value / taskPageSize)),
+);
+let taskRequest = 0;
+let requestedTaskPage = 1;
+async function loadTasks(page = taskPage.value, background = false) {
+  const request = ++taskRequest;
+  requestedTaskPage = page;
+  if (!background) tasksLoading.value = true;
+  try {
+    const data = await api<{
+      items: any[];
+      total: number;
+      page: number;
+    }>(`/admin/tasks?page=${page}&page_size=${taskPageSize}`);
+    if (request !== taskRequest) return;
+    tasks.value = data.items;
+    taskTotal.value = data.total;
+    taskPage.value = data.page;
+    tasksError.value = "";
+  } catch (e) {
+    if (request === taskRequest) tasksError.value = (e as Error).message;
+  } finally {
+    if (request === taskRequest) tasksLoading.value = false;
+  }
+}
+const nav = [
+  { id: "import", label: "导入任务", icon: Download },
+  { id: "people", label: "人物与分组", icon: Users },
+  { id: "review", label: "识别审核", icon: ScanFace },
+  { id: "duplicates", label: "重复图片", icon: Copy },
+  { id: "settings", label: "设置", icon: Settings },
+];
+async function refresh() {
+  await store.load();
+  [directories.value, settings.value, duplicates.value] =
+    await Promise.all([
+      api("/admin/directories"),
+      api("/admin/settings"),
+      api("/admin/duplicates"),
+      loadTasks(),
+    ]);
+}
+async function login() {
+  busy.value = true;
+  error.value = "";
+  try {
+    await send("/login", { password: password.value });
+    password.value = "";
+    authenticated.value = true;
+    await refresh();
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = false;
+  }
+}
+async function logout() {
+  await send("/logout", {});
+  authenticated.value = false;
+}
+async function submitImport() {
+  busy.value = true;
+  error.value = "";
+  try {
+    results.value = await send("/admin/import", {
+      urls: urls.value.split("\n"),
+      directory: directory.value,
+      start: start.value,
+      end: end.value,
+    });
+    await loadTasks(1);
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = false;
+  }
+}
+async function taskAction(id: number, action: string) {
+  try {
+    await send(`/admin/tasks/${id}/${action}`, {});
+    await loadTasks();
+  } catch (e) {
+    message.error((e as Error).message);
+  }
+}
+async function saveSettings() {
+  if (savingSettings.value) return;
+  savingSettings.value = true;
+  try {
+    await send("/admin/settings", settings.value, "PUT");
+    await store.loadSite();
+    settings.value.site_title = store.siteTitle;
+    message.success("设置已保存");
+  } catch (e) {
+    message.error((e as Error).message);
+  } finally {
+    savingSettings.value = false;
+  }
+}
+async function cookie(platform: string, event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  const body = new FormData();
+  body.append("file", file);
+  try {
+    await api("/admin/cookies/" + platform, { method: "POST", body });
+    settings.value = await api("/admin/settings");
+    message.success("Cookies 已替换");
+  } catch (e) {
+    message.error((e as Error).message);
+  }
+}
+async function deleteCookie(platform: string) {
+  await api("/admin/cookies/" + platform, { method: "DELETE" });
+  settings.value = await api("/admin/settings");
+}
+async function duplicate(row: any, action: string) {
+  try {
+    await send("/admin/duplicates", { a: row.a, b: row.b, action });
+    duplicates.value = await api("/admin/duplicates");
+  } catch (e) {
+    message.error((e as Error).message);
+  }
+}
+let interval: ReturnType<typeof setInterval>;
+onMounted(async () => {
+  try {
+    await api("/session");
+    authenticated.value = true;
+    await refresh();
+  } catch (e) {
+    if (authenticated.value) error.value = (e as Error).message;
+  } finally {
+    checking.value = false;
+  }
+  interval = setInterval(async () => {
+    if (
+      authenticated.value &&
+      section.value === "import" &&
+      !tasksLoading.value &&
+      !tasksError.value
+    )
+      await loadTasks(taskPage.value, true);
+  }, 3000);
+});
+onUnmounted(() => {
+  clearInterval(interval);
+  taskRequest++;
+});
+</script>
+<template>
+  <div v-if="checking" class="empty-state">正在检查登录状态…</div>
+  <main v-else-if="!authenticated" class="login">
+    <h1>管理员登录</h1>
+    <p class="muted">登录后可导入照片、整理人物和审核识别结果。</p>
+    <n-alert v-if="error" type="error">{{ error }}</n-alert>
+    <form @submit.prevent="login">
+      <label class="field-label"
+        >管理员密码<n-input
+          v-model:value="password"
+          type="password"
+          placeholder="输入管理员密码"
+          :input-props="{ autocomplete: 'current-password' }" /></label
+      ><n-button attr-type="submit" type="primary" block :loading="busy"
+        >登录工作台</n-button
+      >
+    </form>
+    <router-link to="/">返回照片库</router-link>
+  </main>
+  <main v-else class="admin-shell">
+    <aside class="admin-nav">
+      <p class="nav-title">管理工作台</p>
+      <router-link
+        v-for="item in nav"
+        :key="item.id"
+        :to="'/admin/' + item.id"
+        :class="{ active: section === item.id }"
+        ><component :is="item.icon" :size="19" />{{ item.label }}</router-link
+      ><button @click="logout"><LogOut :size="19" />退出登录</button>
+    </aside>
+    <section class="admin-content">
+      <h1>{{ nav.find((n) => n.id === section)?.label || "管理工作台" }}</h1>
+      <n-alert v-if="error" type="error" closable @close="error = ''">{{
+        error
+      }}</n-alert><template v-if="section === 'import'"
+        ><p class="intro">
+          添加帖子或账号链接，或导入已挂载的 gallery-dl 目录。
+        </p>
+        <form class="import-form" @submit.prevent="submitImport">
+          <label class="field-label"
+            >链接，每行一个<n-input
+              v-model:value="urls"
+              type="textarea"
+              :autosize="{ minRows: 4, maxRows: 8 }"
+              placeholder="https://www.instagram.com/p/…&#10;https://x.com/username/status/…" /></label
+          ><label class="field-label"
+            >或选择导入目录<n-select
+              v-model:value="directory"
+              clearable
+              :options="directories.map((d) => ({ label: d, value: d }))"
+              placeholder="挂载目录中的图片与 JSON sidecar"
+          /></label>
+          <div class="inline-form">
+            <label class="field-label"
+              >开始日期<input v-model="start" type="date" /></label
+            ><label class="field-label"
+              >结束日期（含当天）<input v-model="end" type="date"
+            /></label>
+          </div>
+          <n-button
+            type="primary"
+            attr-type="submit"
+            :disabled="!urls.trim() && directory === null"
+            :loading="busy"
+            >创建导入任务</n-button
+          >
+          <p class="hint">
+            再次导入同一账号可获取新增照片，已收录的媒体不会重复创建。
+          </p>
+        </form>
+        <div v-for="(r, i) in results" :key="i" class="import-result">
+          <span>{{ r.value }}</span><strong>{{
+            r.status === "invalid"
+              ? "无效链接"
+              : r.status === "duplicate"
+                ? "重复链接 / 已在队列"
+                : "已加入队列"
+          }}</strong>
+        </div>
+        <h2>任务记录</h2>
+        <n-alert v-if="tasksError" type="error" title="任务记录加载失败">
+          {{ tasksError }}
+          <n-button
+            :loading="tasksLoading"
+            @click="loadTasks(requestedTaskPage)"
+            >重新加载</n-button
+          >
+        </n-alert>
+        <p v-if="tasksLoading" role="status" class="hint">正在加载任务记录…</p>
+        <div
+          v-if="!tasks.length && !tasksLoading && !tasksError"
+          class="empty-state"
+        >
+          <h3>还没有导入任务</h3>
+          <p>创建任务后，可在这里查看进度、取消或重试。</p>
+        </div>
+        <div v-if="tasks.length" class="table-scroll" :aria-busy="tasksLoading">
+          <table class="task-table">
+            <thead>
+              <tr>
+                <th>任务</th>
+                <th>阶段</th>
+                <th>进度</th>
+                <th>速度</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="task in tasks" :key="task.id">
+                <td>
+                  <strong
+                    >#{{ task.id }}
+                    {{
+                      (
+                        {
+                          download: "链接下载",
+                          import: "目录导入",
+                          detect: "人脸检测",
+                          rematch: "人物匹配",
+                        } as any
+                      )[task.kind]
+                    }}</strong
+                  >
+                  <p class="task-target">
+                    {{
+                      JSON.parse(task.payload).url ||
+                      JSON.parse(task.payload).directory ||
+                      (task.image_id ? "图片 #" + task.image_id : "")
+                    }}
+                  </p>
+                  <p v-if="task.error" class="error-text">{{ task.error }}</p>
+                </td>
+                <td>
+                  {{ task.stage }}
+                  <p class="hint">{{ task.status }}</p>
+                </td>
+                <td class="task-metric">
+                  {{ task.done }} / {{ task.total || "—" }}
+                  {{ task.kind === "rematch" ? "个人脸" : "张" }}
+                </td>
+                <td class="task-metric">
+                  <template v-if="task.speed > 0 && task.status !== 'queued'">
+                    {{ task.speed < 0.1 ? "<0.1" : task.speed.toFixed(1) }}
+                    {{ task.kind === "rematch" ? "个人脸/秒" : "张/秒" }}
+                  </template>
+                  <template v-else>—</template>
+                </td>
+                <td>
+                  <n-button
+                    v-if="['queued', 'running'].includes(task.status)"
+                    @click="taskAction(task.id, 'cancel')"
+                    >取消</n-button
+                  ><n-button
+                    v-if="['failed', 'cancelled'].includes(task.status)"
+                    @click="taskAction(task.id, 'retry')"
+                    >重试</n-button
+                  >
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <nav
+          v-if="taskTotal > 0"
+          class="task-pagination"
+          aria-label="任务记录分页"
+        >
+          <span class="muted">共 {{ taskTotal }} 条 · 每页 {{ taskPageSize }} 条</span>
+          <div class="task-page-controls">
+            <n-button
+              :disabled="tasksLoading || taskPage <= 1"
+              @click="loadTasks(taskPage - 1)"
+              >上一页</n-button
+            >
+            <span aria-live="polite">第 {{ taskPage }} / {{ taskPageCount }} 页</span>
+            <n-button
+              :disabled="tasksLoading || taskPage >= taskPageCount"
+              @click="loadTasks(taskPage + 1)"
+              >下一页</n-button
+            >
+          </div>
+        </nav></template
+      ><People v-else-if="section === 'people'" /><Review
+        v-else-if="section === 'review'"
+      /><template v-else-if="section === 'duplicates'"
+        ><p class="intro">
+          对照图片、来源和人物标签。拆分后的图片不会再次自动合并。
+        </p>
+        <label class="field-label"
+          >同步缩放<n-input-number
+            v-model:value="dupZoom"
+            :min="1"
+            :max="3"
+            :step="0.25"
+        /></label>
+        <div v-if="!duplicates.length" class="empty-state">
+          <Copy :size="40" />
+          <h2>暂无重复图片候选</h2>
+          <p>导入图片后自动检测相同文件和尺寸、压缩变体。</p>
+        </div>
+        <article
+          v-for="row in duplicates"
+          :key="row.a + '-' + row.b"
+          class="duplicate-review"
+        >
+          <div class="section-heading">
+            <h3>#{{ row.a }} 与 #{{ row.b }}</h3>
+            <span
+              >{{ row.decision }} · SSIM
+              {{ row.score?.toFixed(3) || "—" }}</span
+            >
+          </div>
+          <div class="duplicate-pair">
+            <div v-for="image in row.images" :key="image.id">
+              <div class="duplicate-image">
+                <img
+                  :src="`/api/v1/admin/media/${image.id}`"
+                  :style="{ width: dupZoom * 100 + '%', maxWidth: 'none' }"
+                  alt="重复图片候选"
+                />
+              </div>
+              <p>
+                {{ image.width }} × {{ image.height }} ·
+                {{
+                  image.people.map((p: any) => p.name).join("、") || "未知人物"
+                }}
+              </p>
+              <p v-for="source in image.sources" :key="source.id">
+                <a :href="source.url" target="_blank" rel="noopener noreferrer"
+                  >{{ platformLabel(source.platform) }} ·
+                  {{ publisherName(source) }} ·
+                  {{ source.published_at }}</a
+                >
+              </p>
+            </div>
+          </div>
+          <div class="button-row">
+            <n-button type="primary" @click="duplicate(row, 'merge')"
+              >合并为一组</n-button
+            ><n-button @click="duplicate(row, 'separate')">{{
+              row.images[0].group_id === row.images[1].group_id
+                ? "拆分图片"
+                : "不是重复"
+            }}</n-button>
+          </div>
+        </article></template
+      ><template v-else-if="section === 'settings' && settings"
+        ><form class="settings-form" @submit.prevent="saveSettings">
+          <h2>站点信息</h2>
+          <label class="field-label"
+            >站点标题<n-input
+              v-model:value="settings.site_title"
+              :input-props="{ 'aria-label': '站点标题' }"
+              placeholder="输入站点标题"
+              maxlength="100"
+              show-count
+              :disabled="savingSettings"
+          /></label>
+          <p class="hint">显示在页面顶部和浏览器标签页，最多 100 个字符。</p>
+          <h2>人物匹配</h2>
+          <p class="muted">
+            相似度不表示准确率。只有同时满足阈值和领先差值时才会自动采用。
+          </p>
+          <label class="field-label"
+            >最低余弦相似度<n-input-number
+              :value="Number(settings.threshold)"
+              @update:value="settings.threshold = $event"
+              :min="0"
+              :max="1"
+              :step="0.01" /></label
+          ><label class="field-label"
+            >领先第二人选的差值<n-input-number
+              :value="Number(settings.margin)"
+              @update:value="settings.margin = $event"
+              :min="0"
+              :max="2"
+              :step="0.01"
+          /></label>
+          <h2>视觉去重</h2>
+          <label class="field-label"
+            >pHash 最大距离<n-input-number
+              :value="Number(settings.phash_distance)"
+              @update:value="settings.phash_distance = $event"
+              :min="0"
+              :max="64" /></label
+          ><label class="field-label"
+            >长宽比最大差异<n-input-number
+              :value="Number(settings.aspect_tolerance)"
+              @update:value="settings.aspect_tolerance = $event"
+              :min="0"
+              :max="1"
+              :step="0.01" /></label
+          ><label class="field-label"
+            >最低 SSIM<n-input-number
+              :value="Number(settings.ssim_threshold)"
+              @update:value="settings.ssim_threshold = $event"
+              :min="0"
+              :max="1"
+              :step="0.01" /></label
+          ><label class="field-label"
+            >站点时区<n-input v-model:value="settings.timezone" /></label
+          ><n-button
+            type="primary"
+            attr-type="submit"
+            :loading="savingSettings"
+            :disabled="savingSettings || !settings.site_title?.trim()"
+            >保存设置</n-button
+          >
+        </form>
+        <div class="cookie-heading">
+          <h2>平台 Cookies</h2>
+          <CookieGuide />
+        </div>
+        <p class="muted">
+          仅接受 Netscape cookies 文件。替换后用于后续下载任务。
+        </p>
+        <div
+          v-for="platform in ['instagram', 'x']"
+          :key="platform"
+          class="cookie-row"
+        >
+          <h3>{{ platform === "x" ? "X / Twitter" : "Instagram" }}</h3>
+          <span>{{
+            settings.cookies[platform] ? "已配置" : "未配置"
+          }}</span><label class="file-label"
+            >上传 / 替换<input
+              type="file"
+              accept=".txt"
+              @change="cookie(platform, $event)" /></label
+          ><n-button
+            :disabled="!settings.cookies[platform]"
+            @click="deleteCookie(platform)"
+            >删除</n-button
+          >
+        </div>
+        <h2>识别模型</h2>
+        <p>
+          {{
+            settings.models_ready
+              ? "模型文件已安装"
+              : "模型尚未安装，请按部署文档安装后再处理图片。"
+          }}
+        </p></template
+      >
+    </section>
+  </main>
+</template>
+
+<style scoped>
+.cookie-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+}
+.task-table {
+  min-width: 640px;
+}
+.task-metric {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.task-pagination,
+.task-page-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.task-pagination {
+  justify-content: space-between;
+  margin-top: 20px;
+  font-variant-numeric: tabular-nums;
+}
+</style>

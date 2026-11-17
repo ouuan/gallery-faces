@@ -1,0 +1,1077 @@
+import json
+import threading
+from types import SimpleNamespace
+from concurrent.futures import ThreadPoolExecutor
+import numpy as np
+import pytest
+from fastapi.testclient import TestClient
+from app import db, main, worker, importer
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    for module in (db, main, worker, importer):
+        monkeypatch.setattr(module, "DATA", tmp_path)
+    monkeypatch.setenv("ADMIN_PASSWORD", "test-password")
+    monkeypatch.setenv("COOKIE_SECURE", "false")
+    with TestClient(main.app) as client:
+        client.post("/api/v1/login", json={"password": "test-password"})
+        client.headers["X-Gallery-Request"] = "1"
+        yield client
+
+
+def image(dbh, faces=True, date="2026-01-01T00:00:00Z", author="alice", group=None):
+    group = (
+        group or dbh.execute("INSERT INTO duplicate_groups DEFAULT VALUES").lastrowid
+    )
+    i = dbh.execute(
+        "INSERT INTO images(sha256,filename,width,height,group_id,detection) VALUES(?,?,?,?,?,?)",
+        (
+            str(dbh.execute("SELECT count(*) FROM images").fetchone()[0]),
+            "fixture.jpg",
+            100,
+            100,
+            group,
+            "done",
+        ),
+    ).lastrowid
+    p = dbh.execute(
+        "INSERT INTO posts(platform,post_key,author,published_at,url,post_text) VALUES(?,?,?,?,?,?)",
+        (
+            "x",
+            str(i),
+            author,
+            date,
+            f"https://x.com/{author}/status/{i}",
+            "hello\nworld 🐈",
+        ),
+    ).lastrowid
+    dbh.execute(
+        "INSERT INTO sources(image_id,post_id,media_key) VALUES(?,?,?)", (i, p, "1")
+    )
+    if faces:
+        dbh.execute(
+            "INSERT INTO faces(image_id,box,embedding,model_version) VALUES(?,?,?,?)",
+            (
+                i,
+                "[0,0,20,20]",
+                np.array([1, 0] + [0] * 510, dtype="float32").tobytes(),
+                worker.MODEL_VERSION,
+            ),
+        )
+    return i
+
+
+def test_detection_tracks_image_speed_even_without_faces(client, monkeypatch):
+    clock = SimpleNamespace(monotonic=lambda: 10.0)
+    monkeypatch.setattr(worker, "time", clock)
+    with db.connect(True) as conn:
+        target = image(conn, faces=False)
+        task_id = conn.execute(
+            "INSERT INTO tasks(kind,image_id) VALUES('detect',?)", (target,)
+        ).lastrowid
+
+    def detect(_, **kwargs):
+        with db.connect() as conn:
+            task = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+            assert (task["done"], task["total"], task["speed"]) == (0, 1, 0)
+        clock.monotonic = lambda: 12.0
+        return []
+
+    monkeypatch.setattr(worker, "Vision", lambda: SimpleNamespace(detect=detect))
+    worker.step()
+    with db.connect() as conn:
+        task = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+        assert task["status"] == "done"
+        assert (task["done"], task["total"], task["speed"]) == (1, 1, 0.5)
+
+
+@pytest.mark.parametrize("face_count", [0, 2])
+def test_rematch_tracks_face_progress_and_speed(client, monkeypatch, face_count):
+    clock = SimpleNamespace(monotonic=lambda: 10.0)
+    monkeypatch.setattr(worker, "time", clock)
+    with db.connect(True) as conn:
+        target = image(conn, faces=False)
+        for _ in range(face_count):
+            conn.execute(
+                "INSERT INTO faces(image_id,box,embedding,model_version) VALUES(?, '[0,0,20,20]', ?, ?)",
+                (target, np.array([1, 0] + [0] * 510, dtype="float32").tobytes(), worker.MODEL_VERSION),
+            )
+        task_id = conn.execute(
+            "INSERT INTO tasks(kind,image_id) VALUES('rematch',?)", (target,)
+        ).lastrowid
+    calls = 0
+
+    def candidates(*_):
+        nonlocal calls
+        with db.connect() as conn:
+            task = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+            assert task["done"] == calls
+            assert task["total"] == face_count
+            assert task["speed"] == (0.5 if calls else 0)
+        calls += 1
+        clock.monotonic = lambda: 10.0 + calls * 2
+        return []
+
+    monkeypatch.setattr(worker, "candidates", candidates)
+    worker.step()
+    with db.connect() as conn:
+        task = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+        assert task["status"] == "done"
+        assert task["done"] == task["total"] == face_count
+        assert task["speed"] == (0.5 if face_count else 0)
+
+
+def test_task_pagination(client):
+    empty = client.get("/api/v1/admin/tasks").json()
+    assert empty == {"items": [], "total": 0, "page": 1, "page_size": 20}
+    with db.connect(True) as conn:
+        conn.executemany("INSERT INTO tasks(kind) VALUES(?)", [("import",)] * 305)
+    first = client.get("/api/v1/admin/tasks").json()
+    assert first["total"] == 305
+    assert [task["id"] for task in first["items"]] == list(range(305, 285, -1))
+    second = client.get("/api/v1/admin/tasks?page=2").json()
+    assert [task["id"] for task in second["items"]] == list(range(285, 265, -1))
+    last = client.get("/api/v1/admin/tasks?page=999").json()
+    assert last["page"] == 16
+    assert [task["id"] for task in last["items"]] == [5, 4, 3, 2, 1]
+    custom = client.get("/api/v1/admin/tasks?page=4&page_size=100").json()
+    assert custom["page_size"] == 100
+    assert [task["id"] for task in custom["items"]] == [5, 4, 3, 2, 1]
+
+
+@pytest.mark.parametrize("query", ["page=0", "page=-1", "page_size=0", "page_size=101"])
+def test_task_pagination_rejects_invalid_parameters(client, query):
+    assert client.get(f"/api/v1/admin/tasks?{query}").status_code == 422
+
+
+def test_retry_resets_task_statistics(client):
+    with db.connect(True) as conn:
+        task_id = conn.execute(
+            "INSERT INTO tasks(kind,status,done,total,speed) VALUES('import','failed',2,3,0.5)"
+        ).lastrowid
+    assert client.post(f"/api/v1/admin/tasks/{task_id}/retry").status_code == 200
+    with db.connect() as conn:
+        task = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+        assert task["status"] == "queued"
+        assert task["done"] == task["total"] == task["speed"] == 0
+
+
+def test_admin_image_link_beyond_list_limit(client):
+    with db.connect(True) as conn:
+        ids = [image(conn, faces=False) for _ in range(501)]
+    target = ids[-1]
+    assert target not in {
+        row["id"] for row in client.get("/api/v1/admin/images?state=all").json()
+    }
+    response = client.get(f"/api/v1/admin/images?state=all&image_id={target}")
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()] == [target]
+    assert response.json()[0]["sources"]
+    assert client.get("/api/v1/admin/images?state=all&image_id=99999").json() == []
+    client.cookies.clear()
+    assert client.get(f"/api/v1/admin/images?state=all&image_id={target}").status_code == 401
+
+
+def test_manual_face_without_person_remains_unknown(client):
+    with db.connect(True) as conn:
+        target = image(conn, faces=False)
+    response = client.post(
+        f"/api/v1/admin/images/{target}/faces",
+        json={"box": [0, 0, 20, 20], "person_id": None},
+    )
+    assert response.status_code == 200
+    unknown = client.get(f"/api/v1/admin/images?state=unknown&image_id={target}").json()
+    assert len(unknown) == 1
+    assert unknown[0]["faces"][0]["locked"] == 0
+
+
+def test_groups_transaction_and_concurrency(client):
+    p = client.post(
+        "/api/v1/admin/people", json={"name": "Alice", "new_groups": [" Team ", "Team"]}
+    ).json()["id"]
+    group = client.get("/api/v1/groups").json()[0]
+    assert group["name"] == "Team"
+    assert (
+        client.put(
+            f"/api/v1/admin/people/{p}",
+            json={"name": "Alice", "new_groups": ["Rollback"], "group_ids": [999]},
+        ).status_code
+        == 400
+    )
+    assert len(client.get("/api/v1/groups").json()) == 1
+    client.put(f"/api/v1/admin/people/{p}", json={"name": "Alice"})
+    assert client.get("/api/v1/groups").json()[0]["members"] == 0
+
+    def create(n):
+        return main.save_person(
+            main.PersonInput(name=f"Person {n}", new_groups=["Concurrent"])
+        )
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(create, range(8)))
+    assert [g["name"] for g in client.get("/api/v1/groups").json()].count(
+        "Concurrent"
+    ) == 1
+
+
+def test_no_faces_visibility_and_access(client):
+    with db.connect(True) as conn:
+        known = image(conn)
+        empty = image(conn, False)
+        failed = image(conn, False)
+        conn.execute("UPDATE images SET detection='failed' WHERE id=?", (failed,))
+    assert len(client.get("/api/v1/gallery").json()["items"]) == 1
+    assert len(client.get("/api/v1/gallery?include_no_faces=true").json()["items"]) == 2
+    assert (
+        client.post(
+            "/api/v1/admin/images/actions", json={"ids": [known], "action": "hide"}
+        ).status_code
+        == 200
+    )
+    assert client.get(f"/api/v1/gallery/{known}").status_code == 404
+    assert client.get(f"/api/v1/media/{known}").status_code == 404
+    client.cookies.clear()
+    assert client.get("/api/v1/admin/tasks").status_code == 401
+    assert client.get("/api/v1/admin/reference-media/a.jpg").status_code == 401
+
+
+def test_source_filters_and_all_same_image(client):
+    with db.connect(True) as conn:
+        first = image(conn, date="2025-12-31T16:00:00Z")
+        second = image(conn, date="2026-01-03T00:00:00Z", author="bob", group=first)
+        a = conn.execute("INSERT INTO people(name) VALUES('A')").lastrowid
+        b = conn.execute("INSERT INTO people(name) VALUES('B')").lastrowid
+        conn.execute("UPDATE faces SET person_id=? WHERE image_id=?", (a, first))
+        conn.execute("UPDATE faces SET person_id=? WHERE image_id=?", (b, second))
+    assert not client.get("/api/v1/gallery?publishers=x:alice&start=2026-01-03").json()[
+        "items"
+    ]
+    assert (
+        len(
+            client.get("/api/v1/gallery?start=2026-01-01&end=2026-01-01").json()[
+                "items"
+            ]
+        )
+        == 1
+    )
+    assert not client.get(f"/api/v1/gallery?people={a},{b}&match=all").json()["items"]
+    result = client.get("/api/v1/gallery?publishers=x:bob").json()["items"][0]
+    detail = client.get(
+        f"/api/v1/gallery/{first}?matched_post={result['matched_source']['post_id']}"
+    ).json()
+    assert (
+        detail["matched_source"]["author"] == "bob"
+        and detail["earliest_source"]["author"] == "alice"
+    )
+    assert "post_text" not in result["matched_source"]
+    assert detail["sources"][0]["post_text"] == "hello\nworld 🐈"
+
+
+def test_queue_dedup_preserves_position_and_manual_decisions(client, monkeypatch):
+    with db.connect(True) as conn:
+        i = image(conn)
+        image(conn, False)
+        person = conn.execute("INSERT INTO people(name) VALUES('A')").lastrowid
+        conn.execute(
+            "INSERT INTO reference_images(person_id,embedding,model_version) VALUES(?,?,?)",
+            (person, np.array([1, 0] + [0] * 510, dtype="float32").tobytes(), worker.MODEL_VERSION),
+        )
+
+    def schedule(_):
+        with db.connect(True) as conn:
+            db.schedule_rematch(conn)
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(schedule, range(12)))
+    with db.connect() as conn:
+        tasks = conn.execute("SELECT * FROM tasks").fetchall()
+        assert len(tasks) == 1 and tasks[0]["target_version"] == 12
+        task = dict(tasks[0])
+        face = conn.execute("SELECT * FROM faces").fetchone()
+    original = worker.candidates
+
+    def concurrent_edit(embedding, refs):
+        with db.connect(True) as conn:
+            conn.execute(
+                "UPDATE faces SET locked=1,revision=revision+1 WHERE id=?",
+                (face["id"],),
+            )
+            db.schedule_rematch(conn)
+        return original(embedding, refs)
+
+    monkeypatch.setattr(worker, "candidates", concurrent_edit)
+    worker.step()
+    with db.connect() as conn:
+        result = conn.execute("SELECT * FROM faces").fetchone()
+        assert result["person_id"] is None and result["locked"] == 1
+        assert conn.execute("SELECT count(*) FROM tasks").fetchone()[0] == 1
+        assert conn.execute("SELECT status FROM tasks").fetchone()[0] == "done"
+
+
+def test_running_ref_update_reuses_task(client, monkeypatch):
+    with db.connect(True) as conn:
+        i = image(conn)
+        db.schedule_rematch(conn)
+    calls = []
+
+    def candidate(embedding, refs):
+        calls.append(1)
+        if len(calls) == 1:
+            with db.connect(True) as conn:
+                db.schedule_rematch(conn)
+        return []
+
+    monkeypatch.setattr(worker, "candidates", candidate)
+    worker.step()
+    assert len(calls) == 2
+    with db.connect() as conn:
+        tasks = conn.execute("SELECT * FROM tasks").fetchall()
+        assert len(tasks) == 1 and tasks[0]["processed_version"] == 2
+
+
+def test_review_undo_and_ignored_no_faces(client):
+    with db.connect(True) as conn:
+        i = image(conn)
+    face = client.get("/api/v1/admin/images").json()[0]["faces"][0]
+    assert (
+        client.put(
+            f"/api/v1/admin/faces/{face['id']}", json={"revision": 0, "ignored": True}
+        ).status_code
+        == 200
+    )
+    assert not client.get("/api/v1/gallery").json()["items"]
+    assert (
+        client.put(
+            f"/api/v1/admin/faces/{face['id']}", json={"revision": 0, "ignored": False}
+        ).status_code
+        == 409
+    )
+    assert client.post(f"/api/v1/admin/faces/{face['id']}/undo").status_code == 200
+    assert len(client.get("/api/v1/gallery").json()["items"]) == 1
+
+
+def test_stable_pagination(client):
+    with db.connect(True) as conn:
+        for _ in range(5):
+            image(conn)
+    first = client.get("/api/v1/gallery?limit=2").json()
+    second = client.get(
+        "/api/v1/gallery", params={"limit": 2, "cursor": first["next_cursor"]}
+    ).json()
+    assert not set(p["id"] for p in first["items"]) & set(
+        p["id"] for p in second["items"]
+    )
+
+
+def test_import_idempotence_and_text_backfill(client, tmp_path):
+    from PIL import Image
+
+    path = tmp_path / "test.jpg"
+    Image.new("RGB", (30, 40), "red").save(path)
+    raw = {
+        "category": "twitter",
+        "tweet_id": "123",
+        "user": {"name": "alice"},
+        "date": "2026-01-01T00:00:00Z",
+        "num": 1,
+    }
+    first = importer.import_file(path, raw)
+    raw["content"] = "backfilled 🐈"
+    second = importer.import_file(path, raw)
+    assert first == second
+    with db.connect() as conn:
+        assert conn.execute("SELECT count(*) FROM sources").fetchone()[0] == 1
+        assert (
+            conn.execute("SELECT post_text FROM posts").fetchone()[0] == "backfilled 🐈"
+        )
+
+
+def test_actual_author_not_collection_account(client):
+    raw = {
+        "category": "twitter",
+        "tweet_id": "123",
+        "user": {"name": "collector"},
+        "author": {"name": "actual"},
+        "date": "2026-01-01T00:00:00Z",
+    }
+    meta = importer.metadata(raw, "one.jpg")
+    assert meta["author"] == "actual" and meta["collected"] == "collector"
+    assert meta["url"] == "https://x.com/actual/status/123"
+    assert not importer.validate_url("https://x.com:bad/hello")
+
+
+def test_duplicate_split_memory_and_hidden_member(client):
+    with db.connect(True) as conn:
+        a = image(conn)
+        b = image(conn, group=a)
+    assert (
+        client.post(
+            "/api/v1/admin/duplicates", json={"a": a, "b": b, "action": "separate"}
+        ).status_code
+        == 200
+    )
+    with db.connect() as conn:
+        assert (
+            conn.execute("SELECT count(DISTINCT group_id) FROM images").fetchone()[0]
+            == 2
+        )
+        assert (
+            conn.execute("SELECT decision FROM duplicate_decisions").fetchone()[0]
+            == "separate"
+        )
+    client.post("/api/v1/admin/duplicates", json={"a": a, "b": b, "action": "merge"})
+    client.post("/api/v1/admin/images/actions", json={"ids": [b], "action": "hide"})
+    detail = client.get(f"/api/v1/gallery/{a}").json()
+    assert len(detail["sources"]) == 1 and detail["source_count"] == 1
+
+
+def test_original_bytes_retained(client, tmp_path):
+    from PIL import Image
+
+    path = tmp_path / "original.png"
+    Image.new("RGB", (40, 30), "blue").save(path)
+    raw = {
+        "category": "twitter",
+        "tweet_id": "99",
+        "author": {"name": "actual"},
+        "date": "2026-01-01T00:00:00Z",
+    }
+    i = importer.import_file(path, raw)
+    with db.connect(True) as conn:
+        conn.execute("UPDATE images SET detection='done' WHERE id=?", (i,))
+    assert client.get(f"/api/v1/media/{i}?download=true").content == path.read_bytes()
+
+
+def test_create_person_from_face_atomic_and_undo(client, monkeypatch):
+    with db.connect(True) as conn:
+        image(conn)
+        image(conn)
+    face = client.get('/api/v1/admin/images').json()[0]['faces'][0]
+    endpoint = f"/api/v1/admin/faces/{face['id']}/person"
+    assert face['has_embedding']
+    assert client.post(endpoint, json={'name': '  ', 'revision': 0}).status_code == 400
+    assert client.post(endpoint, json={'name': 'A', 'revision': 9}).status_code == 409
+    original = main.schedule_rematch
+
+    def fail_schedule(conn):
+        raise RuntimeError('simulated failure')
+
+    monkeypatch.setattr(main, 'schedule_rematch', fail_schedule)
+    with pytest.raises(RuntimeError):
+        client.post(endpoint, json={'name': 'Rollback', 'revision': 0})
+    assert client.get('/api/v1/people').json() == []
+    with db.connect() as conn:
+        assert conn.execute('SELECT count(*) FROM reference_images').fetchone()[0] == 0
+        assert conn.execute('SELECT count(*) FROM review_history').fetchone()[0] == 0
+        assert conn.execute('SELECT revision FROM faces WHERE id=?', (face['id'],)).fetchone()[0] == 0
+    monkeypatch.setattr(main, 'schedule_rematch', original)
+    result = client.post(endpoint, json={'name': '  新人物  ', 'revision': 0})
+    assert result.status_code == 200
+    person = result.json()['id']
+    assert client.get('/api/v1/people').json()[0]['name'] == '新人物'
+    with db.connect() as conn:
+        saved = conn.execute('SELECT * FROM faces WHERE id=?', (face['id'],)).fetchone()
+        assert (saved['person_id'], saved['locked'], saved['revision']) == (person, 1, 1)
+        ref = conn.execute('SELECT * FROM reference_images').fetchone()
+        assert ref['face_id'] == face['id'] and ref['embedding'] == saved['embedding']
+        assert conn.execute('SELECT count(*) FROM tasks').fetchone()[0] == 1
+    assert client.post(endpoint, json={'name': 'Duplicate submit', 'revision': 0}).status_code == 409
+    assert len(client.get('/api/v1/people').json()) == 1
+    assert client.post(f"/api/v1/admin/faces/{face['id']}/undo").status_code == 200
+    with db.connect() as conn:
+        assert conn.execute('SELECT person_id FROM faces WHERE id=?', (face['id'],)).fetchone()[0] is None
+
+
+def test_create_person_from_face_without_embedding_and_auth(client):
+    with db.connect(True) as conn:
+        image(conn)
+        conn.execute('UPDATE faces SET embedding=NULL')
+    face = client.get('/api/v1/admin/images').json()[0]['faces'][0]
+    assert not face['has_embedding']
+    endpoint = f"/api/v1/admin/faces/{face['id']}/person"
+    body = {'name': 'Manual', 'revision': 0}
+    assert client.post(endpoint, json=body).status_code == 400
+    assert client.get('/api/v1/people').json() == []
+    body['add_reference'] = False
+    result = client.post(endpoint, json=body)
+    assert result.status_code == 200
+    assert client.get('/api/v1/people').json()[0]['reference_count'] == 0
+    person = result.json()['id']
+    client.cookies.clear()
+    assert client.post(endpoint, json=body).status_code == 401
+    assert client.delete(f'/api/v1/admin/people/{person}').status_code == 401
+
+
+def test_delete_person_cleans_labels_candidates_history_and_keeps_images(client):
+    person = client.post('/api/v1/admin/people', json={
+        'name': 'Delete', 'new_groups': ['Keep group'],
+        'accounts': [{'platform': 'x', 'username': 'alice'}],
+    }).json()['id']
+    other = client.post('/api/v1/admin/people', json={'name': 'Keep'}).json()['id']
+    with db.connect(True) as conn:
+        image(conn)
+        image(conn)
+        faces = conn.execute('SELECT id FROM faces ORDER BY id').fetchall()
+    a, b = [row[0] for row in faces]
+    for face_id in (a, b):
+        assert client.put(f'/api/v1/admin/faces/{face_id}', json={'revision': 0, 'person_id': person}).status_code == 200
+    assert client.put(f'/api/v1/admin/faces/{b}', json={'revision': 1, 'person_id': other}).status_code == 200
+    assert client.post(f'/api/v1/admin/people/{person}/references', json={'face_id': a}).status_code == 200
+    with db.connect(True) as conn:
+        conn.execute('UPDATE faces SET candidates=?', (json.dumps([{'person_id': person, 'score': 1}, {'person_id': other, 'score': .5}]),))
+    assert client.delete(f'/api/v1/admin/people/{person}').status_code == 200
+    with db.connect() as conn:
+        assert conn.execute('SELECT count(*) FROM images').fetchone()[0] == 2
+        assert conn.execute('SELECT count(*) FROM sources').fetchone()[0] == 2
+        assert conn.execute('SELECT count(*) FROM reference_images').fetchone()[0] == 0
+        assert conn.execute('SELECT count(*) FROM accounts').fetchone()[0] == 0
+        assert conn.execute('SELECT count(*) FROM person_groups').fetchone()[0] == 0
+        first = conn.execute('SELECT * FROM faces WHERE id=?', (a,)).fetchone()
+        assert (first['person_id'], first['locked'], first['ignored']) == (None, 0, 0)
+        assert conn.execute('SELECT person_id FROM faces WHERE id=?', (b,)).fetchone()[0] == other
+        for face in conn.execute('SELECT candidates FROM faces'):
+            assert json.loads(face[0]) == [{'person_id': other, 'score': .5}]
+        assert conn.execute("SELECT count(*) FROM review_history WHERE json_extract(before_json,'$.person_id')=?", (person,)).fetchone()[0] == 0
+        assert conn.execute("SELECT count(*) FROM tasks WHERE kind='rematch'").fetchone()[0] == 1
+    assert client.post(f'/api/v1/admin/faces/{b}/undo').status_code == 409
+    assert client.get('/api/v1/groups').json()[0]['name'] == 'Keep group'
+    assert client.delete(f'/api/v1/admin/people/{person}').status_code == 404
+
+
+def test_delete_person_during_rematch_discards_stale_identity(client, monkeypatch):
+    with db.connect(True) as conn:
+        image(conn)
+        person = conn.execute("INSERT INTO people(name) VALUES('Delete')").lastrowid
+        conn.execute('INSERT INTO reference_images(person_id,embedding,model_version) VALUES(?,?,?)',
+                     (person, np.array([1, 0] + [0] * 510, dtype='float32').tobytes(), worker.MODEL_VERSION))
+        db.schedule_rematch(conn)
+    original = worker.candidates
+    calls = []
+
+    def during_match(embedding, refs):
+        result = original(embedding, refs)
+        if not calls:
+            calls.append(1)
+            assert client.delete(f'/api/v1/admin/people/{person}').status_code == 200
+        return result
+
+    monkeypatch.setattr(worker, 'candidates', during_match)
+    worker.step()
+    with db.connect() as conn:
+        face = conn.execute('SELECT * FROM faces').fetchone()
+        assert face['person_id'] is None and json.loads(face['candidates']) == []
+        assert conn.execute('SELECT status FROM tasks').fetchone()[0] == 'done'
+
+
+def test_person_from_face_groups_accounts_transaction(client):
+    existing = client.post('/api/v1/admin/people', json={'name': 'Existing', 'new_groups': ['Existing group']}).json()['id']
+    group = client.get('/api/v1/groups').json()[0]['id']
+    with db.connect(True) as conn:
+        image(conn)
+    face = client.get('/api/v1/admin/images').json()[0]['faces'][0]
+    endpoint = f"/api/v1/admin/faces/{face['id']}/person"
+    body = {'name': 'New', 'revision': 0, 'group_ids': [group, 999], 'new_groups': ['New group'], 'accounts': [{'platform': 'x', 'username': 'alice'}]}
+    assert client.post(endpoint, json=body).status_code == 400
+    assert len(client.get('/api/v1/people').json()) == 1
+    assert len(client.get('/api/v1/groups').json()) == 1
+    body['group_ids'] = [group]
+    body['new_groups'] += [' Existing group ']
+    result = client.post(endpoint, json=body)
+    assert result.status_code == 200
+    person = next(p for p in client.get('/api/v1/people').json() if p['id'] == result.json()['id'])
+    assert {g['name'] for g in person['groups']} == {'Existing group', 'New group'}
+    assert person['accounts'][0]['username'] == 'alice'
+    assert person['reference_count'] == 1
+
+
+def test_multiple_confirmed_face_references_atomic_and_deduplicated(client):
+    person = client.post('/api/v1/admin/people', json={'name': 'A'}).json()['id']
+    other = client.post('/api/v1/admin/people', json={'name': 'Other'}).json()['id']
+    with db.connect(True) as conn:
+        for _ in range(6):
+            image(conn)
+        faces = [r[0] for r in conn.execute('SELECT id FROM faces ORDER BY id')]
+        conn.execute('UPDATE faces SET person_id=?,locked=1', (person,))
+        conn.execute('UPDATE faces SET person_id=? WHERE id=?', (other, faces[3]))
+        conn.execute('UPDATE faces SET locked=0 WHERE id=?', (faces[4],))
+        conn.execute('UPDATE faces SET embedding=NULL WHERE id=?', (faces[5],))
+    listing = f'/api/v1/admin/people/{person}/confirmed-faces'
+    edit = f'/api/v1/admin/people/{person}'
+    offered = client.get(listing).json()
+    assert {f['id'] for f in offered} == {faces[0], faces[1], faces[2], faces[5]}
+    assert not next(f for f in offered if f['id'] == faces[5])['has_embedding']
+    for invalid in (faces[3], faces[4], faces[5], 999):
+        result = client.put(edit, json={'name': 'Should roll back', 'new_groups': ['Rollback refs'], 'reference_face_ids': [faces[0], invalid]})
+        assert result.status_code == 409
+        assert client.get('/api/v1/groups').json() == []
+        with db.connect() as conn:
+            assert conn.execute('SELECT name FROM people WHERE id=?', (person,)).fetchone()[0] == 'A'
+            assert conn.execute('SELECT count(*) FROM reference_images').fetchone()[0] == 0
+    body = {'name': 'Renamed', 'reference_face_ids': [faces[0], faces[1], faces[0]]}
+    assert client.put(edit, json=body).status_code == 200
+    with db.connect() as conn:
+        version = db.settings(conn)['reference_version']
+        assert conn.execute('SELECT count(*) FROM reference_images').fetchone()[0] == 2
+    assert client.put(edit, json=body).status_code == 200
+    with db.connect() as conn:
+        assert db.settings(conn)['reference_version'] == version
+    assert sum(f['is_reference'] for f in client.get(listing).json()) == 2
+    # A face changed since the picker opened cannot become this person's reference.
+    with db.connect(True) as conn:
+        conn.execute('UPDATE faces SET person_id=? WHERE id=?', (other, faces[2]))
+    assert client.put(edit, json={'name': 'Stale', 'reference_face_ids': [faces[2]]}).status_code == 409
+    client.cookies.clear()
+    assert client.get(listing).status_code == 401
+
+
+def test_publisher_person_matches_all_platforms_and_same_source_date(client):
+    person = client.post('/api/v1/admin/people', json={'name': 'Alice', 'accounts': [
+        {'platform': 'x', 'username': 'Alice'},
+        {'platform': 'instagram', 'username': 'alice_ig'},
+    ]}).json()['id']
+    with db.connect(True) as conn:
+        x = image(conn, author='alice', date='2026-01-01T00:00:00Z')
+        ig = image(conn, author='ALICE_IG', date='2026-01-02T00:00:00Z')
+        conn.execute("UPDATE posts SET platform='instagram',author_name='Instagram 昵称' WHERE post_key=?", (str(ig),))
+        unrelated = image(conn, author='alice_ig', date='2026-01-03T00:00:00Z')
+        image(conn, author='other', date='2026-01-04T00:00:00Z', group=x)
+    query = f'/api/v1/gallery?publishers=person:{person}'
+    items = client.get(query).json()['items']
+    assert {p['id'] for p in items} == {x, ig}
+    assert next(p for p in items if p['id'] == ig)['matched_source']['author_name'] == 'Instagram 昵称'
+    assert client.get(f'/api/v1/gallery/{ig}').json()['matched_source']['author_name'] == 'Instagram 昵称'
+    assert not client.get(query + '&start=2026-01-04').json()['items']
+    assert {p['id'] for p in client.get(query + ',x:alice_ig').json()['items']} == {x, ig, unrelated}
+    for invalid in ('person:no', 'person:-1', 'person:99999999999999999999999', 'person:'):
+        assert client.get('/api/v1/gallery', params={'publishers': invalid}).status_code == 400
+    client.put(f'/api/v1/admin/people/{person}', json={'name': 'Alice', 'accounts': []})
+    assert not client.get(query).json()['items']
+
+
+def test_nickname_metadata_backfill_and_actual_publisher(client, tmp_path):
+    from PIL import Image
+    path = tmp_path / 'nickname.jpg'
+    Image.new('RGB', (30, 40), 'red').save(path)
+    raw = {'category': 'twitter', 'tweet_id': 'nick', 'user': {'name': 'collector', 'nick': '收藏者'},
+           'author': {'name': 'author'}, 'date': '2026-01-01T00:00:00Z'}
+    i = importer.import_file(path, raw)
+    raw['author']['nick'] = '发布者昵称'
+    importer.import_file(path, raw)
+    del raw['author']['nick']
+    importer.import_file(path, raw)
+    with db.connect() as conn:
+        row = conn.execute('SELECT author,author_name FROM posts').fetchone()
+        assert tuple(row) == ('author', '发布者昵称')
+    assert importer.metadata({'category': 'twitter', 'author': {'screen_name': 'handle', 'name': 'X 昵称'}}, 'a')['author_name'] == 'X 昵称'
+    assert importer.metadata({'category': 'instagram', 'username': 'ig', 'fullname': 'IG 昵称'}, 'a')['author_name'] == 'IG 昵称'
+    assert importer.metadata({'category': 'instagram', 'owner': {'username': 'ig', 'full_name': 'IG 昵称'}}, 'a')['author_name'] == 'IG 昵称'
+
+
+def test_nickname_schema_upgrade_preserves_existing_posts(client):
+    with db.connect(True) as conn:
+        image(conn)
+        conn.execute('ALTER TABLE posts DROP COLUMN author_name')
+        conn.execute('ALTER TABLE reference_images DROP COLUMN box')
+        conn.execute('UPDATE schema_version SET version=1')
+    db.init()
+    db.init()
+    with db.connect() as conn:
+        assert conn.execute('SELECT author,author_name FROM posts').fetchone()['author'] == 'alice'
+        assert [r[0] for r in conn.execute('SELECT version FROM schema_version')] == [5]
+
+
+def test_reference_avatars_crop_selected_face_and_recover_legacy_uploads(client, monkeypatch):
+    import base64
+    import io
+    from PIL import Image
+    person = client.post('/api/v1/admin/people', json={'name': 'Avatar'}).json()['id']
+    assert client.get('/api/v1/people').json()[0]['avatar_reference_id'] is None
+    photo = Image.new('RGB', (100, 100), 'blue')
+    photo.paste('red', (50, 10, 70, 40))
+    photo.save(db.DATA / 'images' / 'fixture.jpg', quality=100)
+    with db.connect(True) as conn:
+        image(conn)
+        face = conn.execute('SELECT id FROM faces').fetchone()[0]
+        conn.execute("UPDATE faces SET box='[50,10,20,30]' WHERE id=?", (face,))
+    client.post(f'/api/v1/admin/people/{person}/references', json={'face_id': face})
+    avatar = client.get('/api/v1/people').json()[0]['avatar_reference_id']
+    crop_url = f'/api/v1/admin/references/{avatar}/crop'
+    crop = Image.open(io.BytesIO(client.get(crop_url).content))
+    assert crop.size == (20, 30)
+    assert crop.getpixel((10, 15))[0] > 240
+
+    token = 'a' * 32
+    photo.save(db.DATA / 'references' / f'{token}.jpg', quality=100)
+    vectors = [np.array([1, 0] + [0] * 510, dtype='float32').tobytes(), np.array([0, 1] + [0] * 510, dtype='float32').tobytes()]
+    boxes = [[0, 0, 20, 20], [50, 10, 20, 30]]
+    (db.DATA / 'references' / f'{token}.json').write_text(json.dumps({'model_version': worker.MODEL_VERSION, 'faces': [
+        {'box': box, 'embedding': base64.b64encode(vector).decode()} for box, vector in zip(boxes, vectors)
+    ]}))
+    assert client.post(f'/api/v1/admin/people/{person}/uploaded-reference', json={'token': token, 'index': 1}).status_code == 200
+    refs = client.get(f'/api/v1/admin/people/{person}/references').json()
+    uploaded = next(r['id'] for r in refs if r['filename'])
+    url = f'/api/v1/admin/references/{uploaded}/crop'
+    assert Image.open(io.BytesIO(client.get(url).content)).size == (20, 30)
+    # Existing uploaded references recover the selected face by embedding.
+    with db.connect(True) as conn:
+        conn.execute('UPDATE reference_images SET box=NULL WHERE id=?', (uploaded,))
+    calls = []
+    class FakeVision:
+        def detect(self, path, **kwargs):
+            calls.append(path)
+            return list(zip(boxes, vectors))
+    monkeypatch.setattr(main, 'Vision', FakeVision)
+    recovered = Image.open(io.BytesIO(client.get(url).content))
+    assert recovered.size == (20, 30) and recovered.getpixel((10, 15))[0] > 240
+    assert client.get(url).status_code == 200 and len(calls) == 1
+    client.delete(f'/api/v1/admin/references/{avatar}')
+    assert client.get('/api/v1/people').json()[0]['avatar_reference_id'] == uploaded
+    assert client.get(crop_url).status_code == 404
+    client.cookies.clear()
+    assert client.get(url).status_code == 401
+
+
+def test_delete_images_cleans_dependents_and_preserves_other_group_members(client):
+    person = client.post('/api/v1/admin/people', json={'name': 'Keep person'}).json()['id']
+    with db.connect(True) as conn:
+        first = image(conn)
+        second = image(conn, group=first)
+        third = image(conn)
+        conn.execute("UPDATE images SET filename='deleted.jpg' WHERE id=?", (first,))
+        conn.execute('INSERT INTO sources(image_id,post_id,media_key) VALUES(?,?,?)', (second, first, 'shared'))
+        face = conn.execute('SELECT id FROM faces WHERE image_id=?', (first,)).fetchone()[0]
+        conn.execute('INSERT INTO duplicate_decisions(a,b,decision) VALUES(?,?,?)', (first, second, 'separate'))
+        conn.execute("INSERT INTO tasks(kind,image_id) VALUES('detect',?)", (first,))
+    client.put(f'/api/v1/admin/faces/{face}', json={'person_id': person, 'revision': 0})
+    client.post(f'/api/v1/admin/people/{person}/references', json={'face_id': face})
+    for relative in ('images/deleted.jpg', 'thumbs/deleted.jpg', 'originals/0.png'):
+        (db.DATA / relative).write_bytes(b'delete me')
+    keep = db.DATA / 'images' / 'fixture.jpg'
+    keep.write_bytes(b'keep me')
+    response = client.post('/api/v1/admin/images/actions', json={'action': 'delete', 'ids': [first, first]})
+    assert response.status_code == 200 and response.json()['deleted'] == 1
+    assert response.json()['removed_references'] == 1
+    for relative in ('images/deleted.jpg', 'thumbs/deleted.jpg', 'originals/0.png'):
+        assert not (db.DATA / relative).exists()
+    assert keep.read_bytes() == b'keep me'
+    with db.connect() as conn:
+        assert {r[0] for r in conn.execute('SELECT id FROM images')} == {second, third}
+        assert conn.execute('SELECT count(*) FROM people').fetchone()[0] == 1
+        assert conn.execute('SELECT count(*) FROM reference_images').fetchone()[0] == 0
+        assert conn.execute('SELECT count(*) FROM review_history').fetchone()[0] == 0
+        assert conn.execute('SELECT count(*) FROM duplicate_decisions').fetchone()[0] == 0
+        assert conn.execute('SELECT count(*) FROM tasks WHERE image_id=?', (first,)).fetchone()[0] == 0
+        assert conn.execute('SELECT count(*) FROM tasks WHERE image_id=?', (second,)).fetchone()[0] == 1
+        assert conn.execute('SELECT 1 FROM posts WHERE id=?', (first,)).fetchone()
+        assert not conn.execute('PRAGMA foreign_key_check').fetchall()
+    assert client.get(f'/api/v1/admin/media/{first}').status_code == 404
+    assert client.get(f'/api/v1/admin/faces/{face}/crop').status_code == 404
+    assert client.post('/api/v1/admin/images/actions', json={'action': 'delete', 'ids': [second, third]}).status_code == 200
+    with db.connect() as conn:
+        assert conn.execute('SELECT count(*) FROM images').fetchone()[0] == 0
+        assert conn.execute('SELECT count(*) FROM posts').fetchone()[0] == 0
+        assert conn.execute('SELECT count(*) FROM duplicate_groups').fetchone()[0] == 0
+    assert not keep.exists()
+
+
+def test_delete_images_is_atomic_and_blocks_running_work(client, monkeypatch):
+    with db.connect(True) as conn:
+        first = image(conn)
+        second = image(conn)
+    body = {'action': 'delete', 'ids': [first, 999]}
+    assert client.post('/api/v1/admin/images/actions', json=body).status_code == 404
+    body['ids'] = [first, second]
+    for kind, image_id in [('detect', first), ('rematch', second), ('import', None), ('download', None)]:
+        with db.connect(True) as conn:
+            task = conn.execute("INSERT INTO tasks(kind,image_id,status) VALUES(?,?,'running')", (kind, image_id)).lastrowid
+        assert client.post('/api/v1/admin/images/actions', json=body).status_code == 409
+        with db.connect(True) as conn:
+            assert conn.execute('SELECT count(*) FROM images').fetchone()[0] == 2
+            conn.execute('DELETE FROM tasks WHERE id=?', (task,))
+    client.cookies.clear()
+    assert client.post('/api/v1/admin/images/actions', json=body).status_code == 401
+
+
+def test_deleted_file_cleanup_retries_and_protects_reimport(client, tmp_path, monkeypatch):
+    from pathlib import Path
+    from PIL import Image
+    source = tmp_path / 'import-source.png'
+    Image.new('RGB', (32, 32), 'red').save(source)
+    raw = {'category': 'twitter', 'tweet_id': '123', 'author': {'name': 'alice'}, 'date': '2026-01-01T00:00:00Z'}
+    i = importer.import_file(source, raw)
+    original_unlink = Path.unlink
+    def blocked(path, *args, **kwargs):
+        if path.parent in (db.DATA/'images', db.DATA/'originals', db.DATA/'thumbs'):
+            raise PermissionError('simulated file lock')
+        return original_unlink(path, *args, **kwargs)
+    monkeypatch.setattr(Path, 'unlink', blocked)
+    result = client.post('/api/v1/admin/images/actions', json={'action':'delete','ids':[i]})
+    assert result.status_code == 200 and result.json()['cleanup_pending'] == 3
+    assert source.exists()
+    reimported = importer.import_file(source, raw)
+    monkeypatch.setattr(Path, 'unlink', original_unlink)
+    assert db.cleanup_deleted_files() == 0
+    with db.connect() as conn:
+        filename = conn.execute('SELECT filename FROM images WHERE id=?', (reimported,)).fetchone()[0]
+    assert (db.DATA/'images'/filename).exists()
+    assert client.post('/api/v1/admin/images/actions', json={'action':'delete','ids':[reimported]}).status_code == 200
+    assert not (db.DATA/'images'/filename).exists() and source.exists()
+
+
+def test_image_delete_rolls_back_on_reference_update_failure(client, monkeypatch):
+    person = client.post('/api/v1/admin/people', json={'name':'A'}).json()['id']
+    with db.connect(True) as conn:
+        i = image(conn)
+        face = conn.execute('SELECT id FROM faces').fetchone()[0]
+    client.post(f'/api/v1/admin/people/{person}/references', json={'face_id':face})
+    asset = db.DATA/'images'/'fixture.jpg'
+    asset.write_bytes(b'original')
+    def fail_schedule(conn):
+        raise RuntimeError('simulate transaction failure')
+    monkeypatch.setattr(main, 'schedule_rematch', fail_schedule)
+    with pytest.raises(RuntimeError):
+        client.post('/api/v1/admin/images/actions', json={'action':'delete','ids':[i]})
+    assert asset.read_bytes() == b'original'
+    with db.connect() as conn:
+        assert conn.execute('SELECT count(*) FROM images').fetchone()[0] == 1
+        assert conn.execute('SELECT count(*) FROM reference_images').fetchone()[0] == 1
+        assert conn.execute('SELECT count(*) FROM pending_file_deletions').fetchone()[0] == 0
+
+
+def test_default_review_includes_all_unresolved_categories(client):
+    with db.connect(True) as conn:
+        person = conn.execute("INSERT INTO people(name) VALUES('A')").lastrowid
+        unknown = image(conn)
+        automatic = image(conn)
+        no_faces = image(conn, False)
+        failed = image(conn, False)
+        pending = image(conn, False)
+        incomplete = image(conn)
+        confirmed = image(conn)
+        skipped = image(conn)
+        ignored = image(conn)
+        hidden = image(conn)
+        conn.execute('UPDATE faces SET person_id=? WHERE image_id=?', (person, automatic))
+        conn.execute("UPDATE images SET detection='failed' WHERE id=?", (failed,))
+        conn.execute("UPDATE images SET detection='pending' WHERE id=?", (pending,))
+        conn.execute('DELETE FROM sources WHERE image_id=?', (incomplete,))
+        conn.execute('UPDATE faces SET person_id=?,locked=1 WHERE image_id IN (?,?)', (person, confirmed, incomplete))
+        conn.execute('UPDATE faces SET locked=1 WHERE image_id=?', (skipped,))
+        conn.execute('UPDATE faces SET ignored=1,locked=1 WHERE image_id=?', (ignored,))
+        conn.execute('UPDATE images SET hidden=1 WHERE id=?', (hidden,))
+    expected = {unknown, automatic, no_faces, failed, pending, incomplete}
+    assert {row['id'] for row in client.get('/api/v1/admin/images').json()} == expected
+    assert {row['id'] for row in client.get('/api/v1/admin/images?state=review').json()} == expected
+    assert {row['id'] for row in client.get('/api/v1/admin/images?state=hidden').json()} == {hidden}
+    assert len(client.get('/api/v1/admin/images?state=all').json()) == 10
+    assert automatic not in {row['id'] for row in client.get('/api/v1/admin/images?state=unknown').json()}
+    face = next(row for row in client.get('/api/v1/admin/images').json() if row['id'] == automatic)['faces'][0]
+    assert client.put(f"/api/v1/admin/faces/{face['id']}", json={'revision':face['revision'],'person_id':person}).status_code == 200
+    assert automatic not in {row['id'] for row in client.get('/api/v1/admin/images').json()}
+
+
+def test_x_details_text_compatibility_preserves_existing_and_long_posts():
+    from app.downloader import normalize_twitter_text
+    from gallery_dl.extractor.twitter import TwitterExtractor
+    class Stub:
+        _user = None
+        _transform_user = staticmethod(lambda user: {'name':'fixture'})
+        _tweetid_to_datetime = staticmethod(lambda value: 'date')
+        _extract_media_source = staticmethod(lambda *args: None)
+    raw = {'id_str':'2122604348073230483', 'lang':'ja', 'author':{}, 'entities':{},
+           'details': {'full_text':'正文\n🐈 https://t.co/media', 'hashtag_entities':[]}}
+    assert TwitterExtractor._transform_tweet(Stub(), raw)['content'] == ''
+    normalized = normalize_twitter_text(raw)
+    assert 'full_text' not in raw
+    assert TwitterExtractor._transform_tweet(Stub(), normalized)['content'] == '正文\n🐈'
+    raw['full_text'] = '已有完整正文'
+    assert normalize_twitter_text(raw) is raw
+    assert TwitterExtractor._transform_tweet(Stub(), normalize_twitter_text(raw))['content'] == '已有完整正文'
+    del raw['full_text']
+    raw['note_tweet'] = {'note_tweet_results': {'result': {'text':'长文优先', 'entity_set':{}}}}
+    assert TwitterExtractor._transform_tweet(Stub(), normalize_twitter_text(raw))['content'] == '长文优先'
+    del raw['note_tweet']
+    nested = {'legacy':{k:v for k,v in raw.items() if k not in ('details','author')}, 'details':raw['details'], 'author':{}}
+    assert TwitterExtractor._transform_tweet(Stub(), normalize_twitter_text(nested))['content'] == '正文\n🐈'
+
+
+def test_x_import_text_fallback_does_not_use_image_alt_text(client, tmp_path):
+    from PIL import Image
+    base = {'category':'twitter','tweet_id':'fallback','author':{'name':'alice'},'date':'2026-01-01T00:00:00Z'}
+    for fields in ({'content':'正文','post_text':None}, {'content':'','details':{'full_text':'正文'}}, {'full_text':'正文'}):
+        assert importer.metadata({**base,**fields},'test.jpg')['text'] == '正文'
+    assert importer.metadata({**base,'description':'图片替代文字'},'test.jpg')['text'] is None
+    path=tmp_path/'text.png'
+    Image.new('RGB',(32,32),'red').save(path)
+    importer.import_file(path,{**base,'content':''})
+    importer.import_file(path,{**base,'content':'','details':{'full_text':'补全正文'}})
+    importer.import_file(path,{**base,'content':'   '})
+    with db.connect() as conn:
+        assert conn.execute('SELECT post_text FROM posts').fetchone()[0] == '补全正文'
+        assert conn.execute('SELECT count(*) FROM images').fetchone()[0] == 1
+
+
+def test_edit_person_references_atomic(client):
+    import base64
+    person = client.post('/api/v1/admin/people', json={'name': 'Before'}).json()['id']
+    other = client.post('/api/v1/admin/people', json={'name': 'Other'}).json()['id']
+    with db.connect(True) as conn:
+        image(conn)
+        image(conn)
+        faces = [r[0] for r in conn.execute('SELECT id FROM faces ORDER BY id')]
+        conn.execute('UPDATE faces SET person_id=?,locked=1', (person,))
+    endpoint = f'/api/v1/admin/people/{person}'
+    client.put(endpoint, json={'name': 'Before', 'reference_face_ids': [faces[0]]})
+    reference = client.get(endpoint + '/references').json()[0]['id']
+    assert client.put(f'/api/v1/admin/people/{other}', json={
+        'name': 'Other', 'removed_reference_ids': [reference],
+    }).status_code == 409
+    token = 'a' * 32
+    staged = main.DATA / 'references' / f'{token}.json'
+    staged.write_text(json.dumps({'model_version': worker.MODEL_VERSION, 'faces': [{'box': [0, 0, 20, 20], 'embedding': base64.b64encode(np.eye(1, 512, dtype='float32').tobytes()).decode()}]}))
+    body = {'name': 'After', 'removed_reference_ids': [reference],
+            'reference_face_ids': [faces[1]], 'uploaded_references': [{'token': token, 'index': 9}]}
+    assert client.put(endpoint, json=body).status_code == 400
+    assert staged.exists()
+    assert [r['id'] for r in client.get(endpoint + '/references').json()] == [reference]
+    with db.connect() as conn:
+        assert conn.execute('SELECT name FROM people WHERE id=?', (person,)).fetchone()[0] == 'Before'
+    body['uploaded_references'][0]['index'] = 0
+    assert client.put(endpoint, json=body).status_code == 200
+    refs = client.get(endpoint + '/references').json()
+    assert len(refs) == 2
+    assert {r['face_id'] for r in refs} == {faces[1], None}
+    assert not staged.exists()
+
+
+def test_detection_upgrade_append_retry(client):
+    with db.connect(True) as conn:
+        target = image(conn, faces=False)
+        first = db.schedule_detection(conn, target)
+        assert db.schedule_detection(conn, target, 'highres') == first
+        assert json.loads(conn.execute('SELECT payload FROM tasks WHERE id=?', (first,)).fetchone()[0])['mode'] == 'highres'
+        conn.execute("UPDATE tasks SET payload='{}',status='running' WHERE id=?", (first,))
+        second = db.schedule_detection(conn, target, 'highres')
+        assert second != first
+        assert db.schedule_detection(conn, target, 'highres') == second
+        conn.execute("UPDATE tasks SET status='failed' WHERE id=?", (second,))
+    assert client.post(f'/api/v1/admin/tasks/{second}/retry').status_code == 200
+    with db.connect() as conn:
+        assert json.loads(conn.execute('SELECT payload FROM tasks WHERE id=?', (second,)).fetchone()[0])['mode'] == 'highres'
+    assert worker.claim(('detect',)) is None
+
+
+def test_worker_parallel_slots_and_order(client, monkeypatch):
+    monkeypatch.setenv('WORKER_CONCURRENCY', '2')
+    stop, release = threading.Event(), threading.Event()
+    entered = threading.Condition()
+    active, history = set(), []
+    counts = {'compute': 0, 'io': 0}
+    peak = dict(counts)
+    with db.connect(True) as conn:
+        first, second = image(conn, False), image(conn, False)
+        db.schedule_detection(conn, first)
+        conn.execute("INSERT INTO tasks(kind,image_id) VALUES('rematch',?)", (first,))
+        db.schedule_detection(conn, second)
+        conn.execute("INSERT INTO tasks(kind) VALUES('import')")
+        conn.execute("INSERT INTO tasks(kind) VALUES('download')")
+    def work(task):
+        category = 'compute' if task['image_id'] else 'io'
+        with entered:
+            assert task['image_id'] is None or task['image_id'] not in active
+            if task['image_id']:
+                active.add(task['image_id'])
+            history.append((task['kind'], task['image_id']))
+            counts[category] += 1
+            peak[category] = max(peak[category], counts[category])
+            entered.notify_all()
+        assert release.wait(5)
+        with entered:
+            counts[category] -= 1
+            active.discard(task['image_id'])
+        if task['kind'] == 'detect' and task['image_id'] == first:
+            raise ValueError('isolated failure')
+    monkeypatch.setattr(worker, 'detect', work)
+    monkeypatch.setattr(worker, 'import_task', work)
+    def rematch(task):
+        work(task)
+        with db.connect(True) as conn:
+            conn.execute("UPDATE tasks SET status='done' WHERE id=?", (task['id'],))
+        stop.set()
+    monkeypatch.setattr(worker, 'rematch', rematch)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(worker.run_worker, stop)
+        try:
+            with entered:
+                assert entered.wait_for(lambda: len(history) == 3, timeout=5)
+            assert peak == {'compute': 2, 'io': 1}
+        finally:
+            release.set()
+        future.result(timeout=10)
+    assert history.index(('rematch', first)) > history.index(('detect', first))
+    with db.connect() as conn:
+        assert conn.execute("SELECT status FROM tasks WHERE kind='detect' AND image_id=?", (first,)).fetchone()[0] == 'failed'
+        assert conn.execute("SELECT status FROM tasks WHERE kind='detect' AND image_id=?", (second,)).fetchone()[0] == 'done'
+
+
+def test_cancel_detection_before_write(client, monkeypatch):
+    with db.connect(True) as conn:
+        target = image(conn)
+        task_id = db.schedule_detection(conn, target)
+    def detect(*args, **kwargs):
+        assert kwargs['mode'] == 'auto'
+        with db.connect(True) as conn:
+            conn.execute('UPDATE tasks SET cancel_requested=1 WHERE id=?', (task_id,))
+        return []
+    monkeypatch.setattr(worker, 'Vision', lambda: SimpleNamespace(detect=detect))
+    worker.step()
+    with db.connect() as conn:
+        assert conn.execute('SELECT count(*) FROM faces').fetchone()[0] == 1
+        assert conn.execute('SELECT status FROM tasks WHERE id=?', (task_id,)).fetchone()[0] == 'cancelled'
+
+
+def test_reject_old_face_and_staged_features(client):
+    with db.connect(True) as conn:
+        target = image(conn)
+        conn.execute("UPDATE faces SET model_version='old'")
+        face_id = conn.execute('SELECT id FROM faces').fetchone()[0]
+        person = conn.execute("INSERT INTO people(name) VALUES('A')").lastrowid
+        db.schedule_rematch(conn)
+    assert client.post(f'/api/v1/admin/people/{person}/references', json={'face_id': face_id}).status_code == 400
+    token = 'b' * 32
+    (db.DATA / 'references' / f'{token}.json').write_text('[]')
+    assert client.post(f'/api/v1/admin/people/{person}/uploaded-reference', json={'token': token, 'index': 0}).status_code == 400
+    worker.step()
+    with db.connect() as conn:
+        assert conn.execute('SELECT status FROM tasks WHERE image_id=?', (target,)).fetchone()[0] == 'failed'
+
+
+def test_recovery_preserves_payload_and_cancellation(client):
+    with db.connect(True) as conn:
+        first, second = image(conn, False), image(conn, False)
+        a = db.schedule_detection(conn, first, 'highres')
+        b = db.schedule_detection(conn, second)
+        conn.execute("UPDATE tasks SET status='running'")
+        conn.execute('UPDATE tasks SET cancel_requested=1 WHERE id=?', (b,))
+    worker.recover_tasks()
+    with db.connect() as conn:
+        rows = {row['id']: row for row in conn.execute('SELECT * FROM tasks')}
+        assert rows[a]['status'] == 'queued'
+        assert json.loads(rows[a]['payload'])['mode'] == 'highres'
+        assert rows[b]['status'] == 'cancelled'
+
+
+def test_reference_upload_uses_highres(client, monkeypatch):
+    import io
+    from PIL import Image
+    content = io.BytesIO()
+    Image.new('RGB', (100, 100)).save(content, format='PNG')
+    def detect(path, mode):
+        assert mode == 'highres'
+        return [([0, 0, 50, 50], np.eye(1, 512, dtype=np.float32).tobytes())]
+    monkeypatch.setattr(main, 'Vision', lambda: SimpleNamespace(detect=detect))
+    response = client.post('/api/v1/admin/reference-upload', files={'file': ('face.png', content.getvalue(), 'image/png')})
+    assert response.status_code == 200
+    staged = json.loads((db.DATA / 'references' / (response.json()['token'] + '.json')).read_text())
+    assert staged['model_version'] == worker.MODEL_VERSION
