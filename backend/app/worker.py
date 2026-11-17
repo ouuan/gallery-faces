@@ -104,10 +104,12 @@ def detect(task):
         row = db.execute(
             "SELECT * FROM images WHERE id=?", (task["image_id"],)
         ).fetchone()
+        detection_threshold = float(settings(db)["detection_threshold"])
     faces = Vision().detect(
         DATA / "images" / row["filename"],
         mode=json.loads(task["payload"]).get("mode", "auto"),
         cancel=lambda: cancelled(task["id"]),
+        threshold=detection_threshold,
     )
     with connect(True) as db:
         if db.execute(

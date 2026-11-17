@@ -2431,6 +2431,13 @@
             "title": "Site Title",
             "default": "Gallery Faces"
           },
+          "detection_threshold": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Detection Threshold",
+            "default": 0.5
+          },
           "threshold": {
             "type": "number",
             "maximum": 1.0,

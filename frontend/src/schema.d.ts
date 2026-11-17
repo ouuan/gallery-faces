@@ -941,6 +941,11 @@ export interface components {
              * @default Gallery Faces
              */
             site_title: string;
+            /**
+             * Detection Threshold
+             * @default 0.5
+             */
+            detection_threshold: number;
             /** Threshold */
             threshold: number;
             /** Margin */

@@ -453,6 +453,21 @@ onUnmounted(() => {
               :disabled="savingSettings"
           /></label>
           <p class="hint">显示在页面顶部和浏览器标签页，最多 100 个字符。</p>
+          <h2>人脸检测</h2>
+          <label class="field-label"
+            >人脸检测阈值<n-input-number
+              :value="settings.detection_threshold == null ? null : Number(settings.detection_threshold)"
+              @update:value="settings.detection_threshold = $event"
+              :input-props="{ 'aria-label': '人脸检测阈值', 'aria-describedby': 'detection-threshold-help' }"
+              :min="0"
+              :max="1"
+              :step="0.01"
+              :disabled="savingSettings"
+          /></label>
+          <p id="detection-threshold-help" class="hint">
+            范围 0–1，默认 0.5。调低可检出更多人脸，也可能增加误检；调高可减少误检，也可能漏检。
+            保存后用于后续检测和参考图上传；已有照片需重新检测才会应用。
+          </p>
           <h2>人物匹配</h2>
           <p class="muted">
             相似度不表示准确率。只有同时满足阈值和领先差值时才会自动采用。
@@ -499,7 +514,7 @@ onUnmounted(() => {
             type="primary"
             attr-type="submit"
             :loading="savingSettings"
-            :disabled="savingSettings || !settings.site_title?.trim()"
+            :disabled="savingSettings || !settings.site_title?.trim() || settings.detection_threshold == null"
             >保存设置</n-button
           >
         </form>

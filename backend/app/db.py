@@ -14,6 +14,7 @@ INSERT INTO schema_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM schema_versio
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 INSERT OR IGNORE INTO settings VALUES('reference_version','0'),('threshold','0.5'),('margin','0.1'),('phash_distance','4'),('aspect_tolerance','0.01'),('ssim_threshold','0.98'),('timezone','Asia/Shanghai');
 INSERT OR IGNORE INTO settings VALUES('site_title','Gallery Faces');
+INSERT OR IGNORE INTO settings VALUES('detection_threshold','0.5');
 CREATE TABLE IF NOT EXISTS people(id INTEGER PRIMARY KEY, name TEXT NOT NULL CHECK(length(trim(name))>0));
 CREATE TABLE IF NOT EXISTS groups(id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE CHECK(length(trim(name))>0));
 CREATE TABLE IF NOT EXISTS person_groups(person_id INTEGER REFERENCES people ON DELETE CASCADE, group_id INTEGER REFERENCES groups ON DELETE CASCADE, PRIMARY KEY(person_id,group_id));

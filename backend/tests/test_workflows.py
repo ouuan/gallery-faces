@@ -71,7 +71,11 @@ def test_detection_tracks_image_speed_even_without_faces(client, monkeypatch):
             "INSERT INTO tasks(kind,image_id) VALUES('detect',?)", (target,)
         ).lastrowid
 
+    with db.connect(True) as conn:
+        conn.execute("UPDATE settings SET value='0.35' WHERE key='detection_threshold'")
+
     def detect(_, **kwargs):
+        assert kwargs["threshold"] == 0.35
         with db.connect() as conn:
             task = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
             assert (task["done"], task["total"], task["speed"]) == (0, 1, 0)
@@ -1067,7 +1071,10 @@ def test_reference_upload_uses_highres(client, monkeypatch):
     from PIL import Image
     content = io.BytesIO()
     Image.new('RGB', (100, 100)).save(content, format='PNG')
-    def detect(path, mode):
+    with db.connect(True) as conn:
+        conn.execute("UPDATE settings SET value='0.3' WHERE key='detection_threshold'")
+    def detect(path, mode, threshold):
+        assert threshold == 0.3
         assert mode == 'highres'
         return [([0, 0, 50, 50], np.eye(1, 512, dtype=np.float32).tobytes())]
     monkeypatch.setattr(main, 'Vision', lambda: SimpleNamespace(detect=detect))
@@ -1075,3 +1082,25 @@ def test_reference_upload_uses_highres(client, monkeypatch):
     assert response.status_code == 200
     staged = json.loads((db.DATA / 'references' / (response.json()['token'] + '.json')).read_text())
     assert staged['model_version'] == worker.MODEL_VERSION
+
+
+def test_detection_threshold_settings_and_migration(client):
+    endpoint = "/api/v1/admin/settings"
+    config = client.get(endpoint).json()
+    assert float(config["detection_threshold"]) == 0.5
+    for value in (0, 0.3, 1):
+        config["detection_threshold"] = value
+        assert client.put(endpoint, json=config).status_code == 200
+        assert float(client.get(endpoint).json()["detection_threshold"]) == value
+    for value in (-0.01, 1.01, None, "bad"):
+        config["detection_threshold"] = value
+        assert client.put(endpoint, json=config).status_code == 422
+    # Older clients can still save settings without resetting the new value.
+    config.pop("detection_threshold")
+    assert client.put(endpoint, json=config).status_code == 200
+    db.init()
+    assert float(client.get(endpoint).json()["detection_threshold"]) == 1
+    with db.connect(True) as conn:
+        conn.execute("DELETE FROM settings WHERE key='detection_threshold'")
+    db.init()
+    assert float(client.get(endpoint).json()["detection_threshold"]) == 0.5

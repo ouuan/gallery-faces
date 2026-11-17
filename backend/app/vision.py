@@ -165,7 +165,7 @@ class Vision:
                     _sessions[key],
                 )
 
-    def _detect(self, image, size):
+    def _detect(self, image, size, threshold=0.5):
         height, width = image.shape[:2]
         scale = size / max(height, width)
         rw, rh = max(1, int(width * scale)), max(1, int(height * scale))
@@ -187,7 +187,7 @@ class Vision:
                 * stride
             )
             centers = np.repeat(centers, 2, axis=0)
-            ids = np.flatnonzero(score >= 0.5)
+            ids = np.flatnonzero(score >= threshold)
             boxes.append(
                 np.concatenate(
                     [
@@ -233,17 +233,19 @@ class Vision:
         validate_embedding(vector.tobytes())
         return (vector / np.linalg.norm(vector)).astype(np.float32).tobytes()
 
-    def detect(self, path, mode="auto", cancel=None):
+    def detect(self, path, mode="auto", cancel=None, threshold=0.5):
+        if not 0 <= threshold <= 1:
+            raise ValueError("人脸检测阈值必须在 0 到 1 之间")
         if mode not in ("auto", "highres"):
             raise ValueError("无效检测模式")
         image = cv2.imread(str(path))
         if image is None:
             raise ValueError("无法读取图片")
         check_cancel(cancel)
-        faces = self._detect(image, 1280 if mode == "highres" else 640)
+        faces = self._detect(image, 1280 if mode == "highres" else 640, threshold)
         if mode == "auto" and (not faces or any(face[2] < 48 for face in faces)):
             check_cancel(cancel)
-            faces = self._detect(image, 1280)
+            faces = self._detect(image, 1280, threshold)
         result = []
         for box, points, _ in faces:
             check_cancel(cancel)

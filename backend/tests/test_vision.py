@@ -19,20 +19,22 @@ def face(short=60):
     ],
 )
 @pytest.mark.parametrize("final", [[], [face(100)]])
-def test_tiered_detection(monkeypatch, initial, sizes, final):
+@pytest.mark.parametrize("threshold", [0.25, 0.5, 0.8])
+def test_tiered_detection(monkeypatch, initial, sizes, final, threshold):
     original = np.zeros((200, 300, 3), dtype=np.uint8)
     monkeypatch.setattr(vision.cv2, "imread", lambda _: original)
     model = vision.Vision.__new__(vision.Vision)
     calls, features = [], []
 
-    def detect(image, size):
+    def detect(image, size, actual_threshold):
+        assert actual_threshold == threshold
         assert image is original
         calls.append(size)
         return initial if size == 640 else final
 
     model._detect = detect
     model._feature = lambda crop: features.append(crop) or b"feature"
-    result = model.detect("unused")
+    result = model.detect("unused", threshold=threshold)
     assert calls == sizes
     assert len(result) == len(features) == len(final if len(sizes) == 2 else initial)
 
@@ -44,7 +46,7 @@ def test_highres_failure_and_cancellation(monkeypatch):
     model = vision.Vision.__new__(vision.Vision)
     calls = []
 
-    def detect(image, size):
+    def detect(image, size, threshold):
         calls.append(size)
         if size == 1280:
             raise ValueError("inference failed")
@@ -96,6 +98,10 @@ def test_decode_padding_nms_and_coordinates():
     np.testing.assert_allclose(box, [32, 28, 56, 60])
     np.testing.assert_allclose(points, np.full((5, 2), 40))
     assert short == 48
+    assert model._detect(image, 640, threshold=0.95) == []
+    outputs[0][index : index + 2] = 0.3
+    assert model._detect(image, 640) == []
+    assert len(model._detect(image, 640, threshold=0.3)) == 1
 
 
 def test_recognition_rgb_normalization_and_alignment(monkeypatch):

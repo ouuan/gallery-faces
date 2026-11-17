@@ -428,7 +428,9 @@ def reference_upload(file: UploadFile = File(...), _: None = Depends(admin)):
     path = DATA / "references" / f"{token}.jpg"
     image.convert("RGB").save(path)
     try:
-        detected = Vision().detect(path, mode="highres")
+        with connect() as db:
+            detection_threshold = float(settings(db)["detection_threshold"])
+        detected = Vision().detect(path, mode="highres", threshold=detection_threshold)
     except ValueError as error:
         path.unlink()
         fail(str(error))
@@ -536,7 +538,9 @@ def reference_crop(reference_id: int, _: None = Depends(admin)):
         if reference["model_version"] != MODEL_VERSION or not path.is_file():
             fail("无法恢复参考人脸，请重新上传参考图", 404)
         try:
-            faces = Vision().detect(path, mode="highres")
+            with connect() as db:
+                detection_threshold = float(settings(db)["detection_threshold"])
+            faces = Vision().detect(path, mode="highres", threshold=detection_threshold)
             matches = candidates(reference["embedding"], [
                 {"person_id": index, "embedding": embedding}
                 for index, (_, embedding) in enumerate(faces)
@@ -1381,6 +1385,7 @@ def get_settings(_: None = Depends(admin)):
 
 class SettingsInput(BaseModel):
     site_title: str = Field(default="Gallery Faces", min_length=1, max_length=100)
+    detection_threshold: float = Field(default=0.5, ge=0, le=1)
     threshold: float = Field(ge=0, le=1)
     margin: float = Field(ge=0, le=2)
     phash_distance: int = Field(ge=0, le=64)
