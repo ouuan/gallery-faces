@@ -5,14 +5,13 @@ import {
   NSelect,
   NInput,
   NButton,
-  NCascader,
   NRadioGroup,
   NRadioButton,
 } from "naive-ui";
 import { useLibrary } from "./store";
 import type { Filter } from "./filters";
 import { platformLabel } from "./api";
-import { peopleOptions, peopleKeys, updatePeople } from "./people-cascader";
+import PeopleMultiSelect from "./PeopleMultiSelect.vue";
 const props = defineProps<{ modelValue: Filter }>(),
   emit = defineEmits(["update:modelValue", "clear"]);
 const store = useLibrary();
@@ -36,39 +35,38 @@ function addPublisher() {
   ]);
   publisherName.value = "";
 }
-const personOptions = computed(() => peopleOptions(store.people, store.groups));
-const personKeys = computed(() =>
-  peopleKeys(props.modelValue.people, personOptions.value),
+const personValues = computed(() =>
+  props.modelValue.people.map((id) => `person:${id}`),
 );
-function selectPeople(keys: (string | number)[] | null) {
-  set(
-    "people",
-    updatePeople(keys, props.modelValue.people, personOptions.value),
-  );
+function selectPeople(values: string[]) {
+  set("people", values.map((value) => Number(value.slice(7))));
 }
 function set(key: keyof Filter, value: any) {
   emit("update:modelValue", { ...props.modelValue, [key]: value });
 }
-const publisherOptions = computed(() => {
-  const options = store.people
-    .filter(
-      (p) =>
-        p.accounts.length ||
-        props.modelValue.publishers.includes(`person:${p.id}`),
-    )
-    .map((p) => ({ label: p.name, value: `person:${p.id}` }));
-  for (const value of props.modelValue.publishers) {
-    if (options.some((option) => option.value === value)) continue;
-    const [platform, username] = value.split(":", 2);
-    options.push({
-      value,
-      label:
-        platform === "person"
-          ? "已删除人物"
-          : `${platformLabel(platform)} · @${username}`,
+const publisherPeople = computed(() =>
+  store.people.filter(
+    (person) =>
+      person.accounts.length ||
+      props.modelValue.publishers.includes(`person:${person.id}`),
+  ),
+);
+const publisherExtraOptions = computed(() => {
+  const available = new Set(
+    publisherPeople.value.map((person) => `person:${person.id}`),
+  );
+  return props.modelValue.publishers
+    .filter((value) => !available.has(value))
+    .map((value) => {
+      const [platform, username] = value.split(":", 2);
+      return {
+        value,
+        label:
+          platform === "person"
+            ? "已删除人物"
+            : `${platformLabel(platform)} · @${username}`,
+      };
     });
-  }
-  return options;
 });
 </script>
 <template>
@@ -80,30 +78,16 @@ const publisherOptions = computed(() => {
     <fieldset>
       <legend>照片中的人物</legend>
       <p v-if="!store.people.length" class="muted">尚未添加人物</p>
-      <n-cascader
+      <people-multi-select
         v-else
         class="people-cascader"
         aria-label="照片中的人物"
-        multiple
-        filterable
-        clearable
-        check-strategy="parent"
-        expand-trigger="click"
-        :options="personOptions"
-        :value="personKeys"
+        :people="store.people"
+        :groups="store.groups"
+        :model-value="personValues"
         placeholder="选择分组或搜索人物"
-        :max-tag-count="2"
-        :menu-props="{ class: 'people-cascader-menu' }"
-        :filter-menu-props="{ class: 'people-cascader-search' }"
-        :theme-overrides="{
-          columnWidth: 'min(180px, calc((100vw - 48px) / 2))',
-          optionHeight: '44px',
-        }"
-        @update:value="selectPeople"
-      >
-        <template #empty>暂无人物</template>
-        <template #not-found>没有匹配的人物</template>
-      </n-cascader>
+        @update:model-value="selectPeople"
+      />
       <p v-if="modelValue.people.length" class="hint">
         已选 {{ modelValue.people.length }} 位人物
       </p>
@@ -118,15 +102,19 @@ const publisherOptions = computed(() => {
     </fieldset>
     <fieldset>
       <legend>发布者</legend>
-      <n-select
+      <people-multi-select
+        class="publisher-cascader"
         aria-label="发布者"
-        multiple
-        filterable
-        :value="modelValue.publishers"
-        :options="publisherOptions"
-        placeholder="按人物选择发布者"
-        @update:value="set('publishers', $event)"
-      />
+        :people="publisherPeople"
+        :groups="store.groups"
+        :model-value="modelValue.publishers"
+        :extra-options="publisherExtraOptions"
+        placeholder="选择分组或搜索发布者"
+        @update:model-value="set('publishers', $event)"
+      >
+        <template #empty>暂无关联账号的人物，可输入用户名添加发布者</template>
+        <template #not-found>没有匹配的发布者</template>
+      </people-multi-select>
       <p class="hint">匹配所选人物在所有平台的关联账号</p>
       <div class="publisher-entry">
         <n-select

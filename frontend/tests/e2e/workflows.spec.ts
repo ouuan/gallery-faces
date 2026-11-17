@@ -324,8 +324,12 @@ test("publisher names, cross-platform selector and single-source links", async (
     .first()
     .click();
   await page
-    .locator(".n-base-select-option")
-    .filter({ hasText: "关联人物" })
+    .locator(".n-cascader-option__label")
+    .filter({ hasText: /^未分组$/ })
+    .click();
+  await page
+    .locator(".n-cascader-option__label")
+    .filter({ hasText: /^关联人物$/ })
     .click();
   await expect(page).toHaveURL(/publishers=person(?::|%3A)7/);
   await page.reload();
@@ -333,7 +337,7 @@ test("publisher names, cross-platform selector and single-source links", async (
     page
       .getByRole("group", { name: "发布者", exact: true })
       .locator(".n-base-selection-tags"),
-  ).toContainText("关联人物");
+  ).toContainText("未分组");
   await page.locator(".photo-card").click();
   const dialog = page.getByRole("dialog", { name: "照片详情" });
   await expect(dialog.getByText("X · 关联人物", { exact: true })).toBeVisible();
@@ -629,4 +633,62 @@ test("people cascader groups, shared members, search and mobile apply", async ({
   await expect
     .poll(() => new URL(page.url()).searchParams.get("people"))
     .toBeNull();
+});
+
+test("publisher cascader groups, shared members, manual accounts and mobile apply", async ({ page }) => {
+  const groups = [{ id: 1, name: "朋友" }, { id: 2, name: "同事" }];
+  const people = [
+    { id: 1, name: "共同成员", groups, accounts: [{ platform: "x", username: "shared" }] },
+    { id: 2, name: "朋友甲", groups: [groups[0]], accounts: [{ platform: "instagram", username: "friend" }] },
+    { id: 3, name: "没有账号", groups, accounts: [] },
+  ];
+  await page.route("**/api/v1/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/people")) return route.fulfill({ json: people });
+    if (path.endsWith("/groups")) return route.fulfill({ json: groups });
+    if (path.endsWith("/site")) return route.fulfill({ json: { timezone: "Asia/Shanghai" } });
+    return route.fulfill({ json: { items: [], next_cursor: null } });
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/?publishers=x:manual,person:99");
+  const picker = page.locator(".desktop-filters .publisher-cascader");
+  const option = (label: string) => page.locator(".people-cascader-menu:visible .n-cascader-option")
+    .filter({ has: page.locator(".n-cascader-option__label", { hasText: new RegExp(`^${label}$`) }) });
+  const selected = () => new URL(page.url()).searchParams.get("publishers")?.split(",").sort();
+  await picker.locator(".n-base-selection").click();
+  await option("朋友").locator(".n-checkbox").click();
+  await expect.poll(selected).toEqual(["person:1", "person:2", "person:99", "x:manual"]);
+  await option("同事").locator(".n-cascader-option__label").click();
+  await expect(option("共同成员").getByRole("checkbox")).toHaveAttribute("aria-checked", "true");
+  await expect(option("没有账号")).toHaveCount(0);
+  await option("共同成员").click();
+  await expect.poll(selected).toEqual(["person:2", "person:99", "x:manual"]);
+  await picker.locator("input").fill("共同");
+  await page.locator(".people-cascader-search:visible .n-base-select-option").first().click();
+  await expect.poll(selected).toEqual(["person:1", "person:2", "person:99", "x:manual"]);
+  await page.getByRole("heading", { name: "照片库", exact: true }).click();
+  await page.reload();
+  await picker.locator(".n-base-selection").click();
+  await option("朋友").locator(".n-cascader-option__label").click();
+  await expect(option("朋友甲").getByRole("checkbox")).toHaveAttribute("aria-checked", "true");
+  await page.screenshot({ path: "/tmp/gallery-faces/publisher-cascader-desktop.png", animations: "disabled" });
+  await page.getByRole("heading", { name: "照片库", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "筛选", exact: true }).click();
+  const mobile = page.locator(".n-drawer .publisher-cascader");
+  await mobile.locator(".n-base-selection").click();
+  await option("同事").locator(".n-cascader-option__label").click();
+  await option("共同成员").click();
+  await expect.poll(selected).toEqual(["person:1", "person:2", "person:99", "x:manual"]);
+  await page.screenshot({ path: "/tmp/gallery-faces/publisher-cascader-mobile.png", animations: "disabled" });
+  const bounds = await page.locator(".people-cascader-menu:visible").boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  await page.getByRole("button", { name: "应用筛选" }).click();
+  await expect.poll(selected).toEqual(["person:2", "person:99", "x:manual"]);
+  await page.getByRole("button", { name: "筛选", exact: true }).click();
+  await mobile.hover();
+  await mobile.locator(".n-base-clear").click();
+  await page.getByRole("button", { name: "应用筛选" }).click();
+  await expect.poll(() => new URL(page.url()).searchParams.get("publishers")).toBeNull();
 });
