@@ -9,11 +9,14 @@ test("review keyboard navigation, confirmation, deletion and input ownership", a
   await page.route("**/api/v1/**", async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.includes("/media/") || path.endsWith("/crop")) return route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"/>' });
-    if (/\/admin\/faces\/\d+$/.test(path)) {
-      const id = Number(path.split("/").pop()); saved.push(id);
+    if (path.endsWith("/admin/faces") && route.request().method() === "PUT") {
+      const { faces } = route.request().postDataJSON();
+      expect(faces).toEqual([{ id: 2, revision: 0, person_id: 7, ignored: false, locked: true }]);
+      saved.push(...faces.map((face: { id: number }) => face.id));
       await new Promise<void>(resolve => { release = resolve; });
-      Object.assign(images.find(i => i.id === id)!.faces[0]!, route.request().postDataJSON());
-      return route.fulfill({ json: { ok: true } });
+      for (const face of faces)
+        Object.assign(images.find(i => i.id === face.id)!.faces[0]!, face, { revision: face.revision + 1 });
+      return route.fulfill({ json: { saved: faces.map((face: { id: number }) => face.id), failures: [] } });
     }
     if (path.endsWith("/images/actions")) {
       if (fail) return route.fulfill({ status: 503, json: { detail: "删除失败测试" } });
