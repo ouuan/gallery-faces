@@ -35,6 +35,23 @@ const store = useLibrary(),
 const selectedPeople = ref<number[]>([]),
   importOpen = ref(false),
   importing = ref(false);
+const sortedPeople = computed(() => {
+  const groupOrder = new Map(
+    store.groups.map((group, index) => [group.id, index]),
+  );
+  return store.people
+    .map((person) => ({
+      person,
+      groupIndex: Math.min(
+        store.groups.length,
+        ...person.groups.map((group) =>
+          groupOrder.get(group.id) ?? store.groups.length,
+        ),
+      ),
+    }))
+    .sort((a, b) => a.groupIndex - b.groupIndex)
+    .map(({ person }) => person);
+});
 const importPeople = computed(() =>
   store.people.filter((p) => selectedPeople.value.includes(p.id)),
 );
@@ -306,7 +323,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
         ><n-button @click="selectedPeople = []">清空选择</n-button></template
       >
     </div>
-    <div v-for="person in store.people" :key="person.id" class="person-row">
+    <div v-for="person in sortedPeople" :key="person.id" class="person-row">
       <n-checkbox
         :checked="selectedPeople.includes(person.id)"
         :aria-label="`选择人物 ${person.name}`"
