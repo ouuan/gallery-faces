@@ -77,6 +77,11 @@ def rematch(task):
                 # Discard that result and let the next pass use current references.
                 if int(settings(db)["reference_version"]) != version:
                     continue
+                # A completed match need not change the face. Compare values,
+                # including the identity that will actually be saved for locked faces.
+                saved_person = face["person_id"] if face["locked"] else person
+                if json.loads(face["candidates"]) == result and face["person_id"] == saved_person:
+                    continue
                 db.execute(
                     f"UPDATE faces SET candidates=?,person_id=CASE WHEN locked=0 THEN ? ELSE person_id END,revision=revision+1 WHERE id=? AND revision=? AND {eligible}",
                     (json.dumps(result), person, face["id"], face["revision"]),

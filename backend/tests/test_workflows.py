@@ -287,6 +287,46 @@ def test_full_refresh_survives_retry_and_recovery(client, status):
         assert conn.execute('SELECT status FROM tasks').fetchone()[0] == 'done'
 
 
+@pytest.mark.parametrize('assigned,locked,old_score,new_score,changed', [
+    (False, 0, None, None, False),
+    (False, 0, 0.2, 0.2, False),
+    (False, 0, 0.2, 0.3, True),
+    (True, 0, 1.0, 1.0, False),
+    (False, 0, 1.0, 1.0, True),
+    (True, 0, None, None, True),
+    (False, 1, 1.0, 1.0, False),
+    (True, 1, 0.2, 0.2, False),
+    (True, 1, 0.2, 0.3, True),
+])
+def test_rematch_revision_only_changes_with_saved_values(
+    client, monkeypatch, assigned, locked, old_score, new_score, changed
+):
+    with db.connect(True) as conn:
+        target = image(conn)
+        person = conn.execute("INSERT INTO people(name) VALUES('A')").lastrowid
+        old_candidates = [] if old_score is None else [{'person_id': person, 'score': old_score}]
+        result = [] if new_score is None else [{'person_id': person, 'score': new_score}]
+        # JSON whitespace is not a change to the candidates themselves.
+        conn.execute('UPDATE faces SET person_id=?,locked=?,candidates=?',
+                     (person if assigned else None, locked, json.dumps(old_candidates, indent=2)))
+        face_id = conn.execute('SELECT id FROM faces').fetchone()[0]
+        conn.execute("INSERT INTO tasks(kind,image_id,payload) VALUES('rematch',?,?)",
+                     (target, '{"refresh_all":true}'))
+    monkeypatch.setattr(worker, 'candidates', lambda *_: result)
+    assert worker.step()
+    with db.connect() as conn:
+        face = conn.execute('SELECT * FROM faces').fetchone()
+        assert face['revision'] == int(changed)
+        assert json.loads(face['candidates']) == result
+        expected_person = (person if assigned else None) if locked else (person if new_score == 1.0 else None)
+        assert face['person_id'] == expected_person
+        task = conn.execute('SELECT * FROM tasks').fetchone()
+        assert (task['status'], task['done'], task['total']) == ('done', 1, 1)
+    # A page loaded before matching can still save if its data has not changed.
+    response = client.put(f'/api/v1/admin/faces/{face_id}', json={'revision': 0, 'person_id': person})
+    assert response.status_code == (409 if changed else 200)
+
+
 def test_reference_changes_only_rematch_unknown_faces(client):
     with db.connect(True) as conn:
         person = conn.execute("INSERT INTO people(name) VALUES('A')").lastrowid
