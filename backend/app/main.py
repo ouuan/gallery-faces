@@ -987,7 +987,8 @@ def admin_images(
                     "candidates": json.loads(f["candidates"]),
                 }
                 for f in db.execute(
-                    "SELECT id,image_id,box,person_id,locked,ignored,candidates,revision, (embedding IS NOT NULL AND length(embedding)>0) AS has_embedding FROM faces WHERE image_id=?",
+                    "SELECT id,image_id,box,person_id,locked,ignored,candidates,revision, (embedding IS NOT NULL AND length(embedding)>0) AS has_embedding FROM faces WHERE image_id=? "
+                    "ORDER BY json_extract(box,'$[0]') + json_extract(box,'$[2]') / 2.0,id",
                     (row["id"],),
                 )
             ]
