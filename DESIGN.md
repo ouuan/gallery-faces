@@ -17,10 +17,13 @@ colors:
   accent-dark: '#85adff'
   selection-dark: '#263b60'
   error-text: '#bd3b3b'
-  library-primary-hover: '#36ad6a'
-  library-primary-pressed: '#0c7a43'
-  library-primary-hover-dark: '#7fe7c4'
-  library-primary-pressed-dark: '#5acea7'
+  error-text-dark: '#ff9292'
+  placeholder: '#68717d'
+  placeholder-dark: '#a0a9b5'
+  accent-hover: '#1e50ab'
+  accent-pressed: '#19438f'
+  accent-hover-dark: '#a3c1ff'
+  accent-pressed-dark: '#6994e8'
   on-primary: '#fff'
   on-primary-dark: '#000'
 typography:
@@ -168,13 +171,13 @@ components:
     width: 44px
     height: 44px
   button-primary-hover:
-    backgroundColor: '{colors.library-primary-hover}'
+    backgroundColor: '{colors.accent-hover}'
   button-primary-pressed:
-    backgroundColor: '{colors.library-primary-pressed}'
+    backgroundColor: '{colors.accent-pressed}'
   button-primary-hover-dark:
-    backgroundColor: '{colors.library-primary-hover-dark}'
+    backgroundColor: '{colors.accent-hover-dark}'
   button-primary-pressed-dark:
-    backgroundColor: '{colors.library-primary-pressed-dark}'
+    backgroundColor: '{colors.accent-pressed-dark}'
   button-primary-dark:
     backgroundColor: '{colors.accent-dark}'
     textColor: '{colors.on-primary-dark}'
@@ -228,9 +231,9 @@ components:
 
 ### 状态色与实现差异
 
-`error-text` 是任务错误文本的固定红色；NAlert 等状态组件沿用组件库主题，不把状态色当作装饰色。主按钮的文字分别使用 `on-primary` 和 `on-primary-dark`。
+任务错误文本通过 `--error` 使用 `error-text` 与 `error-text-dark`，适配浅深主题；NAlert 等状态组件沿用组件库主题，不把状态色当作装饰色。主按钮的文字分别使用 `on-primary` 和 `on-primary-dark`。
 
-当前仅覆盖了 Naive UI 的 primaryColor，未覆盖 primaryColorHover、primaryColorPressed。主按钮悬停及聚焦时出现绿色，按下时使用对应的深绿色；这些值以 `library-primary-*` 单独记录，是待统一的实现差异，不是新增品牌配色。输入框背景、默认按钮文字、边框和标签等也有组件库自己的值，不保证等同于项目的 panel/text/line。
+App 覆盖 Naive UI 的 primaryColor、primaryColorHover、primaryColorPressed 和 primaryColorSuppl。主按钮悬停及聚焦使用 `accent-hover`，按下使用 `accent-pressed`；深色主题使用对应的 `-dark` 变量。输入占位文字使用 `placeholder` 与 `placeholder-dark`。输入框背景、默认按钮文字、边框和标签等也有组件库自己的值，不保证等同于项目的 panel/text/line。
 
 ## Typography
 
@@ -273,6 +276,8 @@ components:
 | ≥1200px | 审核图像与详情分为两栏，详情宽 336px；图像区在 top:88px 吸顶 |
 | ≥1440px | 方形与瀑布流四列；等高图像高度 250px |
 
+重复图片对比工作区占满页头以下的视口，两张图始终并排；宽度 ≤640px 或高度 ≤600px 时切换紧凑导航，高度 ≤600px 且宽度 ≥700px 时进一步压缩图注布局。
+
 审核缩略图条始终横向滚动，这是 Review.vue 覆盖全局旧布局后的结果。审核预览根据图片比例限制在约 52dvh 的高度，窄屏先图像后详情。日期、来源和人物操作允许换行。
 
 ## Elevation & Depth
@@ -295,15 +300,15 @@ components:
 
 ### 按钮
 
-克制、清晰、易用。中号主按钮与普通按钮高 44px、横向内边距 14px。主按钮用操作蓝底色；普通按钮透明底、细描边，文字和描边来自组件库。悬停、聚焦、按下态中的组件库绿色按 Colors 中的差异记录处理。禁用态降低透明度且不可操作；异步提交使用加载状态。
+克制、清晰、易用。中号主按钮与普通按钮高 44px、横向内边距 14px。主按钮用操作蓝底色；普通按钮透明底、细描边，文字和描边来自组件库。悬停、聚焦和按下态沿用 Colors 中的蓝色状态变量。禁用态降低透明度且不可操作；异步提交使用加载状态。
 
-文字按钮透明、无边框、操作蓝文字，上下内边距 8px、最小高度 36px；审核候选按钮另有 44px 最小高度。小号工具按钮仍用组件库尺寸，因此“44px”不是所有交互元素都已满足的声明。
+文字按钮透明、无边框、操作蓝文字，上下内边距 8px、最小高度 44px；审核候选按钮另有 44px 最小高度。小号工具按钮仍用组件库尺寸，因此“44px”不是所有交互元素都已满足的声明。
 
 ### 输入与人物选择
 
 中号输入、选择器和人物级联选择器高度 44px，control 圆角。原生日期输入使用项目面板色与分隔线色。多行输入按内容和行数扩展，不固定为单行高度。
 
-人物选择按分组展开，可搜索和清空；筛选采用多选，身份编辑采用单选。级联选项高 44px，列宽最多 180px 并按视口收缩。无人物与搜索无匹配分别提供明确文案。禁用和错误状态沿用 Naive UI，不能仅凭边框颜色推断状态。
+人物选择按分组展开，可搜索和清空；筛选采用多选，身份编辑采用单选。级联选项高 44px，列宽最多 180px 并按视口收缩。无人物与搜索无匹配分别提供明确文案。禁用和错误状态沿用 Naive UI，不能仅凭边框颜色推断状态。输入框悬停与聚焦边框使用操作蓝的 hover 变量；深色输入框默认透明边框，聚焦背景带操作蓝色调。
 
 ### 标签与导航
 
@@ -329,7 +334,7 @@ components:
 
 ### 内容状态与预览约定
 
-空状态使用居中图标、说明和适用的恢复操作；加载使用旋转指示器，失败用错误提示及重试入口。文档中的预览只展示样式与原生交互，不模拟业务提交。
+空状态使用居中图标、说明和适用的恢复操作；加载使用覆盖式旋转指示器，不挤动原有布局；加载按钮保持宽度，隐藏原文字并将指示器居中。详情、审核与重复图片对比在大图加载期间先显示缩略图，保持预览空间。失败用错误提示及重试入口。文档中的预览只展示样式与原生交互，不模拟业务提交。
 
 配套预览可在 Shadow DOM 独立呈现。它们继承项目 CSS 变量并提供浅色回退；在 shadow host 上设置 data-theme="dark" 可预览深色。八阶颜色带仅辅助查看色相与明度，不是可直接用于新界面的配色扩展。
 
@@ -343,7 +348,7 @@ components:
 - Do 使用真实照片；文档预览中的几何占位图必须标明“布局示例”。
 
 ### Don't:
-- Don't 把组件库默认绿色交互态当成品牌的第二强调色。
+- Don't 绕过 App 的蓝色状态配置，重新引入组件库默认绿色交互态。
 - Don't 把根字号当作实际正文字号，或把所有说明文字统一描述成同一字号。
 - Don't 添加装饰性渐变、营销文案或虚构照片库内容。
 - Don't 将主要触控目标的尺寸要求误写为所有小按钮均已满足。
