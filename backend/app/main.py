@@ -302,12 +302,12 @@ def delete_person(person_id: int, _: None = Depends(admin)):
 def people():
     with connect() as db:
         result = []
-        for row in db.execute("SELECT * FROM people ORDER BY name,id"):
+        for row in db.execute("SELECT * FROM people ORDER BY id"):
             person = dict(row)
             person["groups"] = [
                 dict(g)
                 for g in db.execute(
-                    "SELECT g.* FROM groups g JOIN person_groups pg ON pg.group_id=g.id WHERE person_id=?",
+                    "SELECT g.* FROM groups g JOIN person_groups pg ON pg.group_id=g.id WHERE person_id=? ORDER BY g.id",
                     (row["id"],),
                 )
             ]
@@ -336,7 +336,7 @@ def groups():
         return [
             dict(r)
             for r in db.execute(
-                "SELECT g.*, (SELECT count(*) FROM person_groups WHERE group_id=g.id) AS members FROM groups g ORDER BY name"
+                "SELECT g.*, (SELECT count(*) FROM person_groups WHERE group_id=g.id) AS members FROM groups g ORDER BY g.id"
             )
         ]
 
