@@ -339,15 +339,20 @@ svg {
   height: auto;
 }
 .photo-grid.masonry {
-  columns: 3;
-  column-gap: 16px;
+  --masonry-columns: 3;
+  --masonry-gap: 16px;
+  position: relative;
+  column-gap: var(--masonry-gap);
 }
 .masonry .photo-card {
-  break-inside: avoid;
-  width: 100%;
+  position: absolute;
+  width: calc((100% - (var(--masonry-columns) - 1) * var(--masonry-gap)) / var(--masonry-columns));
+  left: var(--masonry-left, 0px);
+  top: var(--masonry-top, 0px);
 }
 .masonry img {
   height: auto;
+  aspect-ratio: var(--ratio);
 }
 .load-more {
   display: flex;
@@ -831,7 +836,7 @@ td:first-child {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
   .photo-grid.masonry {
-    columns: 4;
+    --masonry-columns: 4;
   }
 }
 @media (max-width: 900px) {
@@ -920,8 +925,8 @@ td:first-child {
     gap: 12px;
   }
   .photo-grid.masonry {
-    columns: 2;
-    column-gap: 12px;
+    --masonry-columns: 2;
+    --masonry-gap: 12px;
   }
   .photo-meta {
     font-size: 11px;

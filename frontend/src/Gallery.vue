@@ -28,6 +28,7 @@ import { hasFilters, clearFilters, emptyFilter, fromQuery, toQuery, type Filter 
 import Filters from "./Filters.vue";
 import FeedbackPanel from "./FeedbackPanel.vue";
 import SourceText from "./SourceText.vue";
+import { useMasonry } from "./use-masonry";
 usePageTitle("照片库");
 const store = useLibrary(),
   route = useRoute(),
@@ -44,6 +45,8 @@ const photos = ref<Photo[]>([]),
   detailError = ref(""),
   zoom = ref(1);
 const authenticated = ref(false);
+const photoGrid = ref<HTMLElement | null>(null);
+useMasonry(photoGrid, () => layout.value === "masonry", () => photos.value);
 let requestVersion = 0,
   detailVersion = 0,
   lastFocus: HTMLElement | null = null;
@@ -220,7 +223,7 @@ onUnmounted(() => {
         <n-button v-if="hasFilters(filter)" @click="apply(clearFilters(filter))">清空筛选</n-button
         ><router-link to="/admin/import">前往导入</router-link>
       </div>
-      <div class="photo-grid" :class="layout">
+      <div ref="photoGrid" class="photo-grid" :class="layout">
         <button
           v-for="photo in photos"
           :key="photo.id"
