@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useConfirm } from "./confirm";
+const confirm = useConfirm();
 import { ref, onMounted, onUnmounted, computed, watch } from "vue";
 import { onBeforeRouteLeave, useRoute } from "vue-router";
 import {
@@ -69,9 +71,9 @@ function openNewPerson(face: any) {
   addReference.value = !!face.has_embedding;
   createError.value = "";
 }
-function closeNewPerson() {
+async function closeNewPerson() {
   if (creatingPerson.value) return;
-  if (!personDirty.value || confirm("有未保存的修改，确定放弃吗？"))
+  if (!personDirty.value || await confirm("有未保存的修改，确定放弃吗？"))
     newPersonFace.value = null;
 }
 async function createPerson() {
@@ -114,7 +116,7 @@ async function createPerson() {
   }
 }
 onBeforeRouteLeave(
-  () => !dirty.value || confirm("有未保存的修改，确定离开吗？"),
+  async () => !dirty.value || await confirm("有未保存的修改，确定离开吗？"),
 );
 function unload(e: BeforeUnloadEvent) {
   if (dirty.value) {
@@ -261,7 +263,7 @@ async function action(value: string) {
   if (actionsDisabled.value) return;
   const ids = [...actionIds.value];
   if (
-    !confirm(
+    !await confirm(
       `对${selected.value.length ? "所选" : "当前"} ${ids.length} 张图片（${ids.map((id) => "#" + id).join("、")}）执行“${value === "hide" ? "隐藏" : value === "show" ? "恢复可见" : "重新检测"}”？`,
     )
   )
@@ -280,7 +282,7 @@ async function deleteImages(ids: number[]) {
   if (deleting.value || !ids.length) return;
   const targets = [...ids];
   if (
-    !confirm(
+    !await confirm(
       `永久删除这 ${targets.length} 张图片（${targets.map((id) => "#" + id).join("、")}）？图库内的原图、缩略图、人脸记录及相关参考图会一并删除；人物、重复组中的其他图片和外部导入文件会保留。此操作不可撤销。${dirty.value ? "未保存的编辑也会丢弃。" : ""}`,
     )
   )

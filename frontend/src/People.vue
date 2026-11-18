@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useConfirm } from "./confirm";
+const confirm = useConfirm();
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { onBeforeRouteLeave } from "vue-router";
 import {
@@ -139,9 +141,9 @@ function open(person?: Person) {
   editing.value = true;
   if (id.value) void loadConfirmedFaces();
 }
-function close() {
+async function close() {
   if (saving.value || uploading.value) return;
-  if (!dirty.value || confirm("有未保存的修改，确定放弃吗？"))
+  if (!dirty.value || await confirm("有未保存的修改，确定放弃吗？"))
     editing.value = false;
 }
 async function save() {
@@ -222,14 +224,14 @@ async function saveGroup() {
   }
 }
 async function removeGroup(group: any) {
-  if (!confirm(`删除分组“${group.name}”？人物将保留。`)) return;
+  if (!await confirm(`删除分组“${group.name}”？人物将保留。`)) return;
   await api(`/admin/groups/${group.id}`, { method: "DELETE" });
   await store.load();
 }
 async function removePerson(person: Person) {
   if (deletingPerson.value !== null) return;
   if (
-    !confirm(
+    !await confirm(
       `删除人物“${person.name}”？照片会保留，关联人脸将恢复为未知；该人物的参考图、账号和分组关联将被移除。此操作不可撤销。`,
     )
   )
@@ -257,11 +259,11 @@ function beforeUnload(e: BeforeUnloadEvent) {
   }
 }
 onBeforeRouteLeave(
-  () =>
+  async () =>
     !importing.value &&
     !saving.value &&
     !uploading.value &&
-    (!dirty.value || confirm("有未保存的修改，确定离开吗？")),
+    (!dirty.value || await confirm("有未保存的修改，确定离开吗？")),
 );
 onMounted(() => window.addEventListener("beforeunload", beforeUnload));
 onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));

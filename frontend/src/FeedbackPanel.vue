@@ -4,6 +4,7 @@ const drafts = reactive<Record<number, string>>({});
 const cooldownUntil = reactive({ value: 0 });
 </script>
 <script setup lang="ts">
+import { useConfirm } from "./confirm";
 import { computed, onUnmounted, ref, watch } from "vue";
 import { NAlert, NButton, NInput, NTag, useMessage } from "naive-ui";
 import { api, send, ApiError, dateLabel } from "./api";
@@ -13,6 +14,7 @@ type Page = components["schemas"]["FeedbackPage"];
 const props = defineProps<{ imageId: number; admin?: boolean; pendingCount?: number }>();
 const emit = defineEmits<{ changed: [] }>();
 const message = useMessage();
+const confirm = useConfirm();
 const items = ref<Feedback[]>([]), cursor = ref<number | null>(null);
 const loading = ref(false), busy = ref(false), error = ref(""), submitError = ref("");
 const now = ref(Date.now());
@@ -56,7 +58,7 @@ async function submit() {
   } finally { if (mounted) busy.value = false; }
 }
 async function moderate(item: Feedback, remove = false) {
-  if (busy.value || (remove && !confirm("确定删除此反馈吗？删除后无法恢复。"))) return;
+  if (busy.value || (remove && !await confirm("确定删除此反馈吗？删除后无法恢复。"))) return;
   busy.value = true;
   submitError.value = "";
   try {
