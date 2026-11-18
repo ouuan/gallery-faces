@@ -161,7 +161,14 @@ svg {
   font-size: 16px;
 }
 .filters > .section-heading {
+  position: relative;
   margin-bottom: 0;
+}
+.filters .filter-clear {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
 }
 .filters .date-field {
   margin: 0 0 12px;

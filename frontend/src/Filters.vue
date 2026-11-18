@@ -73,7 +73,11 @@ const publisherExtraOptions = computed(() => {
   <div class="filters">
     <div class="section-heading">
       <h2>筛选照片</h2>
-      <button v-if="hasFilters(modelValue)" class="text-button" @click="emit('clear')">清空</button>
+      <button
+        v-if="hasFilters(modelValue)"
+        class="text-button filter-clear"
+        @click="emit('clear')"
+      >清空</button>
     </div>
     <fieldset>
       <legend>照片中的人物</legend>
