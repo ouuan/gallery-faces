@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, nextTick, onMounted, onUnmounted } from "vue";
 import { NButton, NInput, NInputNumber, NSelect, NCheckbox, NModal, NCard, NAlert } from "naive-ui";
 import { api, send, dateLabel, platformLabel } from "./api";
 import PublisherSelect from "./PublisherSelect.vue";
@@ -8,6 +8,18 @@ import LocalDateTime from "./LocalDateTime.vue";
 import type { components } from "./schema";
 type Monitor = components["schemas"]["Monitor"];
 const items = ref<Monitor[]>([]), selected = ref<number[]>([]), error = ref(""), busy = ref(false), loading = ref(false);
+const createExpanded = ref(false), loaded = ref(false);
+const createForm = ref<HTMLFormElement | null>(null);
+const createToggle = ref<InstanceType<typeof NButton> | null>(null);
+let createToggled = false;
+async function toggleCreate() {
+  if (busy.value) return;
+  createToggled = true;
+  createExpanded.value = !createExpanded.value;
+  await nextTick();
+  if (createExpanded.value) createForm.value?.querySelector<HTMLElement>('.publisher-cascader [tabindex="0"], .publisher-cascader input')?.focus();
+  else createToggle.value?.$el.focus();
+}
 const batchInterval = ref<number | null>(60);
 const validInterval = computed(() => batchInterval.value !== null && Number.isInteger(batchInterval.value) && batchInterval.value >= 5);
 const intervals = ref<Record<number, number | null>>({});
@@ -28,6 +40,8 @@ async function load() {
   loading.value = true;
   try {
     items.value = await api<Monitor[]>("/admin/monitors");
+    if (!loaded.value && !createToggled) createExpanded.value = items.value.length === 0;
+    loaded.value = true;
     selected.value = selected.value.filter(id => items.value.some(item => item.id === id));
   } catch (e) { error.value = (e as Error).message; }
   finally { loading.value = false; }
@@ -98,68 +112,86 @@ onUnmounted(() => { clearInterval(timer); });
 <template>
   <div class="monitor-manager">
     <n-alert v-if="error" type="error">{{ error }}</n-alert>
-    <form class="monitor-create" @submit.prevent="create">
-      <h2>添加发布者</h2>
-      <label class="field-label">发布者
-        <PublisherSelect v-model="publishers" :disabled="busy" />
-      </label>
-      <p class="hint">监控所选人物的全部关联账号，可同时手动添加账号</p>
-      <div class="section-heading"><h3>手动账号</h3><n-button :disabled="busy" @click="manualAccounts.push({ platform: 'instagram', username: '' })">添加账号</n-button></div>
-      <div v-for="(account, i) in manualAccounts" :key="i" class="monitor-fields">
-        <label class="field-label">平台<n-select v-model:value="account.platform" :aria-label="`账号 ${i + 1} 平台`" :disabled="busy" :options="[{ label: 'Instagram', value: 'instagram' }, { label: 'X', value: 'x' }]" /></label>
-        <label class="field-label">用户名<n-input v-model:value="account.username" :aria-label="`账号 ${i + 1} 用户名`" :disabled="busy" placeholder="用户名，不含 @" /></label>
-        <n-button :disabled="busy" :aria-label="`移除账号 ${i + 1}`" @click="manualAccounts.splice(i, 1)">移除</n-button>
+    <div class="monitor-header">
+      <span class="muted">{{ loaded ? `共 ${items.length} 项监控` : '正在加载监控…' }}</span>
+      <div class="monitor-toolbar">
+        <n-button ref="createToggle" :type="createExpanded ? 'default' : 'primary'" :disabled="busy" :aria-expanded="createExpanded" aria-controls="monitor-create" @click="toggleCreate">{{ createExpanded ? '收起添加' : '添加发布者' }}</n-button>
+        <n-button :loading="loading" @click="load">刷新</n-button>
+        <router-link to="/admin/import?kind=monitor">查看监控任务</router-link>
       </div>
-      <label class="field-label">检查间隔（分钟）<n-input-number v-model:value="interval" :disabled="busy" :min="5" :precision="0" /></label>
-      <n-checkbox v-model:checked="history" :disabled="busy">指定起始时间，补拉历史</n-checkbox>
-      <label v-if="history" class="field-label">起始时间<LocalDateTime aria-label="起始时间" v-model="start" :disabled="busy" /></label>
-      <p v-if="!history" class="hint">默认只收新增，以保存时刻为起点。</p>
-      <n-button type="primary" attr-type="submit" :loading="busy" :disabled="busy || !pendingAccounts.length || !interval || (history && !start)">添加监控</n-button>
-      <p v-if="accounts.length" class="hint">共 {{ accounts.length }} 个账号，统一使用以上间隔和起始时间</p>
-      <div v-if="createResults.length" role="status">
+    </div>
+    <form v-show="createExpanded" id="monitor-create" ref="createForm" class="monitor-create" @submit.prevent="create">
+      <h2>添加发布者</h2>
+      <div class="monitor-account-fields">
+        <label class="field-label">发布者
+          <PublisherSelect v-model="publishers" :disabled="busy" />
+        </label>
+        <p class="hint">监控所选人物的全部关联账号，可同时手动添加账号</p>
+        <div class="section-heading"><h3>手动账号</h3><n-button :disabled="busy" @click="manualAccounts.push({ platform: 'instagram', username: '' })">添加账号</n-button></div>
+        <div v-for="(account, i) in manualAccounts" :key="i" class="monitor-manual-account">
+          <label class="field-label">平台<n-select v-model:value="account.platform" :aria-label="`账号 ${i + 1} 平台`" :disabled="busy" :options="[{ label: 'Instagram', value: 'instagram' }, { label: 'X', value: 'x' }]" /></label>
+          <label class="field-label">用户名<n-input v-model:value="account.username" :aria-label="`账号 ${i + 1} 用户名`" :disabled="busy" placeholder="用户名，不含 @" /></label>
+          <n-button :disabled="busy" :aria-label="`移除账号 ${i + 1}`" @click="manualAccounts.splice(i, 1)">移除</n-button>
+        </div>
+      </div>
+      <div class="monitor-create-settings">
+        <label class="field-label">检查间隔（分钟）<n-input-number v-model:value="interval" :disabled="busy" :min="5" :precision="0" /></label>
+        <n-checkbox v-model:checked="history" :disabled="busy">指定起始时间，补拉历史</n-checkbox>
+        <label v-if="history" class="field-label">起始时间<LocalDateTime aria-label="起始时间" v-model="start" :disabled="busy" /></label>
+        <p v-if="!history" class="hint">默认只收新增，以保存时刻为起点。</p>
+      </div>
+      <div class="monitor-create-footer">
+        <n-button type="primary" attr-type="submit" :loading="busy" :disabled="busy || !pendingAccounts.length || !interval || (history && !start)">添加监控</n-button>
+        <p v-if="accounts.length" class="hint">共 {{ accounts.length }} 个账号，统一使用以上间隔和起始时间</p>
+      </div>
+      <div v-if="createResults.length" class="monitor-create-results" role="status">
         <p v-for="result in createResults" :key="result.account.platform + ':' + result.account.username" :class="{ 'error-text': result.error }">{{ platformLabel(result.account.platform) }} @{{ result.account.username }}：{{ result.error || '已添加监控' }}</p>
       </div>
     </form>
-    <div class="monitor-toolbar">
+    <div class="monitor-toolbar monitor-selection">
+      <div class="monitor-toolbar">
       <n-checkbox :checked="all" :indeterminate="selected.length > 0 && !all" @update:checked="selected = $event ? items.map(item => item.id) : []">全选当前列表</n-checkbox>
       <span v-if="selected.length">已选 {{ selected.length }} 项</span>
-      <template v-if="selected.length">
+      </div>
+      <div v-if="selected.length" class="monitor-toolbar monitor-batch-actions">
         <n-button :disabled="busy" @click="batch('update', selected)">立刻更新</n-button>
         <n-button :disabled="busy" @click="open('interval', selected)">修改间隔</n-button>
         <n-button :disabled="busy" @click="open('backfill', selected)">补齐</n-button>
         <n-button :disabled="busy" @click="open('delete', selected)">删除</n-button>
-      </template>
-      <n-button :loading="loading" @click="load">刷新</n-button>
-      <router-link to="/admin/import?kind=monitor">查看监控任务</router-link>
+      </div>
     </div>
     <div v-if="results.length" role="status">
       <p v-for="result in results" :key="result.id" :class="{ 'error-text': result.error }">
         #{{ result.id }}：{{ result.error || (result.status === 'updated' ? '已修改检查间隔' : result.status === 'deleted' ? '已删除监控，已导入照片保留' : '任务 #' + result.task_id + ' 已提交或复用') }}
       </p>
     </div>
-    <p v-if="!items.length && !loading" class="hint">还没有发布者监控。添加后会立即检查，并按设定间隔收集新增照片。</p>
+    <p v-if="loaded && !items.length && !loading" class="hint">还没有发布者监控。添加后会立即检查，并按设定间隔收集新增照片。</p>
     <ul class="monitor-list" :aria-busy="loading">
       <li v-for="item in items" :key="item.id">
-        <div class="monitor-toolbar">
-          <n-checkbox :aria-label="'选择 ' + item.username" :checked="selected.includes(item.id)" @update:checked="toggle(item.id, $event)" />
-          <strong>{{ platformLabel(item.platform) }} @{{ item.username }}</strong>
-          <span>{{ item.paused ? (item.active_task_id ? '已暂停，等待任务结束' : '已暂停') : item.active_task_id ? '检查中' : '监控中' }}</span>
+        <div class="monitor-summary">
+          <div class="monitor-identity">
+            <n-checkbox :aria-label="'选择 ' + item.username" :checked="selected.includes(item.id)" @update:checked="toggle(item.id, $event)" />
+            <div class="monitor-identity-text"><strong>{{ platformLabel(item.platform) }} @{{ item.username }}</strong>
+            <span>{{ item.paused ? (item.active_task_id ? '已暂停，等待任务结束' : '已暂停') : item.active_task_id ? '检查中' : '监控中' }}</span></div>
+          </div>
+          <div class="monitor-dates hint"><span>上次检查：{{ item.last_checked_at ? dateLabel(item.last_checked_at) : '尚未检查' }}</span><span>下次检查：{{ item.paused ? '已暂停' : dateLabel(item.next_check_at) }}</span></div>
+          <p class="hint">{{ resultLabel(item.last_result) }}<template v-if="item.last_status"> · {{ ({ done: '已完成', failed: '失败', cancelled: '已取消' } as Record<string, string>)[item.last_status] || item.last_status }}</template></p>
+          <p v-if="item.last_error" class="error-text">{{ item.last_error }}</p>
         </div>
-        <div class="monitor-fields">
-          <label class="field-label">检查间隔（分钟）
-            <n-input-number  :value="intervals[item.id] ?? item.interval_minutes" @update:value="intervals[item.id] = $event" :min="5" :precision="0" />
-          </label>
-          <n-button :disabled="busy || intervals[item.id] === null" @click="perform(() => send('/admin/monitors/' + item.id, { interval_minutes: intervals[item.id] ?? item.interval_minutes }, 'PATCH'))">保存间隔</n-button>
-        </div>
-        <p class="hint">上次检查：{{ item.last_checked_at ? dateLabel(item.last_checked_at) : '尚未检查' }} · 下次检查：{{ item.paused ? '已暂停' : dateLabel(item.next_check_at) }}</p>
-        <p class="hint">{{ resultLabel(item.last_result) }}<template v-if="item.last_status"> · {{ ({ done: '已完成', failed: '失败', cancelled: '已取消' } as Record<string, string>)[item.last_status] || item.last_status }}</template></p>
-        <p v-if="item.last_error" class="error-text">{{ item.last_error }}</p>
-        <div class="monitor-toolbar">
-          <n-button v-if="!item.paused" :disabled="busy" @click="perform(() => send('/admin/monitors/' + item.id, { paused: true }, 'PATCH'))">暂停</n-button>
-          <n-button v-else :disabled="busy || !!item.active_task_id" @click="open('resume', [item.id])">恢复</n-button>
-          <n-button :disabled="busy" @click="batch('update', [item.id])">立刻更新</n-button>
-          <n-button :disabled="busy" @click="open('backfill', [item.id])">补齐</n-button>
-          <n-button :disabled="busy" @click="open('delete', [item.id])">删除</n-button>
+        <div class="monitor-controls">
+          <div class="monitor-fields">
+            <label class="field-label">检查间隔（分钟）
+              <n-input-number  :value="intervals[item.id] ?? item.interval_minutes" @update:value="intervals[item.id] = $event" :min="5" :precision="0" />
+            </label>
+            <n-button :disabled="busy || intervals[item.id] === null" @click="perform(() => send('/admin/monitors/' + item.id, { interval_minutes: intervals[item.id] ?? item.interval_minutes }, 'PATCH'))">保存间隔</n-button>
+          </div>
+          <div class="monitor-toolbar">
+            <n-button v-if="!item.paused" :disabled="busy" @click="perform(() => send('/admin/monitors/' + item.id, { paused: true }, 'PATCH'))">暂停</n-button>
+            <n-button v-else :disabled="busy || !!item.active_task_id" @click="open('resume', [item.id])">恢复</n-button>
+            <n-button :disabled="busy" @click="batch('update', [item.id])">立刻更新</n-button>
+            <n-button :disabled="busy" @click="open('backfill', [item.id])">补齐</n-button>
+            <n-button :disabled="busy" @click="open('delete', [item.id])">删除</n-button>
+          </div>
         </div>
       </li>
     </ul>
@@ -189,14 +221,42 @@ onUnmounted(() => { clearInterval(timer); });
   </div>
 </template>
 <style scoped>
-.monitor-manager { display: grid; gap: 24px; }
-.monitor-create { display: grid; gap: 12px; max-width: 760px; }
-.monitor-create h2, .monitor-create h3, .monitor-create .field-label, .monitor-create > .hint, .monitor-create .section-heading { margin: 0; }
-.monitor-fields, .monitor-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
-.monitor-fields > label { flex: 1 1 180px; min-width: 0; }
-.monitor-list { list-style: none; margin: 0; padding: 0; }
-.monitor-list li { padding: 20px 0; border-top: 1px solid var(--line); }
-.monitor-list .monitor-fields { margin-top: 12px; max-width: 400px; }
-.monitor-dialog { width: min(540px, calc(100vw - 32px)); }
+.monitor-manager { container: monitors / inline-size; display: grid; gap: 24px; min-width: 0; overflow-wrap: anywhere; }
+.monitor-manager :where(p, h2, h3, .field-label, .section-heading) { margin: 0; }
+.monitor-manager :where(.field-label, .monitor-summary, .monitor-controls, .monitor-account-fields, .monitor-create-settings) { min-width: 0; }
+.monitor-header, .monitor-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.monitor-header { justify-content: space-between; }
+.monitor-header a { display: inline-flex; align-items: center; min-height: 44px; }
+.monitor-create { display: grid; gap: 24px; padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.monitor-create h2 { font-size: 19px; }
+.monitor-account-fields, .monitor-create-settings { display: grid; align-content: start; gap: 12px; }
+.monitor-account-fields .section-heading { margin-top: 4px; }
+.monitor-manual-account { display: grid; grid-template-columns: 144px minmax(0, 1fr) auto; align-items: end; gap: 12px; }
+.monitor-create-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.monitor-create-results { display: grid; gap: 8px; }
+.monitor-list { list-style: none; margin: 0; padding: 0; min-width: 0; }
+.monitor-list li { display: grid; gap: 16px 24px; padding: 16px 0; border-top: 1px solid var(--line); }
+.monitor-summary, .monitor-controls { display: grid; align-content: start; gap: 12px; }
+.monitor-identity { display: flex; align-items: flex-start; gap: 8px; }
+.monitor-identity > .n-checkbox { flex-shrink: 0; min-height: 44px; align-items: center; }
+.monitor-identity-text { display: flex; flex-wrap: wrap; align-items: center; min-height: 44px; gap: 4px 12px; min-width: 0; }
+.monitor-identity-text span { color: var(--muted); }
+.monitor-dates { display: flex; flex-wrap: wrap; gap: 4px 16px; font-variant-numeric: tabular-nums; }
+.monitor-fields { display: flex; align-items: end; gap: 12px; }
+.monitor-fields > label { flex: 1; min-width: 0; }
+.monitor-controls .monitor-toolbar { gap: 8px; }
+.monitor-dialog { width: min(540px, calc(100vw - 32px)); max-height: 90dvh; overflow: auto; overflow-wrap: anywhere; }
 .monitor-dialog .monitor-toolbar { margin-top: 24px; justify-content: flex-end; }
+@container monitors (min-width: 800px) {
+  .monitor-create { grid-template-columns: minmax(0, 1fr) 280px; }
+  .monitor-create > :is(h2, .monitor-create-footer, .monitor-create-results) { grid-column: 1 / -1; }
+  .monitor-list li { grid-template-columns: minmax(0, 1fr) 284px; }
+}
+@container monitors (max-width: 479px) {
+  .monitor-header { align-items: flex-start; }
+  .monitor-create { padding: 16px; }
+  .monitor-manual-account { grid-template-columns: 128px minmax(0, 1fr); }
+  .monitor-manual-account > .n-button { grid-column: 2; justify-self: end; }
+  .monitor-batch-actions { flex-basis: 100%; }
+}
 </style>

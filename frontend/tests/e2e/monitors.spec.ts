@@ -157,3 +157,49 @@ test("batch interval validates input, reports partial failure and refreshes save
   await expect(page.locator(".monitor-list li").first().getByRole("textbox")).toHaveValue("30");
   await expect(page.locator(".monitor-list li").nth(2).getByRole("textbox")).toHaveValue("60");
 });
+
+test("monitor layout preserves disclosure drafts and handles long content", async ({ page }) => {
+  let empty = false;
+  await page.route("**/api/v1/**", route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/session")) return route.fulfill({ json: { admin: true } });
+    if (path.endsWith("/site")) return route.fulfill({ json: { site_title: "Gallery Faces" } });
+    if (path.endsWith("/monitors")) return route.fulfill({ json: empty ? [] : [{ id: 1, platform: "instagram", username: "long_account_".repeat(8), interval_minutes: 60, paused: false, active_task_id: null, last_checked_at: null, next_check_at: "2026-11-19T00:00:00Z", last_result: "{}", last_error: "HTTPError:" + "abcdef0123456789".repeat(30) }] });
+    return route.fulfill({ json: [] });
+  });
+  await page.goto("/admin/monitors");
+  const form = page.locator(".monitor-create");
+  const toggle = page.getByRole("button", { name: "添加发布者", exact: true });
+  await expect(page.locator(".monitor-list li")).toHaveCount(1);
+  await expect(form).toBeHidden();
+  await toggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(form).toBeVisible();
+  await expect(form.locator(".publisher-cascader")).toContainText("选择分组或搜索发布者");
+  expect(await form.locator(".publisher-cascader").evaluate(el => el.contains(document.activeElement))).toBe(true);
+  await form.getByLabel("账号 1 用户名").fill("draft_account");
+  await page.getByRole("button", { name: "收起添加" }).click();
+  await expect(toggle).toBeFocused();
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(form).toBeHidden();
+  await toggle.click();
+  await expect(form.getByLabel("账号 1 用户名")).toHaveValue("draft_account");
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(form).toBeVisible();
+  for (const width of [390, 900, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const theme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
+      await page.waitForTimeout(350);
+      await page.screenshot({ path: `/tmp/gallery-faces/monitor-layout/after-expanded-${width}-${theme}.png`, fullPage: true });
+    }
+  }
+  await page.getByRole("button", { name: "收起添加" }).click();
+  empty = true;
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(page.locator(".monitor-list li")).toHaveCount(0);
+  await expect(form).toBeHidden();
+  await page.reload();
+  await expect(form).toBeVisible();
+});
