@@ -5,7 +5,6 @@ import { api, send, dateLabel, platformLabel } from "./api";
 import PublisherSelect from "./PublisherSelect.vue";
 import { usePublisherSelection, uniqueAccounts, type PublisherAccount } from "./publisher-selection";
 import LocalDateTime from "./LocalDateTime.vue";
-import DateRangeHint from "./DateRangeHint.vue";
 import type { components } from "./schema";
 type Monitor = components["schemas"]["Monitor"];
 const items = ref<Monitor[]>([]), selected = ref<number[]>([]), error = ref(""), busy = ref(false), loading = ref(false);
@@ -104,8 +103,7 @@ onUnmounted(() => { clearInterval(timer); });
       <label class="field-label">检查间隔（分钟）<n-input-number v-model:value="interval" :disabled="busy" :min="5" :precision="0" /></label>
       <n-checkbox v-model:checked="history" :disabled="busy">指定起始时间，补拉历史</n-checkbox>
       <label v-if="history" class="field-label">起始时间<LocalDateTime aria-label="起始时间" v-model="start" :disabled="busy" /></label>
-      <DateRangeHint v-if="history" :start="start" end="" />
-      <p v-else class="hint">默认只收新增，以保存时刻为起点。</p>
+      <p v-if="!history" class="hint">默认只收新增，以保存时刻为起点。</p>
       <n-button type="primary" attr-type="submit" :loading="busy" :disabled="busy || !pendingAccounts.length || !interval || (history && !start)">添加监控</n-button>
       <p v-if="accounts.length" class="hint">共 {{ accounts.length }} 个账号，统一使用以上间隔和起始时间</p>
       <div v-if="createResults.length" role="status">
@@ -162,7 +160,6 @@ onUnmounted(() => { clearInterval(timer); });
           <n-select v-if="dialog === 'resume'" v-model:value="mode" aria-label="恢复方式" :options="[{ value: 'catch_up', label: '补齐暂停期间' }, { value: 'new', label: '不补，只收之后新增' }, { value: 'start', label: '指定起始时间' }]" />
           <template v-if="dialog === 'backfill' || mode === 'start'">
             <label class="field-label">起始时间<LocalDateTime aria-label="起始时间" v-model="since" /></label>
-            <DateRangeHint :start="since" end="" />
             <p v-if="dialog === 'backfill'" class="hint">补拉该时刻至提交时刻的帖子，跳过已有媒体。一次性补齐不会修改自动监控进度。</p>
             <p v-else class="hint">将以所选时间作为新的采集起点，重新开始自动增量检查，跳过已有媒体。</p>
             <p v-if="since && !validSince" class="error-text">起始时间必须早于当前时间。</p>

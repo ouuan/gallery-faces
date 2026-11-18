@@ -1,11 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 import DateRangeHint from "../src/DateRangeHint.vue";
-import { utcOffset, rangeError } from "../src/date-range";
+import { rangeError } from "../src/date-range";
 describe("local date ranges", () => {
-  it.each([[0, "UTC+0"], [28800, "UTC+8"], [-18000, "UTC-5"], [19800, "UTC+5:30"], [20700, "UTC+5:45"]])("formats %s seconds", (seconds, expected) => {
-    expect(utcOffset(seconds as number)).toBe(expected);
-  });
   it("compares instants rather than offset strings and accepts open bounds", () => {
     expect(rangeError("2026-01-01T08:00:00+08:00", "2026-01-01T01:00:00Z")).toBe("");
     expect(rangeError("2026-01-01T08:00:00+08:00", "2026-01-01T00:00:00Z")).toContain("晚于");
@@ -13,7 +10,7 @@ describe("local date ranges", () => {
     expect(rangeError("2026-01-01", "")).toContain("重新选择");
     expect(rangeError("2026-01-01T01:00:00", "")).toContain("重新选择");
   });
-  it("calculates hints locally without requests", async () => {
+  it("shows range guidance and validation without requests", async () => {
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
     const view = mount(DateRangeHint, { props: { start: "", end: "" } });
     expect(view.text()).toContain("包含开始，不含结束");

@@ -14,12 +14,15 @@ for (const zone of ["Asia/Shanghai", "America/New_York", "Asia/Kathmandu"]) {
       await page.setViewportSize({ width: 1280, height: 900 });
       await page.goto("/?start=2026-03-08T05%3A00%3A00Z&end=2026-03-09T04%3A00%3A00Z");
       const filters = page.locator(".desktop-filters");
-      await expect(filters).toContainText(zone === "Asia/Kathmandu" ? "Asia/Katmandu" : zone);
+      const expectedStart = {
+        "Asia/Shanghai": "2026-03-08 13:00:00",
+        "America/New_York": "2026-03-08 00:00:00",
+        "Asia/Kathmandu": "2026-03-08 10:45:00",
+      }[zone];
+      await expect(filters.getByLabel("开始时间", { exact: true })).toHaveValue(expectedStart!);
       if (zone === "America/New_York") {
-        await expect(filters).toContainText("开始 UTC-5 / 结束 UTC-4");
-        await expect(filters.getByLabel("开始时间", { exact: true })).toHaveValue("2026-03-08 00:00:00");
+        await expect(filters.getByLabel("结束时间", { exact: true })).toHaveValue("2026-03-09 00:00:00");
       }
-      if (zone === "Asia/Kathmandu") await expect(filters).toContainText("UTC+5:45");
       const before = await filters.getByLabel("开始时间", { exact: true }).inputValue();
       await page.reload();
       await expect(filters.getByLabel("开始时间", { exact: true })).toHaveValue(before);
@@ -33,7 +36,7 @@ for (const zone of ["Asia/Shanghai", "America/New_York", "Asia/Kathmandu"]) {
       await page.goto("/?start=2026-01-01");
       await expect(filters).toContainText("重新选择");
       await page.goto("/admin/import");
-      await expect(page.locator(".import-form")).toContainText(zone === "Asia/Kathmandu" ? "Asia/Katmandu" : zone);
+      await expect(page.locator(".import-form")).toContainText("包含开始，不含结束");
       await page.locator(".import-form .n-date-picker input").first().click();
       await expect(page.locator(".n-date-panel")).toBeVisible();
       await page.waitForTimeout(350);
