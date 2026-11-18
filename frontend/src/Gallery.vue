@@ -327,7 +327,7 @@ onUnmounted(() => {
           <router-link
             v-if="authenticated"
             class="primary-link"
-            :to="{ path: '/admin/review', query: { image: detail.image_id } }"
+            :to="{ path: '/admin/review', query: { state: 'image', image: detail.image_id } }"
             >管理此图片</router-link
           >
           <h2>

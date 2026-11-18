@@ -36,7 +36,7 @@ for (const failOnce of [false, true]) {
       if (path.endsWith("/site") || path.endsWith("/settings")) return route.fulfill({ json: {} });
       return route.fulfill({ json: [] });
     });
-    await page.goto("/admin/review?image=1");
+    await page.goto("/admin/review?state=image&image=1");
     await page.locator('.face-review').nth(1).locator('label').filter({ has: page.getByRole('radio', { name: /人物8/ }) }).click();
     const all = page.getByRole('button', { name: '全部确认', exact: true });
     for (const width of [390, 1280]) {

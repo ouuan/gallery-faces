@@ -2,7 +2,7 @@
 import { useConfirm } from "./confirm";
 const confirm = useConfirm();
 import { ref, onMounted, onUnmounted, computed, watch } from "vue";
-import { onBeforeRouteLeave, useRoute } from "vue-router";
+import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import {
   NButton,
   NSelect,
@@ -21,13 +21,24 @@ import FaceBoxEditor from "./FaceBoxEditor.vue";
 import PersonDetailsFields from "./PersonDetailsFields.vue";
 import PersonSelect from "./PersonSelect.vue";
 const route = useRoute();
+const router = useRouter();
 const targetImage = computed(() => {
-  const id = Number(route.query.image);
+  const id = typeof route.query.image === "string" ? Number(route.query.image) : NaN;
   return Number.isSafeInteger(id) && id > 0 ? id : null;
+});
+const reviewStates = ["image", "review", "feedback", "unknown", "no_faces", "failed", "incomplete", "pending", "hidden", "all"];
+const state = computed({
+  get: () => {
+    const value = route.query.state;
+    if (typeof value === "string" && reviewStates.includes(value)) return value;
+    return "review";
+  },
+  set: (value: string) => {
+    void router.replace({ query: { ...route.query, state: value, image: undefined } });
+  },
 });
 const store = useLibrary(),
   message = useMessage(),
-  state = ref(targetImage.value ? "image" : "review"),
   images = ref<any[]>([]),
   selected = ref<number[]>([]),
   error = ref(""),
@@ -178,27 +189,57 @@ watch(
     facePeople.value = {};
   },
 );
+let loadVersion = 0;
+let loadedState: string | null = null;
+function syncQuery() {
+  if (loading.value || error.value || loadedState !== state.value) return;
+  const image = active.value ? String(active.value.id) : undefined;
+  if (route.query.state === state.value && route.query.image === image) return;
+  void router.replace({ query: { ...route.query, state: state.value, image } });
+}
+watch(() => active.value?.id, syncQuery);
 async function load() {
+  const version = ++loadVersion;
+  const requestedState = state.value;
+  const requestedImage = targetImage.value;
   selected.value = [];
   loading.value = true;
   error.value = "";
   try {
-    images.value = await api(
-      state.value === "image"
-        ? `/admin/images?state=all&image_id=${targetImage.value}`
-        : "/admin/images?state=" + state.value,
+    const result = requestedState === "image" && !requestedImage ? [] : await api(
+      requestedState === "image"
+        ? `/admin/images?state=all&image_id=${requestedImage}`
+        : "/admin/images?state=" + requestedState,
     );
+    if (version !== loadVersion) return;
+    images.value = result;
     selected.value = [];
-    current.value = Math.min(
-      current.value,
+    const index = images.value.findIndex((image) => image.id === requestedImage);
+    current.value = index >= 0 ? index : Math.min(
+      loadedState === requestedState ? current.value : 0,
       Math.max(0, images.value.length - 1),
     );
+    loadedState = requestedState;
   } catch (e) {
-    error.value = (e as Error).message;
+    if (version === loadVersion) error.value = (e as Error).message;
   } finally {
-    loading.value = false;
+    if (version === loadVersion) {
+      loading.value = false;
+      syncQuery();
+    }
   }
 }
+watch([state, targetImage], () => {
+  if (loadedState !== state.value || loading.value || error.value ||
+      (state.value === "image" && targetImage.value !== (active.value?.id ?? null))) {
+    void load();
+  } else {
+    const index = images.value.findIndex((image) => image.id === targetImage.value);
+    current.value = index >= 0 ? index : 0;
+    syncQuery();
+  }
+});
+onUnmounted(() => { loadVersion++; });
 function revealCandidate(event: FocusEvent) {
   const target = event.target as HTMLElement;
   target.closest(".n-radio")?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -366,9 +407,8 @@ onMounted(load);
         aria-label="审核状态"
         :disabled="savingBox || savingFaces || acting || deleting"
         v-model:value="state"
-        @update:value="load"
         :options="[
-          ...(targetImage ? [{ value: 'image', label: '当前图片' }] : []),
+          ...(state === 'image' ? [{ value: 'image', label: '当前图片' }] : []),
           { value: 'review', label: '全部待审核' },
           { value: 'feedback', label: '用户反馈' },
           { value: 'unknown', label: '未知人物' },

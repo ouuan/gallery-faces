@@ -75,7 +75,7 @@ test('anonymous feedback, pagination, throttling and moderation', async ({ page 
     }
   }
   admin = true;
-  await page.goto('/admin/review?image=501');
+  await page.goto('/admin/review?state=image&image=501');
   await expect(page.getByText(/用户反馈（2 条待处理）/)).toBeVisible();
   await expect(panel.getByText('反馈加载失败', { exact: false })).toBeVisible();
   await panel.getByRole('button', { name: '重试', exact: true }).click();
@@ -87,7 +87,7 @@ test('anonymous feedback, pagination, throttling and moderation', async ({ page 
   await expect(panel.getByRole('button', { name: '恢复待处理' })).toBeVisible();
   await page.goto('/?photo=7');
   await expect(heading).toHaveText('图片反馈（已有 1 条反馈）');
-  await page.goto('/admin/review?image=501');
+  await page.goto('/admin/review?state=image&image=501');
   await panel.getByRole('button', { name: '恢复待处理' }).click();
   await expect(panel.getByRole('button', { name: '标记已处理' })).toBeVisible();
   await page.addLocatorHandler(page.getByRole("dialog").filter({ hasText: "确认操作" }), async dialog => { await dialog.getByRole("button", { name: "确认", exact: true }).click(); });
@@ -96,7 +96,7 @@ test('anonymous feedback, pagination, throttling and moderation', async ({ page 
   await panel.getByRole('button', { name: '标记已处理' }).click();
   await page.goto('/?photo=7');
   await expect(heading).toHaveText('图片反馈');
-  await page.goto('/admin/review?image=501');
+  await page.goto('/admin/review?state=image&image=501');
   await expect(panel.getByRole('button', { name: '恢复待处理' })).toBeVisible();
   await panel.getByRole('button', { name: '删除反馈' }).click();
   await expect(panel).toHaveCount(0);

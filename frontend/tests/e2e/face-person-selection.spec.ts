@@ -30,7 +30,7 @@ test("each face selects and saves its own person independently", async ({ page }
     if (path.endsWith("/site") || path.endsWith("/settings")) return route.fulfill({ json: {} });
     return route.fulfill({ json: [] });
   });
-  await page.goto("/admin/review?image=1");
+  await page.goto("/admin/review?state=image&image=1");
   const first = page.locator(".face-review").nth(0);
   const second = page.locator(".face-review").nth(1);
   await expect(first).toBeVisible();

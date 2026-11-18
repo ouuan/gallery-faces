@@ -20,7 +20,7 @@ test("review reasons follow the current photo and disappear in specific filters"
     if (path.endsWith("/people")) return route.fulfill({ json: [{ id: 7, name: "测试人物", groups: [], accounts: [] }] });
     return route.fulfill({ json: [] });
   });
-  await page.goto("/admin/review?image=1");
+  await page.goto("/admin/review?state=image&image=1");
   const issues = page.locator(".review-main .n-alert").filter({ hasText: "待审核问题" });
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });

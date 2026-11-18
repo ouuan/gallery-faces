@@ -29,11 +29,11 @@ test("photo management link requires a session and opens the displayed image", a
     await page.reload();
     const link = page.getByRole("link", { name: "管理此图片" });
     await expect(link).toBeVisible();
-    await expect(link).toHaveAttribute("href", "/admin/review?image=501");
+    await expect(link).toHaveAttribute("href", "/admin/review?state=image&image=501");
     await page.screenshot({ path: `/tmp/gallery-faces/admin-link-${width}.png` });
   }
   await page.getByRole("link", { name: "管理此图片" }).click();
-  await expect(page).toHaveURL(/\/admin\/review\?image=501$/);
+  await expect(page).toHaveURL(/\/admin\/review\?state=image&image=501$/);
   await expect(page.getByRole("button", { name: "审核图片 501", exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("button", { name: "审核图片 501", exact: true })).toBeVisible();
