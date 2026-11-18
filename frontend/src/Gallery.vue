@@ -22,11 +22,13 @@ import {
   ExternalLink,
 } from "@lucide/vue";
 import { useLibrary } from "./store";
+import { usePageTitle } from "./page-title";
 import { api, dateLabel, platformLabel, type Photo } from "./api";
 import { hasFilters, clearFilters, emptyFilter, fromQuery, toQuery, type Filter } from "./filters";
 import Filters from "./Filters.vue";
 import FeedbackPanel from "./FeedbackPanel.vue";
 import SourceText from "./SourceText.vue";
+usePageTitle("照片库");
 const store = useLibrary(),
   route = useRoute(),
   router = useRouter();

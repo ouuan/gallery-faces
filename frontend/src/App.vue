@@ -13,9 +13,6 @@ const store = useLibrary();
 onMounted(() => {
   void store.loadSite().catch(() => {});
 });
-watchEffect(() => {
-  document.title = `${store.siteTitle} · 照片库`;
-});
 watchEffect(
   () =>
     (document.documentElement.dataset.theme = store.dark ? "dark" : "light"),

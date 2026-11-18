@@ -12,6 +12,7 @@ import {
 import { Download, Users, ScanFace, Copy, Settings, LogOut } from "@lucide/vue";
 import { api, send } from "./api";
 import { useLibrary } from "./store";
+import { usePageTitle } from "./page-title";
 import People from "./People.vue";
 import Review from "./Review.vue";
 import DuplicateReview from "./DuplicateReview.vue";
@@ -100,6 +101,10 @@ const nav = [
   { id: "duplicates", label: "重复图片", icon: Copy },
   { id: "settings", label: "设置", icon: Settings },
 ];
+usePageTitle(() => {
+  if (!checking.value && !authenticated.value) return "管理员登录";
+  return nav.find((item) => item.id === section.value)?.label || "管理工作台";
+});
 async function refresh() {
   if (section.value === "import") {
     await Promise.all([
