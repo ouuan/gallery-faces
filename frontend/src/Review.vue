@@ -175,6 +175,7 @@ watch(
   },
 );
 async function load() {
+  selected.value = [];
   loading.value = true;
   error.value = "";
   try {
@@ -379,6 +380,9 @@ onMounted(load);
       }}</span>
     </div>
     <div class="review-actions">
+      <n-button :disabled="actionsDisabled" @click="selected = selected.length === images.length ? [] : images.map(image => image.id)">
+        {{ images.length && selected.length === images.length ? "取消全选" : "全选" }}
+      </n-button>
       <n-button :disabled="actionsDisabled" @click="action('redetect')"
         >重新检测</n-button
       >
