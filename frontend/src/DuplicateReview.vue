@@ -108,7 +108,7 @@ async function decide(action: "merge" | "separate") {
       <section v-for="image in row.images" :key="image.id" class="duplicate-photo" :aria-label="`图片 #${image.id}`">
         <div class="duplicate-image loading-region" :aria-busy="!imageUrls.has(image.id) && !failedImages.has(image.id)">
           <LoadingOverlay :show="!imageUrls.has(image.id) || failedImages.has(image.id)" center :error="failedImages.has(image.id)" :label="failedImages.has(image.id) ? '图片加载失败' : '正在加载图片…'" />
-          <img v-if="imageUrls.has(image.id) && !failedImages.has(image.id)" :src="imageUrls.get(image.id)" :alt="`重复图片候选 #${image.id}`" @error="failedImages.add(image.id)" />
+          <img :key="image.id" :style="{ maxWidth: `${image.width}px`, maxHeight: `${image.height}px`, objectFit: !imageUrls.has(image.id) || failedImages.has(image.id) ? 'contain' : undefined }" :src="!failedImages.has(image.id) && imageUrls.get(image.id) || `/api/v1/admin/media/${image.id}?thumbnail=true`" :alt="`重复图片候选 #${image.id}`" @error="imageUrls.has(image.id) && failedImages.add(image.id)" />
 
         </div>
         <div class="duplicate-caption">

@@ -54,6 +54,8 @@ function point(event: PointerEvent): [number, number] {
 function start(event: PointerEvent) {
   if (
     props.disabled ||
+    !urls.value.has(props.image.id) ||
+    failed.value.has(props.image.id) ||
     drag.value ||
     !event.isPrimary ||
     event.button !== 0 ||
@@ -130,12 +132,12 @@ function clear() {
     @keydown.esc.stop.prevent="!disabled && clear()"
   >
     <img
-      v-if="urls.has(image.id)"
+      :key="image.id"
       ref="photo"
-      :src="urls.get(image.id)"
+      :src="!failed.has(image.id) && urls.get(image.id) || `/api/v1/admin/media/${image.id}?thumbnail=true`"
       alt="正在审核的原图"
       :draggable="false"
-      @error="failed.add(image.id)"
+      @error="urls.has(image.id) && failed.add(image.id)"
     />
     <LoadingOverlay :show="failed.has(image.id) || !urls.has(image.id)" center :error="failed.has(image.id)" :label="failed.has(image.id) ? '图片加载失败' : '正在加载图片…'" />
     <span

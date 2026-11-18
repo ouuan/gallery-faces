@@ -327,15 +327,16 @@ onUnmounted(() => {
       <div v-else-if="detail" class="detail-body">
         <div class="detail-image loading-region" :aria-busy="!detailImageUrls.has(detail.image_id) && !failedDetailImages.has(detail.image_id)">
           <img
-            v-if="detailImageUrls.has(detail.image_id)"
-            :src="detailImageUrls.get(detail.image_id)"
+            :key="detail.image_id"
+            :src="!failedDetailImages.has(detail.image_id) && detailImageUrls.get(detail.image_id) || detail.thumbnail_url"
             :style="{
-              width: zoom === 1 ? 'auto' : `${zoom * 100}%`,
+              width: zoom === 1 ? `${detail.width}px` : `${zoom * 100}%`,
+              height: 'auto',
               maxWidth: zoom === 1 ? '100%' : 'none',
               maxHeight: zoom === 1 ? '100%' : 'none',
             }"
             alt="当前照片"
-            @error="failedDetailImages.add(detail.image_id)"
+            @error="detailImageUrls.has(detail.image_id) && failedDetailImages.add(detail.image_id)"
           />
           <LoadingOverlay :show="failedDetailImages.has(detail.image_id) || !detailImageUrls.has(detail.image_id)" center :error="failedDetailImages.has(detail.image_id)" :label="failedDetailImages.has(detail.image_id) ? '图片加载失败' : '正在加载图片…'" />
         </div>
