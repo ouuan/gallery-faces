@@ -22,6 +22,7 @@ import {
 import { api, send, platformLabel, dateLabel } from "./api";
 import { useLibrary } from "./store";
 import { useLatestRequest } from "./use-latest-request";
+import { useStripThumbnails } from "./use-strip-thumbnails";
 import FeedbackPanel from "./FeedbackPanel.vue";
 import FaceBoxEditor from "./FaceBoxEditor.vue";
 import PersonDetailsFields from "./PersonDetailsFields.vue";
@@ -148,6 +149,8 @@ function unload(e: BeforeUnloadEvent) {
 onMounted(() => window.addEventListener("beforeunload", unload));
 onUnmounted(() => window.removeEventListener("beforeunload", unload));
 const active = computed(() => images.value[current.value]);
+const thumbnailStrip = ref<HTMLElement>();
+useStripThumbnails(thumbnailStrip, () => images.value.map(image => image.id));
 const actionIds = computed(() =>
   selected.value.length ? selected.value : active.value ? [active.value.id] : [],
 );
@@ -571,7 +574,7 @@ onMounted(load);
     <p>此分类中的项目已处理完毕，也可以切换其他状态</p>
   </div>
   <div v-if="images.length" class="review-workspace">
-    <div class="review-strip">
+    <div ref="thumbnailStrip" class="review-strip">
       <div
         v-for="(image, i) in images"
         :key="image.group_id ?? image.id"
@@ -591,7 +594,7 @@ onMounted(load);
           :aria-label="`审核重复组（代表图 ${image.id}，共 ${image.member_count ?? 1} 个版本）`"
           :aria-current="i === current ? 'true' : undefined"
         >
-          <img :src="`/api/v1/admin/media/${image.id}?thumbnail=true`" loading="lazy" width="72" height="48" alt="" />#{{ image.id }}
+          <img :data-thumbnail="`/api/v1/admin/media/${image.id}?thumbnail=true`" width="72" height="48" alt="" />#{{ image.id }}
         </button>
       </div>
     </div>
@@ -930,6 +933,9 @@ onMounted(load);
   height: 48px;
   object-fit: contain;
   margin-bottom: 4px;
+}
+.review-strip img:not([src]) {
+  visibility: hidden;
 }
 .review-main {
   min-width: 0;

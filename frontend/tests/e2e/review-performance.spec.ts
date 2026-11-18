@@ -74,3 +74,44 @@ for (const queueSize of [200, 1]) test(`face confirmations refresh their group a
   expect(reads.map(read => read.image)).toEqual(queueSize === 200 ? [null, '1', '1', '1'] : [null, '1', '1', '1', null]);
   expect(reads.map(read => read.rows)).toEqual(queueSize === 200 ? [200, 1, 1, 0] : [1, 1, 1, 0, 1]);
 });
+
+for (const width of [1440, 390]) test(`thumbnail request budget at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  const thumbnails = new Set<number>();
+  let thumbnailRequests = 0;
+  await page.route('**/api/v1/**', async route => {
+    const url = new URL(route.request().url());
+    if (url.pathname.includes('/admin/media/')) {
+      if (url.searchParams.has('thumbnail')) {
+        thumbnailRequests++;
+        thumbnails.add(Number(url.pathname.split('/').pop()));
+      }
+      return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#8799aa"/></svg>' });
+    }
+    if (url.pathname.endsWith('/admin/images')) return route.fulfill({ json: Array.from({ length: 200 }, (_, index) => ({
+      id: index + 1, width: 800, height: 600, faces: [], sources: [], detection: 'done',
+    })) });
+    if (url.pathname.endsWith('/feedback')) return route.fulfill({ json: { items: [], next_cursor: null } });
+    return route.fulfill({ json: /\/(session|site)$/.test(url.pathname) ? {} : [] });
+  });
+  await page.goto('/admin/review');
+  await expect(page.locator('.face-box-editor img')).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  const initial = thumbnails.size;
+  console.log(`${width}px initial thumbnails: ${initial}/200`);
+  expect(initial).toBeGreaterThan(0);
+  expect(initial).toBeLessThanOrEqual(Math.ceil(width / 124) + 1);
+  expect(thumbnails.has(200)).toBe(false);
+  await page.screenshot({ path: `/tmp/gallery-faces/review-${width}.png` });
+  const strip = page.locator('.review-strip');
+  await strip.evaluate(element => { element.scrollLeft = element.scrollWidth; });
+  await expect.poll(() => thumbnails.has(200)).toBe(true);
+  await expect.poll(() => strip.locator('img').last().evaluate(image => (image as HTMLImageElement).naturalWidth)).toBe(800);
+  await strip.evaluate(element => { element.scrollLeft = 0; });
+  await expect(strip.locator('img').first()).toBeVisible();
+  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await expect(page.getByText('正在加载审核项目…')).toHaveCount(0);
+  await page.waitForLoadState('networkidle');
+  expect(thumbnailRequests).toBe(thumbnails.size);
+  await expect.poll(() => strip.locator('img').first().evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+});
