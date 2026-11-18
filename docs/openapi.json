@@ -1525,6 +1525,45 @@
               "default": 20,
               "title": "Page Size"
             }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "download",
+                  "import",
+                  "detect",
+                  "rematch"
+                ],
+                "type": "string"
+              },
+              "default": [],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "queued",
+                  "running",
+                  "done",
+                  "failed",
+                  "cancelled"
+                ],
+                "type": "string"
+              },
+              "default": [],
+              "title": "Status"
+            }
           }
         ],
         "responses": {

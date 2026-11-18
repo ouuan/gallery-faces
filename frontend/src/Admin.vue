@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useRoute } from "vue-router";
 import {
   NButton,
@@ -42,6 +42,28 @@ const route = useRoute(),
   duplicates = ref<any[]>([]),
   dupZoom = ref(1);
 const section = computed(() => String(route.params.section || "import"));
+const taskKinds = ref<string[]>([]);
+const taskStatuses = ref<string[]>([]);
+const taskKindLabels: Record<string, string> = {
+  download: "链接下载", import: "目录导入", detect: "人脸检测", rematch: "人物匹配",
+};
+const taskStatusLabels = {
+  queued: "排队中", running: "执行中", done: "已完成", failed: "失败", cancelled: "已取消",
+};
+const taskKindOptions = Object.entries(taskKindLabels).map(([value, label]) => ({ value, label }));
+const taskStatusOptions = Object.entries(taskStatusLabels).map(([value, label]) => ({ value, label }));
+const hasTaskFilters = computed(() => taskKinds.value.length > 0 || taskStatuses.value.length > 0);
+function clearTaskFilters() {
+  taskKinds.value = [];
+  taskStatuses.value = [];
+}
+watch([taskKinds, taskStatuses], () => {
+  tasks.value = [];
+  taskTotal.value = 0;
+  taskPage.value = 1;
+  tasksError.value = "";
+  void loadTasks(1);
+});
 const taskPageSize = 20;
 const taskPageCount = computed(() =>
   Math.max(1, Math.ceil(taskTotal.value / taskPageSize)),
@@ -52,12 +74,15 @@ async function loadTasks(page = taskPage.value, background = false) {
   const request = ++taskRequest;
   requestedTaskPage = page;
   if (!background) tasksLoading.value = true;
+  const query = new URLSearchParams({ page: String(page), page_size: String(taskPageSize) });
+  taskKinds.value.forEach((kind) => query.append("kind", kind));
+  taskStatuses.value.forEach((status) => query.append("status", status));
   try {
     const data = await api<{
       items: any[];
       total: number;
       page: number;
-    }>(`/admin/tasks?page=${page}&page_size=${taskPageSize}`);
+    }>(`/admin/tasks?${query}`);
     if (request !== taskRequest) return;
     tasks.value = data.items;
     taskTotal.value = data.total;
@@ -274,6 +299,17 @@ onUnmounted(() => {
           }}</strong>
         </div>
         <h2>任务记录</h2>
+        <div class="task-filters">
+          <label class="field-label">任务类型
+            <n-select v-model:value="taskKinds" role="group" aria-label="任务类型" multiple clearable filterable
+              :input-props="{ 'aria-label': '任务类型' }" placeholder="全部类型" :options="taskKindOptions" />
+          </label>
+          <label class="field-label">任务状态
+            <n-select v-model:value="taskStatuses" role="group" aria-label="任务状态" multiple clearable filterable
+              :input-props="{ 'aria-label': '任务状态' }" placeholder="全部状态" :options="taskStatusOptions" />
+          </label>
+          <n-button :disabled="!hasTaskFilters" @click="clearTaskFilters">清空筛选</n-button>
+        </div>
         <n-alert v-if="tasksError" type="error" title="任务记录加载失败">
           {{ tasksError }}
           <n-button
@@ -287,8 +323,14 @@ onUnmounted(() => {
           v-if="!tasks.length && !tasksLoading && !tasksError"
           class="empty-state"
         >
-          <h3>还没有导入任务</h3>
-          <p>创建任务后，可在这里查看进度、取消或重试。</p>
+          <template v-if="hasTaskFilters">
+            <h3>没有符合筛选条件的任务</h3>
+            <n-button @click="clearTaskFilters">清空筛选</n-button>
+          </template>
+          <template v-else>
+            <h3>还没有导入任务</h3>
+            <p>创建任务后，可在这里查看进度、取消或重试。</p>
+          </template>
         </div>
         <div v-if="tasks.length" class="table-scroll" :aria-busy="tasksLoading">
           <table class="task-table">
@@ -307,14 +349,7 @@ onUnmounted(() => {
                   <strong
                     >#{{ task.id }}
                     {{
-                      (
-                        {
-                          download: "链接下载",
-                          import: "目录导入",
-                          detect: "人脸检测",
-                          rematch: "人物匹配",
-                        } as any
-                      )[task.kind]
+                      taskKindLabels[task.kind]
                     }}</strong
                   >
                   <p class="task-target">
@@ -563,6 +598,23 @@ onUnmounted(() => {
   align-items: center;
   flex-wrap: wrap;
   gap: 4px 20px;
+}
+.task-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.task-filters .field-label {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .task-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 .task-table {
   min-width: 640px;

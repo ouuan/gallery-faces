@@ -2121,6 +2121,8 @@ export interface operations {
             query?: {
                 page?: number;
                 page_size?: number;
+                kind?: ("download" | "import" | "detect" | "rematch")[];
+                status?: ("queued" | "running" | "done" | "failed" | "cancelled")[];
             };
             header?: never;
             path?: never;

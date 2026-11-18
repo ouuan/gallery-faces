@@ -149,6 +149,45 @@ def test_task_pagination_rejects_invalid_parameters(client, query):
     assert client.get(f"/api/v1/admin/tasks?{query}").status_code == 422
 
 
+@pytest.mark.parametrize("query,kinds,statuses", [
+    ("kind=download", {"download"}, None),
+    ("status=failed", None, {"failed"}),
+    ("kind=import&kind=detect", {"import", "detect"}, None),
+    ("status=queued&status=running", None, {"queued", "running"}),
+    ("kind=download&kind=import&status=failed&status=cancelled",
+     {"download", "import"}, {"failed", "cancelled"}),
+])
+def test_task_filters(client, query, kinds, statuses):
+    with db.connect(True) as conn:
+        conn.executemany("INSERT INTO tasks(kind,status) VALUES(?,?)", [
+            (kind, status)
+            for kind in ("download", "import", "detect", "rematch")
+            for status in ("queued", "running", "done", "failed", "cancelled")
+            for _ in range(7)
+        ])
+        expected = [dict(row) for row in conn.execute("SELECT * FROM tasks ORDER BY id DESC")
+                    if (kinds is None or row["kind"] in kinds)
+                    and (statuses is None or row["status"] in statuses)]
+    for requested_page in (1, 2, 999):
+        data = client.get(f"/api/v1/admin/tasks?{query}&page={requested_page}").json()
+        page = min(requested_page, (len(expected) + 19) // 20)
+        assert data["total"] == len(expected)
+        assert data["page"] == page
+        assert data["items"] == expected[(page - 1) * 20:page * 20]
+
+
+def test_task_filters_empty(client):
+    with db.connect(True) as conn:
+        conn.execute("INSERT INTO tasks(kind,status) VALUES('import','failed')")
+    data = client.get("/api/v1/admin/tasks?kind=detect&status=failed&page=999").json()
+    assert data == {"items": [], "total": 0, "page": 1, "page_size": 20}
+
+
+@pytest.mark.parametrize("query", ["kind=unknown", "status=unknown", "kind=import&kind=bad", "status=failed&status=bad"])
+def test_task_filters_reject_invalid_values(client, query):
+    assert client.get(f"/api/v1/admin/tasks?{query}").status_code == 422
+
+
 def test_retry_resets_task_statistics(client):
     with db.connect(True) as conn:
         task_id = conn.execute(

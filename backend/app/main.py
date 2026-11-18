@@ -1304,17 +1304,26 @@ def import_create(body: ImportInput, _: None = Depends(admin)):
 def tasks(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    kind: list[Literal["download", "import", "detect", "rematch"]] = Query(default=[]),
+    status: list[Literal["queued", "running", "done", "failed", "cancelled"]] = Query(default=[]),
     _: None = Depends(admin),
 ):
+    conditions = []
+    params = []
+    for column, values in (("kind", kind), ("status", status)):
+        if values:
+            conditions.append(f"{column} IN ({','.join('?' for _ in values)})")
+            params.extend(values)
+    where = " WHERE " + " AND ".join(conditions) if conditions else ""
     with connect() as db:
         db.execute("BEGIN")
-        total = db.execute("SELECT count(*) FROM tasks").fetchone()[0]
+        total = db.execute("SELECT count(*) FROM tasks" + where, params).fetchone()[0]
         page = min(page, max(1, (total + page_size - 1) // page_size))
         items = [
             dict(r)
             for r in db.execute(
-                "SELECT * FROM tasks ORDER BY id DESC LIMIT ? OFFSET ?",
-                (page_size, (page - 1) * page_size),
+                "SELECT * FROM tasks" + where + " ORDER BY id DESC LIMIT ? OFFSET ?",
+                [*params, page_size, (page - 1) * page_size],
             )
         ]
         return {"items": items, "total": total, "page": page, "page_size": page_size}
