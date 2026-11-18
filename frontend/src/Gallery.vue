@@ -29,6 +29,7 @@ import Filters from "./Filters.vue";
 import FeedbackPanel from "./FeedbackPanel.vue";
 import SourceText from "./SourceText.vue";
 import { useMasonry } from "./use-masonry";
+import { useImageDownloads } from "./use-review-images";
 usePageTitle("照片库");
 const store = useLibrary(),
   route = useRoute(),
@@ -51,6 +52,10 @@ let requestVersion = 0,
   detailVersion = 0,
   lastFocus: HTMLElement | null = null;
 const selectedId = computed(() => Number(route.query.photo) || null);
+const { urls: detailImageUrls, failed: failedDetailImages } = useImageDownloads(() =>
+  selectedId.value && detail.value?.id === selectedId.value && detail.value.image_url
+    ? [{ id: detail.value.image_id, url: detail.value.image_url }] : [],
+);
 let galleryController: AbortController | null = null;
 let detailController: AbortController | null = null;
 async function load(more = false) {
@@ -321,14 +326,18 @@ onUnmounted(() => {
       <div v-else-if="detail" class="detail-body">
         <div class="detail-image">
           <img
-            :src="detail.image_url"
+            v-if="detailImageUrls.has(detail.image_id)"
+            :src="detailImageUrls.get(detail.image_id)"
             :style="{
               width: zoom === 1 ? 'auto' : `${zoom * 100}%`,
               maxWidth: zoom === 1 ? '100%' : 'none',
               maxHeight: zoom === 1 ? '100%' : 'none',
             }"
             alt="当前照片"
+            @error="failedDetailImages.add(detail.image_id)"
           />
+          <p v-if="failedDetailImages.has(detail.image_id)" role="status">图片加载失败</p>
+          <p v-else-if="!detailImageUrls.has(detail.image_id)" role="status">正在加载图片…</p>
         </div>
         <aside class="detail-sidebar">
           <header class="detail-summary">

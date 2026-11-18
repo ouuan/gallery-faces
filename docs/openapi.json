@@ -1288,6 +1288,16 @@
               "type": "integer",
               "title": "Image Id"
             }
+          },
+          {
+            "name": "thumbnail",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Thumbnail"
+            }
           }
         ],
         "responses": {

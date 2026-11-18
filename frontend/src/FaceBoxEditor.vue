@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useReviewImages } from "./use-review-images";
 
 const props = defineProps<{
   image: { id: number; width: number; height: number; faces: any[] };
@@ -7,6 +8,7 @@ const props = defineProps<{
   disabled?: boolean;
 }>();
 const emit = defineEmits<{ "update:modelValue": [value: string] }>();
+const { urls, failed } = useReviewImages(() => [props.image.id]);
 const photo = ref<HTMLImageElement>();
 const surface = ref<HTMLDivElement>();
 const drag = ref<{
@@ -125,11 +127,15 @@ function clear() {
     @keydown.esc.stop.prevent="!disabled && clear()"
   >
     <img
+      v-if="urls.has(image.id)"
       ref="photo"
-      :src="`/api/v1/admin/media/${image.id}`"
+      :src="urls.get(image.id)"
       alt="正在审核的原图"
       :draggable="false"
+      @error="failed.add(image.id)"
     />
+    <p v-if="failed.has(image.id)" role="status">图片加载失败</p>
+    <p v-else-if="!urls.has(image.id)" role="status">正在加载图片…</p>
     <span
       v-for="face in image.faces"
       :key="face.id"

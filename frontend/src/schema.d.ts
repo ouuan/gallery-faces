@@ -1992,7 +1992,9 @@ export interface operations {
     };
     admin_media_api_v1_admin_media__image_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                thumbnail?: boolean;
+            };
             header?: never;
             path: {
                 image_id: number;

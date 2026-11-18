@@ -1,5 +1,35 @@
 import { test, expect } from '@playwright/test';
 
+test('switching duplicate groups cancels unfinished image downloads', async ({ page }) => {
+  const started = new Set<number>(), cancelled = new Set<number>();
+  page.on('requestfailed', request => {
+    const match = new URL(request.url()).pathname.match(/\/admin\/media\/(\d+)$/);
+    if (match) cancelled.add(Number(match[1]));
+  });
+  await page.route('**/api/v1/**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    const match = path.match(/\/admin\/media\/(\d+)$/);
+    if (match) {
+      const id = Number(match[1]);
+      started.add(id);
+      if (id <= 2) return; // Keep the first group's downloads pending.
+      return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"/>' });
+    }
+    if (path.endsWith('/duplicates')) return route.fulfill({ json: [1, 3].map(a => ({
+      a, b: a + 1, decision: 'pending', score: .9,
+      images: [a, a + 1].map(id => ({ id, width: 800, height: 600, group_id: id, people: [], sources: [] })),
+    })) });
+    return route.fulfill({ json: /\/(session|site)$/.test(path) ? {} : [] });
+  });
+  await page.goto('/admin/duplicates');
+  await expect.poll(() => [...started].sort()).toEqual([1, 2]);
+  await page.getByRole('button', { name: '下一组' }).click();
+  await expect.poll(() => [...cancelled].sort()).toEqual([1, 2]);
+  await expect(page.locator('.duplicate-image img')).toHaveCount(2);
+  await expect(page.getByText('图片加载失败', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.duplicate-heading')).toContainText('#3 与 #4');
+});
+
 test('duplicate review fits the viewport and advances to the next pair', async ({ page }) => {
   const image = (id: number, width: number, height: number) => ({
     id, width, height, group_id: id,

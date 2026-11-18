@@ -24,7 +24,7 @@ test("photo management link requires a session and opens the displayed image", a
   await expect(page.getByRole("dialog", { name: "照片详情" })).toBeVisible();
   await expect(page.getByRole("link", { name: "管理此图片" })).toHaveCount(0);
   await expect(page.locator('.photo-card img')).toHaveAttribute('src', photo.thumbnail_url);
-  await expect(page.locator('.detail-image img')).toHaveAttribute('src', photo.image_url);
+  await expect.poll(() => page.locator('.detail-image img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(800);
   await expect(page.getByRole('link', { name: '下载原图' })).toHaveAttribute('href', photo.download_url);
   admin = true;
   for (const width of [390, 1280]) {

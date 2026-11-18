@@ -1056,14 +1056,14 @@ def feedback_delete(feedback_id: int, _: None = Depends(admin)):
 
 
 @app.get("/api/v1/admin/media/{image_id}")
-def admin_media(image_id: int, _: None = Depends(admin)):
+def admin_media(image_id: int, thumbnail: bool = False, _: None = Depends(admin)):
     with connect() as db:
         row = db.execute(
             "SELECT filename FROM images WHERE id=?", (image_id,)
         ).fetchone()
     if not row:
         fail("图片不存在", 404)
-    return FileResponse(DATA / "images" / row[0])
+    return FileResponse(DATA / ("thumbs" if thumbnail else "images") / row[0])
 
 
 @app.get("/api/v1/admin/images")

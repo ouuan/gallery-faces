@@ -5,6 +5,8 @@ import { NButton, NModal, NSelect, NAlert, useMessage } from "naive-ui";
 import { Copy } from "@lucide/vue";
 import { api, send, platformLabel, dateLabel, type Source } from "./api";
 import { useLibrary } from "./store";
+import { useReviewImages } from "./use-review-images";
+import { useLatestRequest } from "./use-latest-request";
 
 type CandidateImage = {
   id: number; width: number; height: number; group_id: number;
@@ -21,7 +23,7 @@ const current = ref(0), saving = ref(false), loading = ref(false), error = ref("
 const details = ref<CandidateImage | null>(null);
 const row = computed(() => rows.value[current.value]);
 const blocked = computed(() => saving.value || loading.value || !!error.value);
-const failedImages = ref(new Set<number>());
+const { urls: imageUrls, failed: failedImages } = useReviewImages(() => row.value?.images.map(image => image.id) ?? []);
 const people = (image: CandidateImage) => image.people.map(p => p.name).join("、") || "未知人物";
 function publishers(image: CandidateImage) {
   return [...new Map(image.sources.map(source => [
@@ -30,15 +32,17 @@ function publishers(image: CandidateImage) {
   ])).values()];
 }
 let request = 0;
+const listRequest = useLatestRequest();
 let successors: Candidate[] | null = null;
 async function load() {
+  const signal = listRequest.start();
   const id = ++request;
   loading.value = true;
   error.value = "";
   const query = new URLSearchParams();
   statuses.value.forEach(value => query.append("decision", value));
   try {
-    const result = await api<Candidate[]>(`/admin/duplicates?${query}`);
+    const result = await api<Candidate[]>(`/admin/duplicates?${query}`, { signal });
     if (id !== request) return;
     const next = successors?.map(pair => result.findIndex(r => r.a === pair.a && r.b === pair.b)).find(index => index >= 0);
     current.value = successors ? (next ?? Math.max(0, result.length - 1)) : 0;
@@ -102,7 +106,8 @@ async function decide(action: "merge" | "separate") {
       <section v-for="image in row.images" :key="image.id" class="duplicate-photo" :aria-label="`图片 #${image.id}`">
         <div class="duplicate-image">
           <p v-if="failedImages.has(image.id)" role="status">图片加载失败</p>
-          <img v-else :src="`/api/v1/admin/media/${image.id}`" :alt="`重复图片候选 #${image.id}`" @error="failedImages.add(image.id)" />
+          <img v-else-if="imageUrls.has(image.id)" :src="imageUrls.get(image.id)" :alt="`重复图片候选 #${image.id}`" @error="failedImages.add(image.id)" />
+          <p v-else role="status">正在加载图片…</p>
         </div>
         <div class="duplicate-caption">
           <p>{{ image.width }} × {{ image.height }}</p>

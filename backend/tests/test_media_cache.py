@@ -22,6 +22,17 @@ def seed():
     return identifier, row['group_id']
 
 
+def test_admin_review_thumbnail(client):
+    identifier, _ = seed()
+    with db.connect(True) as conn:
+        conn.execute('UPDATE images SET hidden=1 WHERE id=?', (identifier,))
+    url = f'/api/v1/admin/media/{identifier}'
+    assert client.get(url).content == b'display bytes'
+    assert client.get(url + '?thumbnail=true').content == b'thumbnail bytes'
+    client.cookies.clear()
+    assert client.get(url + '?thumbnail=true').status_code == 401
+
+
 def test_hash_media_and_http(client):
     identifier, group = seed()
     detail = client.get(f'/api/v1/gallery/{group}').json()

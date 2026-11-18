@@ -17,6 +17,7 @@ import {
 } from "naive-ui";
 import { api, send, platformLabel, dateLabel } from "./api";
 import { useLibrary } from "./store";
+import { useLatestRequest } from "./use-latest-request";
 import FeedbackPanel from "./FeedbackPanel.vue";
 import FaceBoxEditor from "./FaceBoxEditor.vue";
 import PersonDetailsFields from "./PersonDetailsFields.vue";
@@ -204,6 +205,7 @@ watch(
   },
 );
 let loadVersion = 0;
+const imageRequest = useLatestRequest();
 let loadedState: string | null = null;
 function syncQuery() {
   if (loading.value || error.value || loadedState !== state.value) return;
@@ -213,6 +215,7 @@ function syncQuery() {
 }
 watch(() => active.value?.id, syncQuery);
 async function load() {
+  const signal = imageRequest.start();
   const version = ++loadVersion;
   const requestedState = state.value;
   const requestedImage = targetImage.value;
@@ -224,6 +227,7 @@ async function load() {
       requestedState === "image"
         ? `/admin/images?state=all&image_id=${requestedImage}`
         : "/admin/images?state=" + requestedState,
+      { signal },
     );
     if (version !== loadVersion) return;
     images.value = result;
@@ -492,7 +496,7 @@ onMounted(load);
           :aria-label="`审核图片 ${image.id}`"
           :aria-current="i === current ? 'true' : undefined"
         >
-          <img :src="`/api/v1/admin/media/${image.id}`" alt="" />#{{ image.id }}
+          <img :src="`/api/v1/admin/media/${image.id}?thumbnail=true`" loading="lazy" width="72" height="48" alt="" />#{{ image.id }}
         </button>
       </div>
     </div>
@@ -581,6 +585,7 @@ onMounted(load);
                   class="face-crop"
                   :src="`/api/v1/admin/faces/${face.id}/crop`"
                   alt="目标人脸"
+                  loading="lazy"
                 />
                 <div class="face-selection">
                   <h4>人脸 #{{ face.id }}</h4>
@@ -800,7 +805,9 @@ onMounted(load);
 }
 .review-strip img {
   display: block;
+  width: 72px;
   height: 48px;
+  object-fit: contain;
   margin-bottom: 4px;
 }
 .review-main {

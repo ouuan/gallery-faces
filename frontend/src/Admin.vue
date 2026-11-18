@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
+import { useLatestRequest } from "./use-latest-request";
 import { useRouter, useRoute } from "vue-router";
 import {
   NButton,
@@ -80,9 +81,11 @@ const taskPageCount = computed(() =>
   Math.max(1, Math.ceil(taskTotal.value / taskPageSize)),
 );
 let taskRequest = 0;
+const taskRead = useLatestRequest();
 let requestedTaskPage = 1;
 async function loadTasks(page = taskPage.value, background = false) {
   if (background && tasksLoading.value) return;
+  const signal = taskRead.start();
   const request = ++taskRequest;
   requestedTaskPage = page;
   tasksLoading.value = true;
@@ -94,7 +97,7 @@ async function loadTasks(page = taskPage.value, background = false) {
       items: any[];
       total: number;
       page: number;
-    }>(`/admin/tasks?${query}`);
+    }>(`/admin/tasks?${query}`, { signal });
     if (request !== taskRequest) return;
     tasks.value = data.items;
     taskTotal.value = data.total;
@@ -204,6 +207,9 @@ async function deleteCookie(platform: string) {
   settings.value = await api("/admin/settings");
 }
 watch(section, () => {
+  taskRequest++;
+  taskRead.cancel();
+  tasksLoading.value = false;
   if (authenticated.value) void refresh().catch(e => error.value = e.message);
 });
 function onVisibility() {

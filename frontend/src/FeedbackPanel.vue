@@ -8,6 +8,7 @@ import { useConfirm } from "./confirm";
 import { computed, onUnmounted, ref, watch } from "vue";
 import { NAlert, NButton, NInput, NTag, useMessage } from "naive-ui";
 import { api, send, ApiError, dateLabel } from "./api";
+import { useLatestRequest } from "./use-latest-request";
 import type { components } from "./schema";
 type Feedback = components["schemas"]["FeedbackOutput"];
 type Page = components["schemas"]["FeedbackPage"];
@@ -20,17 +21,19 @@ const loading = ref(false), busy = ref(false), error = ref(""), submitError = re
 const now = ref(Date.now());
 const timer = window.setInterval(() => { now.value = Date.now(); }, 1000);
 let version = 0, mounted = true;
+const feedbackRequest = useLatestRequest();
 onUnmounted(() => { mounted = false; version++; clearInterval(timer); });
 const remaining = computed(() => Math.max(0, Math.ceil((cooldownUntil.value - now.value) / 1000)));
 const draft = computed({ get: () => drafts[props.imageId] || "", set: (value: string) => { drafts[props.imageId] = value; } });
 const endpoint = computed(() => props.admin ? `/admin/images/${props.imageId}/feedback` : null);
 async function load(more = false) {
-  if (!endpoint.value) return;
   const current = ++version;
+  const signal = feedbackRequest.start();
+  if (!endpoint.value) { loading.value = false; return; }
   loading.value = true;
   error.value = "";
   try {
-    const result = await api<Page>(endpoint.value + (more && cursor.value ? `?before_id=${cursor.value}` : ""));
+    const result = await api<Page>(endpoint.value + (more && cursor.value ? `?before_id=${cursor.value}` : ""), { signal });
     if (current !== version) return;
     items.value = more ? [...items.value, ...result.items] : result.items;
     cursor.value = result.next_cursor;

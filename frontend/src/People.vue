@@ -17,6 +17,8 @@ import { Plus, UserRound } from "@lucide/vue";
 import { useLibrary } from "./store";
 import PeopleImportDialog from "./PeopleImportDialog.vue";
 import PersonAvatar from "./PersonAvatar.vue";
+import { useLatestRequest } from "./use-latest-request";
+import { useImageDownloads } from "./use-review-images";
 import PersonDetailsFields from "./PersonDetailsFields.vue";
 import type { components } from "./schema";
 import { api, send, platformLabel, type Person } from "./api";
@@ -92,16 +94,25 @@ const availableFaces = computed(() =>
   confirmedFaces.value.filter((face) => !face.is_reference),
 );
 let confirmedRequest = 0;
+const faceRequest = useLatestRequest();
+watch(editing, value => {
+  if (!value) { confirmedRequest++; faceRequest.cancel(); confirmedLoading.value = false; }
+});
+onUnmounted(() => { confirmedRequest++; });
+const { urls: uploadUrls, failed: failedUploads } = useImageDownloads(() =>
+  editing.value && upload.value ? [{ id: 0, url: `/api/v1/admin/reference-media/${upload.value.token}.jpg` }] : [],
+);
 async function loadConfirmedFaces() {
   if (!id.value) return;
+  const signal = faceRequest.start();
   const personId = id.value;
   const request = ++confirmedRequest;
   confirmedLoading.value = true;
   confirmedError.value = "";
   try {
     const [faces, refs] = await Promise.all([
-      api<ConfirmedFace[]>(`/admin/people/${personId}/confirmed-faces`),
-      api<any[]>(`/admin/people/${personId}/references`),
+      api<ConfirmedFace[]>(`/admin/people/${personId}/confirmed-faces`, { signal }),
+      api<any[]>(`/admin/people/${personId}/references`, { signal }),
     ]);
     if (request !== confirmedRequest || id.value !== personId || !editing.value)
       return;
@@ -139,6 +150,7 @@ const formState = () =>
   ]);
 const dirty = computed(() => editing.value && formState() !== baseline.value);
 function open(person?: Person) {
+  faceRequest.cancel();
   id.value = person?.id || null;
   name.value = person?.name || "";
   selectedGroups.value = person?.groups.map((g) => g.id) || [];
@@ -428,6 +440,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
               <img
                 :src="`/api/v1/admin/references/${r.id}/crop`"
                 :alt="`参考图 #${r.id}`"
+                loading="lazy"
               />
               <n-button
                 :disabled="saving"
@@ -510,12 +523,16 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
           /></label>
           <p v-if="uploading" role="status">正在上传并检测人脸…</p>
           <div v-if="upload">
+            <p v-if="failedUploads.has(0)" role="status">图片加载失败</p>
+            <p v-else-if="!uploadUrls.has(0)" role="status">正在加载图片…</p>
             <div class="annotated-image">
               <img
-                :src="`/api/v1/admin/reference-media/${upload.token}.jpg`"
+                v-if="uploadUrls.has(0)"
+                :src="uploadUrls.get(0)"
                 alt="上传的参考图"
+                @error="failedUploads.add(0)"
               /><button
-                v-for="f in upload.faces"
+                v-for="f in uploadUrls.has(0) ? upload.faces : []"
                 :key="f.index"
                 type="button"
                 :disabled="saving || uploading"

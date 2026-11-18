@@ -1,5 +1,34 @@
 import { test, expect } from "@playwright/test";
 
+test("gallery cancels unfinished full images when switching and closing details", async ({ page }) => {
+  const started = new Set<number>(), cancelled = new Set<number>();
+  const source = { platform: 'x', author: 'fixture', published_at: '2026-01-01', url: 'https://x.com/fixture/status/1' };
+  const photos = [1, 2].map(id => ({ id, image_id: id, width: 800, height: 600,
+    image_url: `/api/v1/media/by-hash/image/${id}`, thumbnail_url: `/api/v1/media/by-hash/thumbnail/${id}`,
+    download_url: '', people: [], source_count: 1, matched_source: source, sources: [],
+  }));
+  page.on('requestfailed', request => {
+    const match = new URL(request.url()).pathname.match(/\/by-hash\/image\/(\d+)$/);
+    if (match) cancelled.add(Number(match[1]));
+  });
+  await page.route('**/api/v1/**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    const match = path.match(/\/by-hash\/image\/(\d+)$/);
+    if (match) { started.add(Number(match[1])); return; }
+    if (path.includes('/thumbnail/')) return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"/>' });
+    if (path.endsWith('/gallery')) return route.fulfill({ json: { items: photos, next_cursor: null } });
+    if (/\/gallery\/[12]$/.test(path)) return route.fulfill({ json: photos[Number(path.at(-1)) - 1] });
+    return route.fulfill({ json: /\/(session|site)$/.test(path) ? {} : [] });
+  });
+  await page.goto('/?photo=1');
+  await expect.poll(() => started.has(1)).toBe(true);
+  await page.getByRole('button', { name: '下一张', exact: true }).click();
+  await expect.poll(() => cancelled.has(1)).toBe(true);
+  await expect.poll(() => started.has(2)).toBe(true);
+  await page.getByRole('button', { name: '关闭详情', exact: true }).click();
+  await expect.poll(() => cancelled.has(2)).toBe(true);
+});
+
 test("sections load only required resources and review refresh retains feedback", async ({ page }) => {
   const counts: Record<string, number> = {};
   const actions: any[] = [];
