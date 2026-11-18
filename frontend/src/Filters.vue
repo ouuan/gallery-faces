@@ -9,7 +9,7 @@ import {
   NRadioButton,
 } from "naive-ui";
 import { useLibrary } from "./store";
-import type { Filter } from "./filters";
+import { hasFilters, type Filter } from "./filters";
 import { platformLabel } from "./api";
 import PeopleMultiSelect from "./PeopleMultiSelect.vue";
 const props = defineProps<{ modelValue: Filter }>(),
@@ -73,7 +73,7 @@ const publisherExtraOptions = computed(() => {
   <div class="filters">
     <div class="section-heading">
       <h2>筛选照片</h2>
-      <button class="text-button" @click="emit('clear')">清空</button>
+      <button v-if="hasFilters(modelValue)" class="text-button" @click="emit('clear')">清空</button>
     </div>
     <fieldset>
       <legend>照片中的人物</legend>

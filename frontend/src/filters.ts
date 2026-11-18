@@ -44,3 +44,8 @@ export function toQuery(f: Filter) {
   if (f.sort === "oldest") q.sort = "oldest";
   return q;
 }
+
+export const hasFilters = (f: Filter) => Boolean(
+  f.people.length || f.publishers.length || f.start || f.end || f.include_no_faces
+);
+export const clearFilters = (f: Filter): Filter => ({ ...emptyFilter(), sort: f.sort });

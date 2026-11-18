@@ -23,7 +23,7 @@ import {
 } from "@lucide/vue";
 import { useLibrary } from "./store";
 import { api, dateLabel, platformLabel, type Photo } from "./api";
-import { emptyFilter, fromQuery, toQuery, type Filter } from "./filters";
+import { hasFilters, clearFilters, emptyFilter, fromQuery, toQuery, type Filter } from "./filters";
 import Filters from "./Filters.vue";
 import FeedbackPanel from "./FeedbackPanel.vue";
 import SourceText from "./SourceText.vue";
@@ -152,7 +152,7 @@ onUnmounted(() => window.removeEventListener("keydown", keys));
       <Filters
         :model-value="filter"
         @update:model-value="apply"
-        @clear="apply(emptyFilter())"
+        @clear="apply(clearFilters(filter))"
       />
     </aside>
     <div class="gallery-content">
@@ -197,7 +197,7 @@ onUnmounted(() => window.removeEventListener("keydown", keys));
         <Images :size="48" :stroke-width="1" />
         <h2>这里还没有照片</h2>
         <p>调整筛选条件，或在管理工作台导入第一批照片。</p>
-        <n-button @click="apply(emptyFilter())">清空筛选</n-button
+        <n-button v-if="hasFilters(filter)" @click="apply(clearFilters(filter))">清空筛选</n-button
         ><router-link to="/admin/import">前往导入</router-link>
       </div>
       <div class="photo-grid" :class="layout">
@@ -239,7 +239,7 @@ onUnmounted(() => window.removeEventListener("keydown", keys));
   </main>
   <n-drawer v-model:show="drawer" placement="left" width="min(340px, 100vw)"
     ><n-drawer-content title="筛选照片" closable
-      ><Filters v-model="draft" @clear="draft = emptyFilter()" /><template
+      ><Filters v-model="draft" @clear="draft = clearFilters(draft)" /><template
         #footer
         ><n-button
           type="primary"

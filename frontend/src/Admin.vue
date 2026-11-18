@@ -302,7 +302,7 @@ onUnmounted(() => {
             <n-select v-model:value="taskStatuses" role="group" aria-label="任务状态" multiple clearable filterable
               :input-props="{ 'aria-label': '任务状态' }" placeholder="全部状态" :options="taskStatusOptions" />
           </label>
-          <n-button :disabled="!hasTaskFilters" @click="clearTaskFilters">清空筛选</n-button>
+          <n-button v-if="hasTaskFilters" @click="clearTaskFilters">清空筛选</n-button>
         </div>
         <n-alert v-if="tasksError" type="error" title="任务记录加载失败">
           {{ tasksError }}
