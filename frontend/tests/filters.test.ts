@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 import { emptyFilter, fromQuery, toQuery } from "../src/filters";
 import { publisherLabel, platformLabel, type Person } from "../src/api";
@@ -21,6 +21,10 @@ describe("gallery state", () => {
     expect(fromQuery(toQuery(filter))).toEqual(filter);
   });
   it("renders source text safely while preserving links and newlines", () => {
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      disconnect() {}
+    });
     const wrapper = mount(SourceText, {
       props: { text: "<script>alert(1)</script>\n🐈 https://example.com" },
     });
@@ -28,6 +32,8 @@ describe("gallery state", () => {
     expect(wrapper.find("a").attributes("href")).toBe("https://example.com");
     expect(wrapper.text()).toContain("🐈");
     expect(wrapper.find("p").classes()).toContain("clamped");
+    wrapper.unmount();
+    vi.unstubAllGlobals();
   });
 });
 
