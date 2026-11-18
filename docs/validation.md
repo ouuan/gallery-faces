@@ -61,3 +61,19 @@ The full backend suite passes (287 tests), including 15 new representative-revie
 Coverage includes selection before filtering and the 500-group limit, groups with 507 members, original-byte-size ties, member deep links, per-image result preservation, automatic merge after importing a larger copy, both split directions, selective restore, source/post deduplication, group feedback pagination and hidden-member exclusion. Public identity and no-face filters use the displayed representative, including fallback while a larger member is pending, failed or missing provenance. Stale representative mutations return 409; batch failures preserve successful edits and unsaved choices.
 
 A browser smoke test against the real API and an isolated temporary database verified a member link opening its representative, feedback attached to a smaller member appearing in the group, representative confirmation plus feedback resolution removing the group from review, and splitting the smaller member restoring its own unresolved review state. Temporary fixture images and databases are not committed.
+
+
+## Publisher monitoring and local datetime selection
+
+Monitor tests exercise case-insensitive deduplication, concurrent enqueueing, scheduling,
+empty success, overlap, failure progress retention, independent backfill ranges, partial
+batches, paused manual work, all resume modes, cancellation races, restart recovery,
+retry conflicts, deleted-monitor isolation, interval validation, candidate lookup, and
+source timestamp roundtrips. Existing downloader tests cover pinned posts, media-level
+deduplication and recycle-bin skips.
+
+Browser tests cover monitor selection and batch conflicts, deletion confirmation,
+resume, desktop/mobile light/dark layouts, keyboard datetime entry, local offsets
+(including New York DST and Kathmandu), date-only URL warnings, filter refresh/history,
+and account import errors preserving entered timestamps. UI screenshots use mocked
+API fixtures; they do not verify live platform cookies or remote account availability.

@@ -26,9 +26,9 @@ test("task records show creation and available finish times and download bounds"
     await expect(rows.nth(i)).toContainText(label + "：2026/11/18 10:03");
     await expect(rows.nth(i)).toContainText("创建时间：2026/11/18 09:02");
   }
-  await expect(rows.nth(0)).toContainText("下载范围：2026/11/18 00:00 至 2026/11/19 00:00（不含）");
-  await expect(rows.nth(1)).toContainText("下载范围：自 2026/11/18 00:00 起");
-  await expect(rows.nth(2)).toContainText("下载范围：截至 2026/11/19 00:00（不含）");
+  await expect(rows.nth(0)).toContainText("下载范围：2026/11/18 00:00:00 至 2026/11/19 00:00:00（不含）");
+  await expect(rows.nth(1)).toContainText("下载范围：自 2026/11/18 00:00:00 起");
+  await expect(rows.nth(2)).toContainText("下载范围：截至 2026/11/19 00:00:00（不含）");
   await expect(rows.nth(3)).not.toContainText("下载范围");
   await expect(rows.nth(4)).not.toContainText("下载范围");
   await expect(rows.nth(3).locator("time")).toHaveCount(1);

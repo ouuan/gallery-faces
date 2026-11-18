@@ -14,7 +14,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version(version INTEGER PRIMARY KEY);
 INSERT INTO schema_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM schema_version);
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
-INSERT OR IGNORE INTO settings VALUES('reference_version','0'),('threshold','0.5'),('margin','0.1'),('phash_distance','4'),('aspect_tolerance','0.01'),('ssim_threshold','0.98'),('timezone','Asia/Shanghai');
+INSERT OR IGNORE INTO settings VALUES('reference_version','0'),('threshold','0.5'),('margin','0.1'),('phash_distance','4'),('aspect_tolerance','0.01'),('ssim_threshold','0.98');
 INSERT OR IGNORE INTO settings VALUES('site_title','Gallery Faces');
 INSERT OR IGNORE INTO settings VALUES('detection_threshold','0.5');
 INSERT OR IGNORE INTO settings SELECT 'review_ssim_threshold',CAST(min(0.5,CAST(value AS REAL)) AS TEXT) FROM settings WHERE key='ssim_threshold';
@@ -46,6 +46,9 @@ CREATE INDEX IF NOT EXISTS source_image ON sources(image_id);
 CREATE INDEX IF NOT EXISTS face_image ON faces(image_id);
 CREATE INDEX IF NOT EXISTS image_group ON images(group_id);
 CREATE INDEX IF NOT EXISTS post_date ON posts(published_at,id);
+CREATE TABLE IF NOT EXISTS monitors(id INTEGER PRIMARY KEY AUTOINCREMENT, platform TEXT NOT NULL, username TEXT NOT NULL COLLATE NOCASE, interval_minutes INTEGER NOT NULL DEFAULT 60 CHECK(interval_minutes>=5), paused INTEGER NOT NULL DEFAULT 0, start_at TEXT NOT NULL, progress_at TEXT, next_check_at TEXT NOT NULL, last_checked_at TEXT, last_task_id INTEGER, generation INTEGER NOT NULL DEFAULT 0, UNIQUE(platform,username));
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_monitor ON tasks(json_extract(payload,'$.monitor_id')) WHERE kind='monitor' AND status IN ('queued','running');
+DELETE FROM settings WHERE key='timezone';
 CREATE TABLE IF NOT EXISTS import_locations(image_id INTEGER NOT NULL REFERENCES images ON DELETE CASCADE, path TEXT NOT NULL, PRIMARY KEY(image_id,path));
 """
 

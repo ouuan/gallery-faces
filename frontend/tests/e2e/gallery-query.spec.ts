@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+test.use({ timezoneId: "UTC" });
 
 for (const dismiss of ["mask", "escape", "apply"] as const) {
   test(`mobile filters apply on ${dismiss} dismissal`, async ({ page }) => {
@@ -29,18 +30,19 @@ for (const dismiss of ["mask", "escape", "apply"] as const) {
     await expect(drawer.getByRole("heading", { name: "筛选照片", exact: true })).toHaveCount(1);
     await expect(drawer.locator(".n-drawer-header__close")).toHaveCount(0);
     await expect(drawer.getByRole("button", { name: "应用筛选" })).toBeVisible();
-    await drawer.getByLabel("开始日期").fill("2026-01-02");
+    await drawer.getByLabel("开始时间").fill("2026-01-02 00:00:00");
+  await drawer.getByLabel("开始时间").press("Enter");
     await drawer.getByRole("checkbox", { name: "包含无人脸图片" }).check();
     expect(params()).toEqual(original);
     expect(requests).toHaveLength(1);
     await close();
-    const applied = { ...original, start: "2026-01-02", include_no_faces: "true" };
+    const applied = { ...original, start: "2026-01-02T00:00:00Z", include_no_faces: "true" };
     await expect.poll(params).toEqual(applied);
     await expect.poll(apiParams).toEqual(applied);
     expect(requests).toHaveLength(2);
 
     await open();
-    await expect(drawer.getByLabel("开始日期")).toHaveValue("2026-01-02");
+    await expect(drawer.getByLabel("开始时间")).toHaveValue("2026-01-02 00:00:00");
     await expect(drawer.getByRole("checkbox", { name: "包含无人脸图片" })).toBeChecked();
     await close();
     expect(requests).toHaveLength(2);
@@ -54,7 +56,7 @@ for (const dismiss of ["mask", "escape", "apply"] as const) {
     await expect.poll(apiParams).toEqual({ sort: "oldest" });
     expect(requests).toHaveLength(3);
     await open();
-    await expect(drawer.getByLabel("开始日期")).toHaveValue("");
+    await expect(drawer.getByLabel("开始时间")).toHaveValue("");
     await expect(drawer.getByRole("checkbox", { name: "包含无人脸图片" })).not.toBeChecked();
   });
 }
@@ -76,35 +78,36 @@ test("gallery query restores filters, follows history and clears applied filters
   await page.setViewportSize({ width: 1280, height: 900 });
   const query = new URLSearchParams({
     people: "1", match: "all", publishers: "x:someone",
-    start: "2026-01-01", end: "2026-02-01", include_no_faces: "true", sort: "oldest",
+    start: "2026-01-01T00:00:00Z", end: "2026-02-01T00:00:00Z", include_no_faces: "true", sort: "oldest",
   });
   await page.goto("/?" + query);
   const filters = page.locator(".desktop-filters");
-  const start = filters.getByLabel("开始日期");
-  const end = filters.getByLabel("结束日期");
+  const start = filters.getByLabel("开始时间");
+  const end = filters.getByLabel("结束时间");
   const noFaces = filters.getByRole("checkbox", { name: "包含无人脸图片" });
   const params = () => Object.fromEntries(new URL(page.url()).searchParams);
   const apiParams = () => Object.fromEntries(new URLSearchParams(requests.at(-1)));
-  await expect(start).toHaveValue("2026-01-01");
-  await expect(end).toHaveValue("2026-02-01");
+  await expect(start).toHaveValue("2026-01-01 00:00:00");
+  await expect(end).toHaveValue("2026-02-01 00:00:00");
   await expect(noFaces).toBeChecked();
   await expect(page.locator('[aria-label="排序"]')).toContainText("最早发布");
   await expect.poll(apiParams).toEqual(Object.fromEntries(query));
 
   // An unrelated filter update must not discard the saved matching mode.
-  await start.fill("2026-01-02");
-  const updated = { ...Object.fromEntries(query), start: "2026-01-02" };
+  await start.fill("2026-01-02 00:00:00");
+  await start.press("Enter");
+  const updated = { ...Object.fromEntries(query), start: "2026-01-02T00:00:00Z" };
   await expect.poll(params).toEqual(updated);
   await expect.poll(apiParams).toEqual(updated);
   await page.reload();
-  await expect(start).toHaveValue("2026-01-02");
+  await expect(start).toHaveValue("2026-01-02 00:00:00");
   await expect.poll(apiParams).toEqual(updated);
 
   await page.goBack();
-  await expect(start).toHaveValue("2026-01-01");
+  await expect(start).toHaveValue("2026-01-01 00:00:00");
   await expect.poll(apiParams).toEqual(Object.fromEntries(query));
   await page.goForward();
-  await expect(start).toHaveValue("2026-01-02");
+  await expect(start).toHaveValue("2026-01-02 00:00:00");
   await expect.poll(apiParams).toEqual(updated);
 
   await filters.getByRole("button", { name: "清空", exact: true }).click();
@@ -116,6 +119,6 @@ test("gallery query restores filters, follows history and clears applied filters
   await expect(page.locator('[aria-label="排序"]')).toContainText("最早发布");
   await page.goBack();
   await expect.poll(params).toEqual(updated);
-  await expect(start).toHaveValue("2026-01-02");
+  await expect(start).toHaveValue("2026-01-02 00:00:00");
   await expect(noFaces).toBeChecked();
 });

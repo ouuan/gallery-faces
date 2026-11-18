@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LocalDateTime from "./LocalDateTime.vue";
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import { NAlert, NButton, NModal } from "naive-ui";
@@ -37,7 +38,7 @@ const skipped = computed(() =>
     .join("、"),
 );
 const invalidRange = computed(
-  () => !!start.value && !!end.value && start.value > end.value,
+  () => !!start.value && !!end.value && Date.parse(start.value) >= Date.parse(end.value),
 );
 function close() {
   if (!busy.value) emit("close");
@@ -129,24 +130,14 @@ function viewTasks() {
         <n-alert v-if="error" type="error">{{ error }}</n-alert>
         <div class="import-dates">
           <label class="field-label"
-            >开始日期<input
-              v-model="start"
-              type="date"
-              :max="end || undefined"
-              :disabled="busy"
-          /></label>
+            >开始时间<LocalDateTime aria-label="开始时间" v-model="start" :disabled="busy" /></label>
           <label class="field-label"
-            >结束日期（含当天）<input
-              v-model="end"
-              type="date"
-              :min="start || undefined"
-              :disabled="busy"
-          /></label>
+            >结束时间（不含）<LocalDateTime aria-label="结束时间（不含）" v-model="end" :disabled="busy" /></label>
         </div>
         <DateRangeHint :start="start" :end="end" />
         <p class="hint">留空表示不限对应日期</p>
         <n-alert v-if="invalidRange" type="error"
-          >结束日期不能早于开始日期</n-alert
+          >结束时间必须晚于开始时间</n-alert
         >
         <div class="form-actions">
           <n-button :disabled="busy" @click="close">取消</n-button

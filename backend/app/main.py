@@ -9,9 +9,8 @@ import secrets
 import re
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 from typing import Literal
 from fastapi import (
     FastAPI,
@@ -595,47 +594,12 @@ def reference_delete(reference_id: int, _: None = Depends(admin)):
     return {"ok": True}
 
 
-class DateBoundary(BaseModel):
-    utc: str
-    offset_seconds: int
-
-
-class DateBounds(BaseModel):
-    timezone: str
-    start: DateBoundary | None
-    end: DateBoundary | None
-    current_offset_seconds: int
-
-
-def date_range_info(start, end, zone):
-    tz = ZoneInfo(zone)
-    def boundary(value, exclusive=False):
-        if not value:
-            return None
-        if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
-            fail("日期格式应为 YYYY-MM-DD")
-        try:
-            local = (datetime.fromisoformat(value) + timedelta(days=int(exclusive))).replace(tzinfo=tz)
-            utc = local.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-        except (ValueError, OverflowError):
-            fail("日期无效或超出支持范围")
-        return DateBoundary(utc=utc, offset_seconds=int(local.utcoffset().total_seconds()))
-    lower, upper = boundary(start), boundary(end, True)
-    if lower and upper and lower.utc >= upper.utc:
-        fail("结束日期不能早于开始日期")
-    return DateBounds(timezone=zone, start=lower, end=upper,
-                      current_offset_seconds=int(datetime.now(tz).utcoffset().total_seconds()))
-
-
-def date_bounds(start, end, zone):
-    result = date_range_info(start, end, zone)
-    return result.start.utc if result.start else None, result.end.utc if result.end else None
-
-
-@app.get("/api/v1/date-bounds", response_model=DateBounds)
-def date_bounds_preview(start: str = "", end: str = ""):
-    with connect() as db:
-        return date_range_info(start, end, settings(db)["timezone"])
+def date_bounds(start, end):
+    from .monitors import instant
+    lower, upper = instant(start) if start else None, instant(end) if end else None
+    if lower and upper and lower >= upper:
+        fail("结束时间必须晚于开始时间")
+    return lower, upper
 
 
 def gallery_rows(
@@ -807,7 +771,7 @@ def gallery(
         fail("筛选条件无效")
     with connect() as db:
         db.execute("BEGIN")
-        lower, upper = date_bounds(start, end, settings(db)["timezone"])
+        lower, upper = date_bounds(start, end)
         rows = gallery_rows(
             db,
             ids,
@@ -1187,7 +1151,7 @@ def admin_images(
             else:
                 condition = f"({condition}) AND i.id=?"
             params.append(image_id)
-        lower, upper = date_bounds(start, end, settings(db)["timezone"])
+        lower, upper = date_bounds(start, end)
         if lower or upper or accounts:
             source_conditions = ["m.group_id=i.group_id", "m.hidden=0"] if grouped else ["m.id=i.id"]
             if lower:
@@ -1526,7 +1490,7 @@ class ImportInput(BaseModel):
 def import_create(body: ImportInput, _: None = Depends(admin)):
     results = []
     with connect(True) as db:
-        start, end = date_bounds(body.start, body.end, settings(db)["timezone"])
+        start, end = date_bounds(body.start, body.end)
         if body.directory is not None:
             try:
                 safe_directory(body.directory)
@@ -1578,7 +1542,7 @@ def import_create(body: ImportInput, _: None = Depends(admin)):
 def tasks(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    kind: list[Literal["download", "import", "detect", "rematch", "restore"]] = Query(default=[]),
+    kind: list[Literal["download", "import", "detect", "rematch", "restore", "monitor"]] = Query(default=[]),
     status: list[Literal["queued", "running", "done", "failed", "cancelled"]] = Query(default=[]),
     _: None = Depends(admin),
 ):
@@ -1617,6 +1581,10 @@ def task_action(
                 (task_id,),
             )
         elif row["status"] in ("failed", "cancelled"):
+            if row["kind"] == "monitor":
+                from .monitors import enqueue
+                tid = enqueue(db, json.loads(row["payload"])["monitor_id"], retry=row)
+                return {"ok": True, "task_id": tid}
             if row["kind"] in ("detect", "rematch"):
                 require_active(db, row["image_id"])
             if row["kind"] == "restore" and not db.execute("SELECT 1 FROM images WHERE id=? AND hidden=1", (row["image_id"],)).fetchone():
@@ -1679,7 +1647,6 @@ class SettingsInput(BaseModel):
     aspect_tolerance: float = Field(ge=0, le=1)
     ssim_threshold: float = Field(ge=0, le=1)
     review_ssim_threshold: float = Field(default=0.5, ge=0, le=1)
-    timezone: str
 
 
 @app.put("/api/v1/admin/settings")
@@ -1689,10 +1656,6 @@ def settings_update(body: SettingsInput, _: None = Depends(admin)):
         values["site_title"] = body.site_title.strip()
     if "site_title" in values and not values["site_title"]:
         fail("站点标题不能为空")
-    try:
-        ZoneInfo(body.timezone)
-    except Exception:
-        fail("时区无效")
     with connect(True) as db:
         effective = {**settings(db), **values}
         if float(effective["review_ssim_threshold"]) > float(effective["ssim_threshold"]):
@@ -1784,13 +1747,16 @@ def duplicate_action(body: DuplicateInput, _: None = Depends(admin)):
 def site():
     with connect() as db:
         config = settings(db)
-        return {"timezone": config["timezone"], "site_title": config["site_title"]}
+        return {"site_title": config["site_title"]}
 
 
 @app.get("/api/v1/health")
 def health():
     return {"status": "ok"}
 
+
+from .monitors import install as install_monitors
+install_monitors(app, admin)
 
 static = Path(os.environ.get("FRONTEND_DIR", "../frontend/dist"))
 if static.is_dir():

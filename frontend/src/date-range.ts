@@ -1,37 +1,19 @@
-import { api } from "./api";
-import type { components } from "./schema";
-
-export type DateBounds = components["schemas"]["DateBounds"];
-const requests = new Map<string, Promise<DateBounds>>();
-
-export function loadDateBounds(start: string, end: string, timezone: string) {
-  const key = JSON.stringify([start, end, timezone]);
-  let request = requests.get(key);
-  if (!request) {
-    request = api<DateBounds>("/date-bounds?" + new URLSearchParams({ start, end }))
-      .finally(() => { requests.delete(key); });
-    requests.set(key, request);
-  }
-  return request;
+export function validInstant(value: string) {
+  return /T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value));
 }
-
 export function utcOffset(seconds: number) {
   const absolute = Math.abs(seconds);
   const hours = Math.floor(absolute / 3600);
   const minutes = Math.floor(absolute % 3600 / 60);
-  const remainder = absolute % 60;
-  return `UTC${seconds < 0 ? "-" : "+"}${hours}`
-    + (minutes || remainder ? `:${String(minutes).padStart(2, "0")}` : "")
-    + (remainder ? `:${String(remainder).padStart(2, "0")}` : "");
+  return `UTC${seconds < 0 ? "-" : "+"}${hours}` + (minutes ? `:${String(minutes).padStart(2, "0")}` : "");
 }
-
-export function dateRangeLabel(bounds: DateBounds) {
-  const { start, end } = bounds;
-  if (!start && !end) return `当前按 ${utcOffset(bounds.current_offset_seconds)} 计算`;
-  if (start && end && start.offset_seconds === end.offset_seconds)
-    return `起止边界按 ${utcOffset(start.offset_seconds)} 计算，包含结束当天`;
-  return [
-    start && `开始：当日 00:00（${utcOffset(start.offset_seconds)}）`,
-    end && `结束：次日 00:00（${utcOffset(end.offset_seconds)}），不含该时刻`,
-  ].filter(Boolean).join("；");
+export function rangeError(start: string, end: string) {
+  if ([start, end].some(value => value && !validInstant(value))) return "旧日期链接或时间格式无效，请重新选择日期时间";
+  if (start && end && Date.parse(end) <= Date.parse(start)) return "结束时间必须晚于开始时间";
+  return "";
+}
+export function localRangeLabel(start: string, end: string) {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const offset = (value: string) => utcOffset(-new Date(value || Date.now()).getTimezoneOffset() * 60);
+  return rangeError(start, end) || `${zone} · 包含开始，不含结束 · 开始 ${offset(start)} / 结束 ${offset(end)}`;
 }

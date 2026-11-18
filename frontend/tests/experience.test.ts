@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
-import { dateLabel, setSiteTimezone } from "../src/api";
+import { dateLabel } from "../src/api";
 import { clearFilters, emptyFilter, hasFilters } from "../src/filters";
 import { useLibrary } from "../src/store";
 
@@ -15,12 +15,9 @@ describe("gallery experience", () => {
     const date = "2026-01-01T15:04:59Z";
     const expected = new Intl.DateTimeFormat("zh-CN", {
       year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
     }).format(new Date(date));
-    for (const zone of ["Asia/Shanghai", "UTC", "America/New_York"]) {
-      setSiteTimezone(zone);
-      expect(dateLabel(date)).toBe(expected);
-    }
+    expect(dateLabel(date)).toBe(expected);
     expect(dateLabel(null)).toBe("缺少日期");
   });
   it("shares concurrent loads and caches site configuration until forced", async () => {

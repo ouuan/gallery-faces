@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LocalDateTime from "./LocalDateTime.vue";
 import LoadingOverlay from "./LoadingOverlay.vue";
 import Filters from "./Filters.vue";
 import { emptyFilter, fromQuery, toQuery, hasFilters } from "./filters";
@@ -902,9 +903,8 @@ onMounted(load);
             v-model:value="sourceEdit.author_name"
             placeholder="未关联人物时显示" /></label
         ><label class="field-label"
-          >时间（含时区）<n-input
-            v-model:value="sourceEdit.published_at"
-            placeholder="2026-01-01T12:00:00+08:00" /></label
+          >发布时间<LocalDateTime aria-label="发布时间"
+            v-model="sourceEdit.published_at" /></label
         ><label class="field-label"
           >帖子链接<n-input v-model:value="sourceEdit.url" /></label
         ><label class="field-label"

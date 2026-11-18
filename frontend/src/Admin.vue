@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LocalDateTime from "./LocalDateTime.vue";
 import LoadingOverlay from "./LoadingOverlay.vue";
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useLatestRequest } from "./use-latest-request";
@@ -16,6 +17,7 @@ import { Download, Users, ScanFace, Copy, Settings, LogOut } from "@lucide/vue";
 import { api, send, dateLabel } from "./api";
 import { useLibrary } from "./store";
 import { usePageTitle } from "./page-title";
+import Monitors from "./Monitors.vue";
 import People from "./People.vue";
 import Review from "./Review.vue";
 import DuplicateReview from "./DuplicateReview.vue";
@@ -55,10 +57,10 @@ const vThresholdLabels = {
   },
 };
 const section = computed(() => String(route.params.section || "import"));
-const taskKinds = ref<string[]>([]);
+const taskKinds = ref<string[]>(route.query.kind ? [String(route.query.kind)] : []);
 const taskStatuses = ref<string[]>([]);
 const taskKindLabels: Record<string, string> = {
-  download: "链接下载", import: "目录导入", detect: "人脸检测", rematch: "人物匹配", restore: "图片恢复",
+  monitor: "发布者监控", download: "链接下载", import: "目录导入", detect: "人脸检测", rematch: "人物匹配", restore: "图片恢复",
 };
 const taskStatusLabels = {
   queued: "排队中", running: "执行中", done: "已完成", failed: "失败", cancelled: "已取消",
@@ -109,6 +111,7 @@ async function loadTasks(page = taskPage.value, background = false) {
   }
 }
 const nav = [
+  { id: "monitors", label: "发布者监控", icon: Users },
   { id: "import", label: "导入任务", icon: Download },
   { id: "people", label: "人物与分组", icon: Users },
   { id: "review", label: "识别审核", icon: ScanFace },
@@ -247,6 +250,7 @@ onUnmounted(() => {
   <div v-if="checking" class="initial-loading" aria-busy="true"><LoadingOverlay show center label="正在检查登录状态…" /></div>
   <main v-else-if="!authenticated" class="login">
     <h1>管理员登录</h1>
+      <Monitors v-if="section === 'monitors'" />
     <p class="muted">登录后可导入照片、整理人物和审核识别结果</p>
     <n-alert v-if="error" type="error">{{ error }}</n-alert>
     <form @submit.prevent="login">
@@ -279,6 +283,7 @@ onUnmounted(() => {
     </aside>
     <section class="admin-content">
       <h1>{{ nav.find((n) => n.id === section)?.label || "管理工作台" }}</h1>
+      <Monitors v-if="section === 'monitors'" />
       <n-alert v-if="error" type="error" closable @close="error = ''">{{
         error
       }}</n-alert><template v-if="section === 'import'"
@@ -301,10 +306,9 @@ onUnmounted(() => {
           /></label>
           <div class="inline-form">
             <label class="field-label"
-              >开始日期<input v-model="start" type="date" /></label
+              >开始时间<LocalDateTime aria-label="开始时间" v-model="start" :disabled="busy" /></label
             ><label class="field-label"
-              >结束日期（含当天）<input v-model="end" type="date"
-            /></label>
+              >结束时间（不含）<LocalDateTime aria-label="结束时间（不含）" v-model="end" :disabled="busy" /></label>
           </div>
           <DateRangeHint :start="start" :end="end" />
           <n-button class="stable-loading-button"
@@ -391,7 +395,7 @@ onUnmounted(() => {
                       (task.image_id ? "图片 #" + task.image_id : "")
                     }}
                   </p>
-                  <div v-if="task.kind === 'download' && (task.payload.start || task.payload.end)" class="task-dates hint">
+                  <div v-if="['download', 'monitor'].includes(task.kind) && (task.payload.start || task.payload.end)" class="task-dates hint">
                     <span>下载范围：<template v-if="task.payload.start && !task.payload.end">自 </template><time v-if="task.payload.start" :datetime="task.payload.start">{{ dateLabel(task.payload.start) }}</time><template v-else>截至 </template><template v-if="task.payload.start && task.payload.end"> 至 </template><template v-if="task.payload.end"><time :datetime="task.payload.end">{{ dateLabel(task.payload.end) }}</time>（不含）</template><template v-else> 起</template></span>
                   </div>
                   <div v-if="task.created_at || task.finished_at" class="task-dates hint">
@@ -524,9 +528,7 @@ onUnmounted(() => {
             :value="[Number(settings.review_ssim_threshold ?? 0.5), Number(settings.ssim_threshold)]"
             @update:value="updateDuplicateThresholds" v-threshold-labels />
           <p class="hint">低于待审核下限的候选不显示，调低后可重新显示。达到自动合并下限还须通过 pHash、长宽比和跨组检查；修改阈值不会撤销已有合并或人工决定。</p>
-          <label class="field-label"
-            >站点时区<n-input v-model:value="settings.timezone" /></label
-          ><n-button class="stable-loading-button"
+          <n-button class="stable-loading-button"
             type="primary"
             attr-type="submit"
             :loading="savingSettings"

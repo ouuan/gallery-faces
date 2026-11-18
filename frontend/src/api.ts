@@ -1,4 +1,3 @@
-import { ref } from "vue";
 export class ApiError extends Error {
   constructor(message: string, public status: number, public retryAfter: number) { super(message); }
 }
@@ -86,10 +85,6 @@ export type Photo = {
   earliest_source?: Source;
   members?: any[];
 };
-export const siteTimezone = ref("Asia/Shanghai");
-export function setSiteTimezone(value: string) {
-  siteTimezone.value = value;
-}
 export const dateLabel = (value: string | null | undefined) =>
   !value ? "缺少日期" :
   new Intl.DateTimeFormat("zh-CN", {
@@ -98,6 +93,7 @@ export const dateLabel = (value: string | null | undefined) =>
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
     hourCycle: "h23",
   }).format(new Date(value));
 

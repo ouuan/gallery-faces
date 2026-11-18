@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+test.use({ timezoneId: "UTC" });
 
 test("batch imports associated accounts and preserves input on failure", async ({
   page,
@@ -77,12 +78,15 @@ test("batch imports associated accounts and preserves input on failure", async (
   await page.getByRole("button", { name: "导入照片", exact: true }).click();
   await expect(dialog).toContainText("将跳过：人物丙");
   await expect(dialog.locator(".account-list li")).toHaveCount(2);
-  await dialog.getByLabel("开始日期", { exact: true }).fill("2026-11-18");
-  await dialog.getByLabel("结束日期（含当天）").fill("2026-11-17");
+  await dialog.getByLabel("开始时间", { exact: true }).fill("2026-11-18 00:00:00");
+  await dialog.getByLabel("开始时间", { exact: true }).press("Enter");
+  await dialog.getByLabel("结束时间（不含）").fill("2026-11-17 00:00:00");
+  await dialog.getByLabel("结束时间（不含）").press("Enter");
   await expect(
     dialog.getByRole("button", { name: "创建导入任务" }),
   ).toBeDisabled();
-  await dialog.getByLabel("结束日期（含当天）").fill("2026-11-18");
+  await dialog.getByLabel("结束时间（不含）").fill("2026-11-19 00:00:00");
+  await dialog.getByLabel("结束时间（不含）").press("Enter");
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
@@ -99,8 +103,7 @@ test("batch imports associated accounts and preserves input on failure", async (
     dialog.getByRole("button", { name: "创建导入任务" }),
   ).toBeDisabled();
   await expect(dialog).toContainText("网络错误，请重试");
-  await expect(dialog.getByLabel("开始日期", { exact: true })).toHaveValue(
-    "2026-11-18",
+  await expect(dialog.getByLabel("开始时间", { exact: true })).toHaveValue("2026-11-18 00:00:00",
   );
   fail = false;
   await dialog.getByRole("button", { name: "创建导入任务" }).click();
@@ -108,8 +111,8 @@ test("batch imports associated accounts and preserves input on failure", async (
   expect(requests).toHaveLength(2);
   expect(requests[1]).toEqual({
     urls: ["https://x.com/alice", "https://instagram.com/alice"],
-    start: "2026-11-18",
-    end: "2026-11-18",
+    start: "2026-11-18T00:00:00Z",
+    end: "2026-11-19T00:00:00Z",
   });
   await expect(page).toHaveURL(/\/admin\/people$/);
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
@@ -117,7 +120,7 @@ test("batch imports associated accounts and preserves input on failure", async (
     page.getByRole("checkbox", { name: "全选", exact: true }),
   ).toBeChecked();
   await page.getByRole("button", { name: "导入照片", exact: true }).click();
-  await expect(dialog.getByLabel("开始日期", { exact: true })).toHaveValue("");
+  await expect(dialog.getByLabel("开始时间", { exact: true })).toHaveValue("");
   await dialog.getByRole("button", { name: "取消" }).click();
   await page.getByRole("button", { name: "清空选择" }).click();
   await expect(

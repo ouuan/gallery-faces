@@ -279,23 +279,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/date-bounds": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Date Bounds Preview */
-        get: operations["date_bounds_preview_api_v1_date_bounds_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/gallery": {
         parameters: {
             query?: never;
@@ -760,6 +743,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/monitors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listing */
+        get: operations["listing_api_v1_admin_monitors_get"];
+        put?: never;
+        /** Create */
+        post: operations["create_api_v1_admin_monitors_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/publisher-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Candidates */
+        get: operations["candidates_api_v1_admin_publisher_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/monitors/{monitor_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit */
+        patch: operations["edit_api_v1_admin_monitors__monitor_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/monitors/{monitor_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume */
+        post: operations["resume_api_v1_admin_monitors__monitor_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/monitors/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Batch */
+        post: operations["batch_api_v1_admin_monitors_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -773,6 +842,21 @@ export interface components {
             platform: "instagram" | "x";
             /** Username */
             username: string;
+        };
+        /** Batch */
+        Batch: {
+            /** Ids */
+            ids: number[];
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "delete" | "update" | "backfill";
+            /**
+             * Start
+             * @default
+             */
+            start: string;
         };
         /** BatchFaceEdit */
         BatchFaceEdit: {
@@ -805,6 +889,20 @@ export interface components {
             /** Failures */
             failures: components["schemas"]["FaceEditFailure"][];
         };
+        /** BatchResult */
+        BatchResult: {
+            /** Id */
+            id: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "deleted" | "queued" | "error";
+            /** Task Id */
+            task_id?: number | null;
+            /** Error */
+            error?: string | null;
+        };
         /** Body_cookie_upload_api_v1_admin_cookies__platform__post */
         Body_cookie_upload_api_v1_admin_cookies__platform__post: {
             /** File */
@@ -822,21 +920,41 @@ export interface components {
             /** Person Id */
             person_id?: number | null;
         };
-        /** DateBoundary */
-        DateBoundary: {
-            /** Utc */
-            utc: string;
-            /** Offset Seconds */
-            offset_seconds: number;
+        /** Candidate */
+        Candidate: {
+            /** Platform */
+            platform: string;
+            /** Username */
+            username: string;
+            /** Label */
+            label: string | null;
         };
-        /** DateBounds */
-        DateBounds: {
-            /** Timezone */
-            timezone: string;
-            start: components["schemas"]["DateBoundary"] | null;
-            end: components["schemas"]["DateBoundary"] | null;
-            /** Current Offset Seconds */
-            current_offset_seconds: number;
+        /** Create */
+        Create: {
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "instagram" | "x";
+            /** Username */
+            username: string;
+            /**
+             * Interval Minutes
+             * @default 60
+             */
+            interval_minutes: number;
+            /**
+             * Start
+             * @default
+             */
+            start: string;
+        };
+        /** Created */
+        Created: {
+            /** Task Id */
+            task_id: number;
+            /** Id */
+            id: number;
         };
         /** DuplicateInput */
         DuplicateInput: {
@@ -849,6 +967,13 @@ export interface components {
              * @enum {string}
              */
             action: "merge" | "separate";
+        };
+        /** Edit */
+        Edit: {
+            /** Interval Minutes */
+            interval_minutes?: number | null;
+            /** Paused */
+            paused?: boolean | null;
         };
         /** FaceEdit */
         FaceEdit: {
@@ -1016,6 +1141,39 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** Monitor */
+        Monitor: {
+            /** Id */
+            id: number;
+            /** Platform */
+            platform: string;
+            /** Username */
+            username: string;
+            /** Interval Minutes */
+            interval_minutes: number;
+            /** Paused */
+            paused: number;
+            /** Start At */
+            start_at: string;
+            /** Progress At */
+            progress_at: string | null;
+            /** Next Check At */
+            next_check_at: string;
+            /** Last Checked At */
+            last_checked_at: string | null;
+            /** Last Task Id */
+            last_task_id: number | null;
+            /** Generation */
+            generation: number;
+            /** Last Status */
+            last_status: string | null;
+            /** Last Result */
+            last_result: string | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Active Task Id */
+            active_task_id: number | null;
+        };
         /** PersonFromFaceInput */
         PersonFromFaceInput: {
             /** Name */
@@ -1111,6 +1269,20 @@ export interface components {
             /** Face Id */
             face_id: number;
         };
+        /** Resume */
+        Resume: {
+            /**
+             * Mode
+             * @default catch_up
+             * @enum {string}
+             */
+            mode: "catch_up" | "new" | "start";
+            /**
+             * Start
+             * @default
+             */
+            start: string;
+        };
         /** ReviewImage */
         ReviewImage: {
             /**
@@ -1189,8 +1361,11 @@ export interface components {
              * @default 0.5
              */
             review_ssim_threshold: number;
-            /** Timezone */
-            timezone: string;
+        };
+        /** TaskResult */
+        TaskResult: {
+            /** Task Id */
+            task_id: number;
         };
         /** UploadedReference */
         UploadedReference: {
@@ -1775,38 +1950,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    date_bounds_preview_api_v1_date_bounds_get: {
-        parameters: {
-            query?: {
-                start?: string;
-                end?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DateBounds"];
                 };
             };
             /** @description Validation Error */
@@ -2579,7 +2722,7 @@ export interface operations {
             query?: {
                 page?: number;
                 page_size?: number;
-                kind?: ("download" | "import" | "detect" | "rematch" | "restore")[];
+                kind?: ("download" | "import" | "detect" | "rematch" | "restore" | "monitor")[];
                 status?: ("queued" | "running" | "done" | "failed" | "cancelled")[];
             };
             header?: never;
@@ -2859,6 +3002,193 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    listing_api_v1_admin_monitors_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Monitor"][];
+                };
+            };
+        };
+    };
+    create_api_v1_admin_monitors_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Create"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Created"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    candidates_api_v1_admin_publisher_candidates_get: {
+        parameters: {
+            query?: {
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Candidate"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_api_v1_admin_monitors__monitor_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                monitor_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Edit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_api_v1_admin_monitors__monitor_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                monitor_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Resume"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_api_v1_admin_monitors_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Batch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchResult"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

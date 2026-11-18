@@ -183,7 +183,7 @@ def cancelled(task_id):
 
 
 def import_task(task):
-    if task["kind"] == "download":
+    if task["kind"] in ("download", "monitor"):
         root = DATA / "downloads"
         root.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=root, prefix="attempt-") as attempt:
@@ -260,7 +260,7 @@ def download_media(task, payload, attempt, restore_id=None):
 def _import_task(task, attempt=None):
     payload = json.loads(task["payload"])
     counts = {"imported": 0, "skipped_existing": 0, "skipped_trashed": 0}
-    if task["kind"] == "download":
+    if task["kind"] in ("download", "monitor"):
         directory = download_media(task, payload, attempt)
         report = attempt / "skipped.jsonl"
         if report.is_file():
@@ -304,7 +304,7 @@ def _import_task(task, attempt=None):
             if not sidecar.resolve().is_relative_to(directory.resolve()):
                 raise ValueError("Sidecar 不在导入目录中")
             raw = json.loads(sidecar.read_text())
-            if task["kind"] == "download":
+            if task["kind"] in ("download", "monitor"):
                 from urllib.parse import urlparse
 
                 raw["collected_account"] = (
@@ -401,7 +401,7 @@ def restore_task(task):
                 queue_image_cleanup(db, current)
 
 
-def claim(kinds=("detect", "rematch", "import", "download", "restore")):
+def claim(kinds=("detect", "rematch", "import", "download", "restore", "monitor")):
     with connect(True) as db:
         placeholders = ",".join("?" for _ in kinds)
         task = db.execute(
@@ -452,12 +452,18 @@ def execute(task):
                 "UPDATE tasks SET status=CASE WHEN cancel_requested THEN 'cancelled' ELSE 'done' END,finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),stage=CASE WHEN cancel_requested THEN '已取消' ELSE '已完成' END WHERE id=?",
                 (task["id"],),
             )
+            if task["kind"] == "monitor":
+                from .monitors import finish
+                finish(db, task)
     except DetectionCancelled:
         with connect(True) as db:
             db.execute(
                 "UPDATE tasks SET status='cancelled',finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),stage='已取消' WHERE id=?",
                 (task["id"],),
             )
+            if task["kind"] == "monitor":
+                from .monitors import finish
+                finish(db, task)
     except Exception as error:
         with connect(True) as db:
             message = (
@@ -467,6 +473,9 @@ def execute(task):
                 "UPDATE tasks SET status='failed',finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),stage='处理失败',error=? WHERE id=?",
                 (message, task["id"]),
             )
+            if task["kind"] == "monitor":
+                from .monitors import finish
+                finish(db, task)
             if task["kind"] == "detect":
                 db.execute(
                     "UPDATE images SET detection='failed',error=? WHERE id=?",
@@ -563,10 +572,15 @@ def run_worker(stop):
         ThreadPoolExecutor(max_workers=1) as io,
     ):
         running = {compute: set(), io: set()}
+        next_schedule = 0.0
         while not stop.is_set():
+            if time.monotonic() >= next_schedule:
+                from .monitors import schedule_due
+                schedule_due()
+                next_schedule = time.monotonic() + 30
             for executor, limit, kinds in (
                 (compute, concurrency, ("detect", "rematch")),
-                (io, 1, ("download", "import", "restore")),
+                (io, 1, ("download", "import", "restore", "monitor")),
             ):
                 finished = {future for future in running[executor] if future.done()}
                 for future in finished:

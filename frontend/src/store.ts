@@ -2,7 +2,6 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import {
   api,
-  setSiteTimezone,
   publisherLabel,
   type Person,
   type Source,
@@ -30,7 +29,6 @@ export const useLibrary = defineStore("library", () => {
     if (siteLoaded && !force) return;
     siteRequest = (async () => {
       const site = await api("/site");
-      setSiteTimezone(site.timezone || "Asia/Shanghai");
       siteTitle.value = site.site_title || "Gallery Faces";
       siteLoaded = true;
     })();

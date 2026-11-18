@@ -9,7 +9,7 @@ from test_workflows import client
 
 
 def test_import_task_ranges(client):
-    body = {'urls': ['https://x.com/alice'], 'start': '2026-11-18', 'end': '2026-11-18'}
+    body = {'urls': ['https://x.com/alice'], 'start': '2026-11-18T00:00:00+08:00', 'end': '2026-11-19T00:00:00+08:00'}
     first = client.post('/api/v1/admin/import', json=body).json()[0]
     assert first['status'] == 'queued'
     assert client.post('/api/v1/admin/import', json=body).json()[0] == {**first, 'status': 'duplicate'}
@@ -22,7 +22,7 @@ def test_import_task_ranges(client):
         conn.execute("UPDATE tasks SET status='done' WHERE id=?", (first['task_id'],))
     assert client.post('/api/v1/admin/import', json=body).json()[0]['status'] == 'queued'
     assert client.post('/api/v1/admin/import', json={**body, 'end': '2026-11-17'}).status_code == 400
-    for dates in ({}, {'start': '2026-11-18'}, {'end': '2026-11-18'}):
+    for dates in ({}, {'start': '2026-11-18T00:00:00+08:00'}, {'end': '2026-11-19T00:00:00+08:00'}):
         response = client.post('/api/v1/admin/import', json={'urls': body['urls'], **dates})
         assert response.status_code == 200
         assert client.post('/api/v1/admin/import', json={'urls': body['urls'], **dates}).json()[0]['status'] == 'duplicate'
@@ -65,7 +65,7 @@ def test_worker_passes_date_options(client, monkeypatch):
         def __exit__(self, *args): pass
         def poll(self): return 0
     monkeypatch.setattr(worker.subprocess, 'Popen', Process)
-    result = client.post('/api/v1/admin/import', json={'urls': ['https://x.com/alice'], 'start': '2026-11-18', 'end': '2026-11-18'}).json()[0]
+    result = client.post('/api/v1/admin/import', json={'urls': ['https://x.com/alice'], 'start': '2026-11-18T00:00:00+08:00', 'end': '2026-11-19T00:00:00+08:00'}).json()[0]
     with db.connect() as conn:
         task = dict(conn.execute('SELECT * FROM tasks WHERE id=?', (result['task_id'],)).fetchone())
     worker.import_task(task)
@@ -103,43 +103,27 @@ def test_download_dispatch_skips_outside_media():
     assert downloaded == ['inside']
 
 
-def test_site_timezone_dst_boundaries(client):
-    from app.main import date_bounds
-    assert date_bounds('2026-03-08', '2026-03-08', 'America/New_York') == (
-        '2026-03-08T05:00:00Z', '2026-03-09T04:00:00Z')
 
-
-@pytest.mark.parametrize('zone,day,lower,upper,offsets', [
-    ('Asia/Shanghai', '2026-11-18', '2026-11-17T16:00:00Z', '2026-11-18T16:00:00Z', (28800, 28800)),
-    ('America/New_York', '2026-03-08', '2026-03-08T05:00:00Z', '2026-03-09T04:00:00Z', (-18000, -14400)),
-    ('America/New_York', '2026-11-01', '2026-11-01T04:00:00Z', '2026-11-02T05:00:00Z', (-14400, -18000)),
-    ('Asia/Kolkata', '2026-01-01', '2025-12-31T18:30:00Z', '2026-01-01T18:30:00Z', (19800, 19800)),
-    ('Asia/Kathmandu', '2026-01-01', '2025-12-31T18:15:00Z', '2026-01-01T18:15:00Z', (20700, 20700)),
+@pytest.mark.parametrize('start,end,expected', [
+    ('2026-03-08T00:00:00-05:00', '2026-03-09T00:00:00-04:00', ('2026-03-08T05:00:00Z','2026-03-09T04:00:00Z')),
+    ('2026-11-01T00:00:00-04:00', '2026-11-02T00:00:00-05:00', ('2026-11-01T04:00:00Z','2026-11-02T05:00:00Z')),
+    ('2026-01-01T00:00:00+05:45', '', ('2025-12-31T18:15:00Z',None)),
+    ('', '2026-01-01T00:00:00+05:30', (None,'2025-12-31T18:30:00Z')),
 ])
-def test_date_bounds_preview_matches_import(client, zone, day, lower, upper, offsets):
-    with db.connect(True) as conn:
-        conn.execute("UPDATE settings SET value=? WHERE key='timezone'", (zone,))
-    info = client.get('/api/v1/date-bounds', params={'start': day, 'end': day}).json()
-    assert info['timezone'] == zone
-    assert info['start'] == {'utc': lower, 'offset_seconds': offsets[0]}
-    assert info['end'] == {'utc': upper, 'offset_seconds': offsets[1]}
-    task = client.post('/api/v1/admin/import', json={'urls': ['https://x.com/alice'], 'start': day, 'end': day}).json()[0]
+def test_explicit_offsets(client, start, end, expected):
+    task = client.post('/api/v1/admin/import', json={'urls': ['https://x.com/alice'], 'start': start, 'end': end}).json()[0]
     with db.connect() as conn:
         payload = json.loads(conn.execute('SELECT payload FROM tasks WHERE id=?', (task['task_id'],)).fetchone()[0])
-    assert (payload['start'], payload['end']) == (lower, upper)
-    for params in ({}, {'start': day}, {'end': day}):
-        result = client.get('/api/v1/date-bounds', params=params).json()
-        assert (result['start'] is None) == ('start' not in params)
-        assert (result['end'] is None) == ('end' not in params)
-        assert isinstance(result['current_offset_seconds'], int)
-
+    assert (payload['start'], payload['end']) == expected
+    assert 'timezone' not in client.get('/api/v1/site').json()
 
 @pytest.mark.parametrize('params', [
-    {'start': '2026-11-18T12:34:56+00:00'}, {'start': '20261118'},
+    {'start': '2026-11-18T12:34:56'}, {'start': '20261118'},
     {'start': '2026-02-30'}, {'end': '9999-12-31'},
-    {'start': '2026-11-19', 'end': '2026-11-18'},
+    {'start': '2026-11-19T00:00:00Z', 'end': '2026-11-18T00:00:00Z'},
+    {'start': '2026-11-18T00:00:00Z', 'end': '2026-11-18T00:00:00Z'},
 ])
 def test_invalid_dates_rejected_consistently(client, params):
-    assert client.get('/api/v1/date-bounds', params=params).status_code == 400
     assert client.get('/api/v1/gallery', params=params).status_code == 400
+    assert client.get('/api/v1/admin/images', params=params).status_code == 400
     assert client.post('/api/v1/admin/import', json={'urls': ['https://x.com/alice'], **params}).status_code == 400

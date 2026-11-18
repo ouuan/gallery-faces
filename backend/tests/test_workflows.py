@@ -502,12 +502,12 @@ def test_source_filters_and_all_same_image(client):
         b = conn.execute("INSERT INTO people(name) VALUES('B')").lastrowid
         conn.execute("UPDATE faces SET person_id=? WHERE image_id=?", (a, first))
         conn.execute("UPDATE faces SET person_id=? WHERE image_id=?", (b, second))
-    assert not client.get("/api/v1/gallery?publishers=x:alice&start=2026-01-03").json()[
+    assert not client.get("/api/v1/gallery?publishers=x:alice&start=2026-01-02T16:00:00Z").json()[
         "items"
     ]
     assert (
         len(
-            client.get("/api/v1/gallery?start=2026-01-01&end=2026-01-01").json()[
+            client.get("/api/v1/gallery?start=2025-12-31T16:00:00Z&end=2026-01-01T16:00:00Z").json()[
                 "items"
             ]
         )
@@ -901,7 +901,7 @@ def test_publisher_person_matches_all_platforms_and_same_source_date(client):
     assert {p['id'] for p in items} == {x, ig}
     assert next(p for p in items if p['id'] == ig)['matched_source']['author_name'] == 'Instagram 昵称'
     assert client.get(f'/api/v1/gallery/{ig}').json()['matched_source']['author_name'] == 'Instagram 昵称'
-    assert not client.get(query + '&start=2026-01-04').json()['items']
+    assert not client.get(query + '&start=2026-01-03T16:00:00Z').json()['items']
     assert {p['id'] for p in client.get(query + ',x:alice_ig').json()['items']} == {x, ig, unrelated}
     for invalid in ('person:no', 'person:-1', 'person:99999999999999999999999', 'person:'):
         assert client.get('/api/v1/gallery', params={'publishers': invalid}).status_code == 400

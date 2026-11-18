@@ -655,56 +655,6 @@
         }
       }
     },
-    "/api/v1/date-bounds": {
-      "get": {
-        "summary": "Date Bounds Preview",
-        "operationId": "date_bounds_preview_api_v1_date_bounds_get",
-        "parameters": [
-          {
-            "name": "start",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "",
-              "title": "Start"
-            }
-          },
-          {
-            "name": "end",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "",
-              "title": "End"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DateBounds"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/gallery": {
       "get": {
         "summary": "Gallery",
@@ -1928,7 +1878,8 @@
                   "import",
                   "detect",
                   "rematch",
-                  "restore"
+                  "restore",
+                  "monitor"
                 ],
                 "type": "string"
               },
@@ -2281,6 +2232,246 @@
           }
         }
       }
+    },
+    "/api/v1/admin/monitors": {
+      "get": {
+        "summary": "Listing",
+        "operationId": "listing_api_v1_admin_monitors_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Monitor"
+                  },
+                  "type": "array",
+                  "title": "Response Listing Api V1 Admin Monitors Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create",
+        "operationId": "create_api_v1_admin_monitors_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Create"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Created"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/publisher-candidates": {
+      "get": {
+        "summary": "Candidates",
+        "operationId": "candidates_api_v1_admin_publisher_candidates_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Candidate"
+                  },
+                  "title": "Response Candidates Api V1 Admin Publisher Candidates Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/monitors/{monitor_id}": {
+      "patch": {
+        "summary": "Edit",
+        "operationId": "edit_api_v1_admin_monitors__monitor_id__patch",
+        "parameters": [
+          {
+            "name": "monitor_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Monitor Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Edit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/monitors/{monitor_id}/resume": {
+      "post": {
+        "summary": "Resume",
+        "operationId": "resume_api_v1_admin_monitors__monitor_id__resume_post",
+        "parameters": [
+          {
+            "name": "monitor_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Monitor Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Resume"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/monitors/batch": {
+      "post": {
+        "summary": "Batch",
+        "operationId": "batch_api_v1_admin_monitors_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Batch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BatchResult"
+                  },
+                  "type": "array",
+                  "title": "Response Batch Api V1 Admin Monitors Batch Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2309,6 +2500,39 @@
           "username"
         ],
         "title": "Account"
+      },
+      "Batch": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Ids"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "delete",
+              "update",
+              "backfill"
+            ],
+            "title": "Action"
+          },
+          "start": {
+            "type": "string",
+            "title": "Start",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids",
+          "action"
+        ],
+        "title": "Batch"
       },
       "BatchFaceEdit": {
         "properties": {
@@ -2390,6 +2614,51 @@
         ],
         "title": "BatchFaceEditResult"
       },
+      "BatchResult": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "deleted",
+              "queued",
+              "error"
+            ],
+            "title": "Status"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "BatchResult"
+      },
       "Body_cookie_upload_api_v1_admin_cookies__platform__post": {
         "properties": {
           "file": {
@@ -2447,63 +2716,88 @@
         ],
         "title": "BoxInput"
       },
-      "DateBoundary": {
+      "Candidate": {
         "properties": {
-          "utc": {
+          "platform": {
             "type": "string",
-            "title": "Utc"
+            "title": "Platform"
           },
-          "offset_seconds": {
-            "type": "integer",
-            "title": "Offset Seconds"
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
           }
         },
         "type": "object",
         "required": [
-          "utc",
-          "offset_seconds"
+          "platform",
+          "username",
+          "label"
         ],
-        "title": "DateBoundary"
+        "title": "Candidate"
       },
-      "DateBounds": {
+      "Create": {
         "properties": {
-          "timezone": {
+          "platform": {
             "type": "string",
-            "title": "Timezone"
+            "enum": [
+              "instagram",
+              "x"
+            ],
+            "title": "Platform"
+          },
+          "username": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Username"
+          },
+          "interval_minutes": {
+            "type": "integer",
+            "minimum": 5.0,
+            "title": "Interval Minutes",
+            "default": 60
           },
           "start": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DateBoundary"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "end": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DateBoundary"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "current_offset_seconds": {
-            "type": "integer",
-            "title": "Current Offset Seconds"
+            "type": "string",
+            "title": "Start",
+            "default": ""
           }
         },
         "type": "object",
         "required": [
-          "timezone",
-          "start",
-          "end",
-          "current_offset_seconds"
+          "platform",
+          "username"
         ],
-        "title": "DateBounds"
+        "title": "Create"
+      },
+      "Created": {
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "title": "Task Id"
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "id"
+        ],
+        "title": "Created"
       },
       "DuplicateInput": {
         "properties": {
@@ -2531,6 +2825,35 @@
           "action"
         ],
         "title": "DuplicateInput"
+      },
+      "Edit": {
+        "properties": {
+          "interval_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 5.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Minutes"
+          },
+          "paused": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused"
+          }
+        },
+        "type": "object",
+        "title": "Edit"
       },
       "FaceEdit": {
         "properties": {
@@ -2948,6 +3271,138 @@
         ],
         "title": "Login"
       },
+      "Monitor": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "platform": {
+            "type": "string",
+            "title": "Platform"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "interval_minutes": {
+            "type": "integer",
+            "title": "Interval Minutes"
+          },
+          "paused": {
+            "type": "integer",
+            "title": "Paused"
+          },
+          "start_at": {
+            "type": "string",
+            "title": "Start At"
+          },
+          "progress_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress At"
+          },
+          "next_check_at": {
+            "type": "string",
+            "title": "Next Check At"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "last_task_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Task Id"
+          },
+          "generation": {
+            "type": "integer",
+            "title": "Generation"
+          },
+          "last_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Status"
+          },
+          "last_result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Result"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "active_task_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Task Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "platform",
+          "username",
+          "interval_minutes",
+          "paused",
+          "start_at",
+          "progress_at",
+          "next_check_at",
+          "last_checked_at",
+          "last_task_id",
+          "generation",
+          "last_status",
+          "last_result",
+          "last_error",
+          "active_task_id"
+        ],
+        "title": "Monitor"
+      },
       "PersonFromFaceInput": {
         "properties": {
           "name": {
@@ -3143,6 +3598,27 @@
         ],
         "title": "ReferenceInput"
       },
+      "Resume": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "catch_up",
+              "new",
+              "start"
+            ],
+            "title": "Mode",
+            "default": "catch_up"
+          },
+          "start": {
+            "type": "string",
+            "title": "Start",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "Resume"
+      },
       "ReviewImage": {
         "properties": {
           "id": {
@@ -3282,10 +3758,6 @@
             "minimum": 0.0,
             "title": "Review Ssim Threshold",
             "default": 0.5
-          },
-          "timezone": {
-            "type": "string",
-            "title": "Timezone"
           }
         },
         "type": "object",
@@ -3294,10 +3766,22 @@
           "margin",
           "phash_distance",
           "aspect_tolerance",
-          "ssim_threshold",
-          "timezone"
+          "ssim_threshold"
         ],
         "title": "SettingsInput"
+      },
+      "TaskResult": {
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "title": "Task Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id"
+        ],
+        "title": "TaskResult"
       },
       "UploadedReference": {
         "properties": {

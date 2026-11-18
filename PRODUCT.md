@@ -9,7 +9,7 @@ Visitors browse photographs on phones and computers. One administrator imports p
 ## Product Purpose
 One installation downloads, detects, reviews and browses photographs using shared storage and a persistent queue.
 ## Capabilities and Constraints
-Static Instagram and X images only; no video, scheduled crawling or GPU. Public browsing requires completed processing and valid source metadata. Unknown identities remain visible; no-face images are excluded by default. Manual decisions take priority. References and cookies are private.
+Static Instagram and X images only; publisher monitoring with per-account intervals and one-time backfills; no video or GPU. Public browsing requires completed processing and valid source metadata. Unknown identities remain visible; no-face images are excluded by default. Manual decisions take priority. References and cookies are private.
 ## Brand Commitments
 The approved plan pins a familiar photo browser: neutral gray/white or dark gray, system Chinese sans-serif, restrained blue accents, desktop filter sidebar, mobile filter drawer and compact administration workspace. Interface language: Chinese, from the approved brief.
 ## Evidence on Hand

@@ -2,6 +2,8 @@
 import { onMounted, watchEffect } from "vue";
 import {
   NConfigProvider,
+  zhCN,
+  dateZhCN,
   NMessageProvider,
   NDialogProvider,
   darkTheme,
@@ -19,7 +21,7 @@ watchEffect(
 );
 </script>
 <template>
-  <n-config-provider
+  <n-config-provider :locale="zhCN" :date-locale="dateZhCN"
     :theme="store.dark ? darkTheme : null"
     :theme-overrides="{
       common: {

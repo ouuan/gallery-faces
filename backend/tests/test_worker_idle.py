@@ -86,3 +86,9 @@ def test_shutdown_skips_idle_release(monkeypatch):
     monkeypatch.setattr(worker, "cleanup_deleted_files", lambda: None)
     monkeypatch.setattr(worker, "release_idle_memory", lambda: pytest.fail("released during shutdown"))
     worker.run_worker(stop)
+
+
+@pytest.fixture(autouse=True)
+def isolate_scheduler(monkeypatch):
+    from app import monitors
+    monkeypatch.setattr(monitors, 'schedule_due', lambda: None)

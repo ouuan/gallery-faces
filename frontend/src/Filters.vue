@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LocalDateTime from "./LocalDateTime.vue";
 import { computed, ref } from "vue";
 import {
   NCheckbox,
@@ -142,20 +143,9 @@ const publisherExtraOptions = computed(() => {
     <fieldset>
       <legend>发布日期</legend>
       <label class="field-label date-field"
-        >从<input
-          aria-label="开始日期"
-          type="date"
-          :value="modelValue.start"
-          @input="
-            set('start', ($event.target as HTMLInputElement).value)
-          " /></label
+        >从<LocalDateTime aria-label="开始时间" :model-value="modelValue.start" @update:model-value="set('start', $event)" /></label
       ><label class="field-label date-field"
-        >至<input
-          aria-label="结束日期"
-          type="date"
-          :value="modelValue.end"
-          @input="set('end', ($event.target as HTMLInputElement).value)"
-      /></label>
+        >至<LocalDateTime aria-label="结束时间" :model-value="modelValue.end" @update:model-value="set('end', $event)" /></label>
       <DateRangeHint :start="modelValue.start" :end="modelValue.end" />
     </fieldset>
     <n-checkbox

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+test.use({ timezoneId: "UTC" });
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/**", async (route) => {
@@ -76,23 +77,27 @@ test("edits gallery filters in a modal, applies together, restores and clears", 
   await expect(page.getByRole("heading", { name: "代表图 #22 · 共 1 个版本", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "筛选（已启用）", exact: true }).click();
   await expect(page.getByText("包含无人脸图片", { exact: true })).toHaveCount(0);
-  await page.getByLabel("开始日期", { exact: true }).fill("2026-01-02");
-  await page.getByLabel("结束日期", { exact: true }).fill("2026-01-03");
+  await page.getByLabel("开始时间", { exact: true }).fill("2026-01-02 00:00:00");
+  await page.getByLabel("开始时间", { exact: true }).press("Enter");
+  await page.getByLabel("结束时间", { exact: true }).fill("2026-01-03 00:00:00");
+  await page.getByLabel("结束时间", { exact: true }).press("Enter");
   expect(requests).toHaveLength(1);
   await page.getByRole("button", { name: "取消", exact: true }).click();
   await page.getByRole("button", { name: "筛选（已启用）", exact: true }).click();
-  await expect(page.getByLabel("开始日期", { exact: true })).toHaveValue("");
-  await page.getByLabel("开始日期", { exact: true }).fill("2026-01-02");
-  await page.getByLabel("结束日期", { exact: true }).fill("2026-01-03");
+  await expect(page.getByLabel("开始时间", { exact: true })).toHaveValue("");
+  await page.getByLabel("开始时间", { exact: true }).fill("2026-01-02 00:00:00");
+  await page.getByLabel("开始时间", { exact: true }).press("Enter");
+  await page.getByLabel("结束时间", { exact: true }).fill("2026-01-03 00:00:00");
+  await page.getByLabel("结束时间", { exact: true }).press("Enter");
   await page.getByRole("button", { name: "应用筛选", exact: true }).click();
-  await expect.poll(() => requests.at(-1)?.searchParams.get("end")).toBe("2026-01-03");
+  await expect.poll(() => requests.at(-1)?.searchParams.get("end")).toBe("2026-01-03T00:00:00Z");
   for (const [key, value] of Object.entries({state:"unknown",people:"1,2",match:"all",publishers:"x:alice"})) {
     expect(requests.at(-1)?.searchParams.get(key)).toBe(value);
   }
   await page.reload();
   await page.getByRole("button", { name: "筛选（已启用）", exact: true }).click();
-  await expect(page.getByLabel("开始日期", { exact: true })).toHaveValue("2026-01-02");
-  await expect(page.getByLabel("结束日期", { exact: true })).toHaveValue("2026-01-03");
+  await expect(page.getByLabel("开始时间", { exact: true })).toHaveValue("2026-01-02 00:00:00");
+  await expect(page.getByLabel("结束时间", { exact: true })).toHaveValue("2026-01-03 00:00:00");
   await page.getByRole("button", { name: "清空", exact: true }).click();
   expect(new URL(page.url()).searchParams.has("end")).toBe(true);
   await page.getByRole("button", { name: "应用筛选", exact: true }).click();
