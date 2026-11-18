@@ -1091,3 +1091,10 @@ td:first-child {
     gap: 4px;
   }
 }
+
+.shortcut-key {
+  margin-left: 8px;
+  font: inherit;
+  font-size: 12px;
+  opacity: 0.8;
+}

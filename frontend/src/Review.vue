@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useReviewShortcuts } from "./review-shortcuts";
 import { useConfirm } from "./confirm";
 const confirm = useConfirm();
 import { ref, onMounted, onUnmounted, computed, watch } from "vue";
@@ -146,6 +147,19 @@ const actionIds = computed(() =>
 const actionsDisabled = computed(() =>
   !actionIds.value.length || loading.value || deleting.value || acting.value || savingBox.value || savingFaces.value,
 );
+const navigationDisabled = computed(() =>
+  loading.value || deleting.value || acting.value || savingBox.value || savingFaces.value,
+);
+function moveImage(index: number) {
+  if (navigationDisabled.value || index < 0 || index >= images.value.length) return;
+  current.value = index;
+}
+useReviewShortcuts({
+  arrowleft: { run: () => moveImage(current.value - 1), enabled: () => current.value > 0 },
+  arrowright: { run: () => moveImage(current.value + 1), enabled: () => current.value < images.value.length - 1 },
+  c: { run: confirmAll, enabled: () => !actionsDisabled.value && pendingFaces.value.length > 0 },
+  d: { run: () => deleteImages(actionIds.value), enabled: () => !actionsDisabled.value },
+}, () => !!active.value && !navigationDisabled.value && !sourceEdit.value && !newPersonFace.value);
 const visibilityAction = computed(() =>
   (selected.value.length ? state.value === "hidden" : active.value?.hidden) ? "show" : "hide",
 );
@@ -442,8 +456,10 @@ onMounted(load);
         secondary
         :disabled="actionsDisabled"
         :loading="deleting"
+        :aria-label="selected.length ? '删除所选图片' : '删除当前图片'"
+        aria-keyshortcuts="d"
         @click="deleteImages(actionIds)"
-        >{{ selected.length ? "删除所选图片" : "删除当前图片" }}</n-button
+        >{{ selected.length ? "删除所选图片" : "删除当前图片" }}<kbd class="shortcut-key" aria-hidden="true">D</kbd></n-button
       >
     </div>
   </div>
@@ -471,8 +487,8 @@ onMounted(load);
               : selected.splice(selected.indexOf(image.id), 1)
           "
         /><button
-          @click="current = i"
-          :disabled="savingBox || savingFaces"
+          @click="moveImage(i)"
+          :disabled="navigationDisabled"
           :aria-label="`审核图片 ${image.id}`"
           :aria-current="i === current ? 'true' : undefined"
         >
@@ -485,13 +501,13 @@ onMounted(load);
         <h3>图片 #{{ active.id }}</h3>
         <div class="review-navigation">
           <span class="muted">{{ current + 1 }} / {{ images.length }}</span>
-          <n-button :disabled="savingBox || savingFaces || current === 0" @click="current--"
-            >上一张</n-button
+          <n-button :disabled="navigationDisabled || current === 0" @click="moveImage(current - 1)" aria-label="上一张" aria-keyshortcuts="ArrowLeft"
+            >上一张<kbd class="shortcut-key" aria-hidden="true">←</kbd></n-button
           >
           <n-button
-            :disabled="savingBox || savingFaces || current >= images.length - 1"
-            @click="current++"
-            >下一张</n-button
+            :disabled="navigationDisabled || current >= images.length - 1"
+            @click="moveImage(current + 1)" aria-label="下一张" aria-keyshortcuts="ArrowRight"
+            >下一张<kbd class="shortcut-key" aria-hidden="true">→</kbd></n-button
           >
         </div>
       </div>
@@ -549,9 +565,10 @@ onMounted(load);
                 :disabled="actionsDisabled || !pendingFaces.length"
                 :loading="savingFaces"
                 aria-label="全部确认"
+                aria-keyshortcuts="c"
                 title="确认当前图片中所有待确认的人脸，采用当前选择的人物"
                 @click="confirmAll"
-                >全部确认</n-button
+                >全部确认<kbd class="shortcut-key" aria-hidden="true">C</kbd></n-button
               >
             </div>
             <div

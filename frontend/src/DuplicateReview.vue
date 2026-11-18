@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useReviewShortcuts } from "./review-shortcuts";
 import { computed, ref, watch } from "vue";
 import { NButton, NModal, useMessage } from "naive-ui";
 import { Copy } from "@lucide/vue";
@@ -22,6 +23,16 @@ watch(() => props.rows, (rows, previous) => {
   const index = rows.findIndex(r => r.a === selected?.a && r.b === selected?.b);
   current.value = index >= 0 ? index : Math.max(0, Math.min(current.value, rows.length - 1));
 });
+function moveGroup(index: number) {
+  if (saving.value || index < 0 || index >= props.rows.length) return;
+  current.value = index;
+}
+useReviewShortcuts({
+  arrowleft: { run: () => moveGroup(current.value - 1), enabled: () => current.value > 0 },
+  arrowright: { run: () => moveGroup(current.value + 1), enabled: () => current.value < props.rows.length - 1 },
+  m: { run: () => decide("merge") },
+  x: { run: () => decide("separate") },
+}, () => !!row.value && !saving.value && !details.value);
 async function decide(action: "merge" | "separate") {
   if (saving.value || !row.value) return;
   saving.value = true;
@@ -44,9 +55,9 @@ async function decide(action: "merge" | "separate") {
   </div>
   <article v-else class="duplicate-review" aria-label="重复图片审核">
     <nav class="duplicate-navigation" aria-label="候选组切换">
-      <n-button :disabled="saving || current === 0" @click="current--">上一组</n-button>
+      <n-button :disabled="saving || current === 0" @click="moveGroup(current - 1)" aria-label="上一组" aria-keyshortcuts="ArrowLeft">上一组<kbd class="shortcut-key" aria-hidden="true">←</kbd></n-button>
       <span aria-live="polite">第 {{ current + 1 }} / {{ rows.length }} 组</span>
-      <n-button :disabled="saving || current === rows.length - 1" @click="current++">下一组</n-button>
+      <n-button :disabled="saving || current === rows.length - 1" @click="moveGroup(current + 1)" aria-label="下一组" aria-keyshortcuts="ArrowRight">下一组<kbd class="shortcut-key" aria-hidden="true">→</kbd></n-button>
     </nav>
     <div class="duplicate-heading">
       <h3>#{{ row.a }} 与 #{{ row.b }}</h3>
@@ -66,8 +77,8 @@ async function decide(action: "merge" | "separate") {
       </section>
     </div>
     <div class="duplicate-actions">
-      <n-button type="primary" :disabled="saving" :loading="saving" @click="decide('merge')">合并为一组</n-button>
-      <n-button :disabled="saving" @click="decide('separate')">{{ row.images[0]?.group_id === row.images[1]?.group_id ? '拆分图片' : '不是重复' }}</n-button>
+      <n-button type="primary" :disabled="saving" :loading="saving" aria-label="合并为一组" aria-keyshortcuts="m" @click="decide('merge')">合并为一组<kbd class="shortcut-key" aria-hidden="true">M</kbd></n-button>
+      <n-button :disabled="saving" :aria-label="row.images[0]?.group_id === row.images[1]?.group_id ? '拆分图片' : '不是重复'" aria-keyshortcuts="x" @click="decide('separate')">{{ row.images[0]?.group_id === row.images[1]?.group_id ? '拆分图片' : '不是重复' }}<kbd class="shortcut-key" aria-hidden="true">X</kbd></n-button>
     </div>
   </article>
   <n-modal :show="!!details" @update:show="!$event && (details = null)" preset="card" role="dialog" aria-modal="true" :title="`图片 #${details?.id} 详情`" class="duplicate-details-dialog" :bordered="false">
