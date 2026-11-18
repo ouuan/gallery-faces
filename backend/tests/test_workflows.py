@@ -1171,3 +1171,23 @@ def test_original_size_migration(client, caplog):
     with db.connect() as conn:
         assert [r[0] for r in conn.execute("SELECT file_size FROM images ORDER BY id")] == [8, 0]
     assert "Original unavailable" in caplog.text
+
+def test_title_uses_representative_face_centers(client):
+    with db.connect(True) as conn:
+        first = image(conn, faces=False)
+        group = conn.execute("SELECT group_id FROM images WHERE id=?", (first,)).fetchone()[0]
+        second = image(conn, faces=False, group=group)
+        for name in ("wide", "left", "ignored", "other"):
+            conn.execute("INSERT INTO people(name) VALUES(?)", (name,))
+        for target, person, box, ignored in [
+            (first, 1, [0, 0, 100, 10], 0),
+            (first, 2, [20, 0, 10, 10], 0),
+            (first, 2, [90, 0, 10, 10], 0),
+            (first, 3, [0, 0, 1, 1], 1),
+            (second, 4, [0, 0, 1, 1], 0),
+        ]:
+            conn.execute("INSERT INTO faces(image_id,person_id,box,ignored) VALUES(?,?,?,?)",
+                         (target, person, json.dumps(box), ignored))
+    detail = client.get(f"/api/v1/gallery/{group}").json()
+    assert [p["name"] for p in detail["people"]] == ["left", "wide"]
+    assert client.get("/api/v1/gallery").json()["items"][0]["people"] == detail["people"]

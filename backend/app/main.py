@@ -691,13 +691,17 @@ def summary(db, row):
     ids = [m["id"] for m in members]
     marks = ",".join("?" for _ in ids)
     image = members[0]
-    labels = [
-        dict(r)
-        for r in db.execute(
-            f"SELECT DISTINCT p.id,p.name FROM people p JOIN faces f ON f.person_id=p.id WHERE f.ignored=0 AND f.image_id IN ({marks}) ORDER BY p.name",
-            ids,
-        )
-    ]
+    labels = []
+    seen = set()
+    for face in db.execute(
+        "SELECT p.id,p.name FROM people p JOIN faces f ON f.person_id=p.id "
+        "WHERE f.ignored=0 AND f.image_id=? "
+        "ORDER BY json_extract(f.box,'$[0]') + json_extract(f.box,'$[2]') / 2.0,f.id",
+        (image["id"],),
+    ):
+        if face["id"] not in seen:
+            labels.append(dict(face))
+            seen.add(face["id"])
     count = db.execute(
         f"SELECT count(DISTINCT post_id) FROM sources WHERE image_id IN ({marks})", ids
     ).fetchone()[0]
