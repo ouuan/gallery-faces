@@ -392,8 +392,7 @@ onUnmounted(() => {
                     }}
                   </p>
                   <div v-if="task.kind === 'download' && (task.payload.start || task.payload.end)" class="task-dates hint">
-                    <span v-if="task.payload.start">下载开始：<time :datetime="task.payload.start">{{ dateLabel(task.payload.start) }}</time></span>
-                    <span v-if="task.payload.end">下载截止：<time :datetime="task.payload.end">{{ dateLabel(task.payload.end) }}</time>（不含）</span>
+                    <span>下载范围：<template v-if="task.payload.start && !task.payload.end">自 </template><time v-if="task.payload.start" :datetime="task.payload.start">{{ dateLabel(task.payload.start) }}</time><template v-else>截至 </template><template v-if="task.payload.start && task.payload.end"> 至 </template><template v-if="task.payload.end"><time :datetime="task.payload.end">{{ dateLabel(task.payload.end) }}</time>（不含）</template><template v-else> 起</template></span>
                   </div>
                   <div v-if="task.created_at || task.finished_at" class="task-dates hint">
                     <span v-if="task.created_at">创建时间：<time :datetime="task.created_at">{{ dateLabel(task.created_at) }}</time></span>
