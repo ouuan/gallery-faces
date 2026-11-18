@@ -78,6 +78,11 @@ function openFilters() {
 function apply(f: Filter) {
   router.push({ query: toQuery(f) });
 }
+function applyAndCloseFilters() {
+  if (!drawer.value) return;
+  apply(draft.value);
+  drawer.value = false;
+}
 function open(photo: Photo) {
   lastFocus = document.activeElement as HTMLElement;
   router.push({
@@ -250,17 +255,19 @@ onUnmounted(() => {
       </div>
     </div>
   </main>
-  <n-drawer v-model:show="drawer" placement="left" width="min(340px, 100vw)"
-    ><n-drawer-content title="筛选照片" closable
+  <n-drawer
+    :show="drawer"
+    placement="left"
+    width="min(340px, 100vw)"
+    aria-label="筛选照片"
+    @update:show="!$event && applyAndCloseFilters()"
+    ><n-drawer-content
       ><Filters v-model="draft" @clear="draft = clearFilters(draft)" /><template
         #footer
         ><n-button
           type="primary"
           block
-          @click="
-            apply(draft);
-            drawer = false;
-          "
+          @click="applyAndCloseFilters"
           >应用筛选</n-button
         ></template
       ></n-drawer-content

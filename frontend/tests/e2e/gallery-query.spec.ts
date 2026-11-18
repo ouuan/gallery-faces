@@ -1,5 +1,64 @@
 import { test, expect } from "@playwright/test";
 
+for (const dismiss of ["mask", "escape", "apply"] as const) {
+  test(`mobile filters apply on ${dismiss} dismissal`, async ({ page }) => {
+    const requests: string[] = [];
+    await page.route("**/api/v1/**", (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/gallery")) {
+        requests.push(url.search);
+        return route.fulfill({ json: { items: [], next_cursor: null } });
+      }
+      return route.fulfill({ json: /\/(people|groups)$/.test(url.pathname) ? [] : {} });
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/?match=all&sort=oldest");
+    await expect.poll(() => requests.length).toBe(1);
+    const drawer = page.getByRole("dialog", { name: "筛选照片", exact: true });
+    const open = () => page.getByRole("button", { name: "筛选", exact: true }).click();
+    const close = async () => {
+      if (dismiss === "mask") await page.mouse.click(375, 400);
+      else if (dismiss === "escape") await page.keyboard.press("Escape");
+      else await drawer.getByRole("button", { name: "应用筛选" }).click();
+      await expect(drawer).toBeHidden();
+    };
+    const params = () => Object.fromEntries(new URL(page.url()).searchParams);
+    const apiParams = () => Object.fromEntries(new URLSearchParams(requests.at(-1)));
+    const original = { match: "all", sort: "oldest" };
+    await open();
+    await expect(drawer.getByRole("heading", { name: "筛选照片", exact: true })).toHaveCount(1);
+    await expect(drawer.locator(".n-drawer-header__close")).toHaveCount(0);
+    await expect(drawer.getByRole("button", { name: "应用筛选" })).toBeVisible();
+    await drawer.getByLabel("开始日期").fill("2026-01-02");
+    await drawer.getByRole("checkbox", { name: "包含无人脸图片" }).check();
+    expect(params()).toEqual(original);
+    expect(requests).toHaveLength(1);
+    await close();
+    const applied = { ...original, start: "2026-01-02", include_no_faces: "true" };
+    await expect.poll(params).toEqual(applied);
+    await expect.poll(apiParams).toEqual(applied);
+    expect(requests).toHaveLength(2);
+
+    await open();
+    await expect(drawer.getByLabel("开始日期")).toHaveValue("2026-01-02");
+    await expect(drawer.getByRole("checkbox", { name: "包含无人脸图片" })).toBeChecked();
+    await close();
+    expect(requests).toHaveLength(2);
+
+    await open();
+    await drawer.getByRole("button", { name: "清空", exact: true }).click();
+    expect(params()).toEqual(applied);
+    expect(requests).toHaveLength(2);
+    await close();
+    await expect.poll(params).toEqual({ sort: "oldest" });
+    await expect.poll(apiParams).toEqual({ sort: "oldest" });
+    expect(requests).toHaveLength(3);
+    await open();
+    await expect(drawer.getByLabel("开始日期")).toHaveValue("");
+    await expect(drawer.getByRole("checkbox", { name: "包含无人脸图片" })).not.toBeChecked();
+  });
+}
+
 test("gallery query restores filters, follows history and clears applied filters", async ({ page }) => {
   const requests: string[] = [];
   await page.route("**/api/v1/**", (route) => {
