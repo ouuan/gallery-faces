@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS posts(id INTEGER PRIMARY KEY, platform TEXT NOT NULL,
 CREATE TABLE IF NOT EXISTS sources(id INTEGER PRIMARY KEY, image_id INTEGER NOT NULL REFERENCES images, post_id INTEGER NOT NULL REFERENCES posts, media_key TEXT NOT NULL, UNIQUE(post_id,media_key));
 CREATE TABLE IF NOT EXISTS faces(id INTEGER PRIMARY KEY, image_id INTEGER NOT NULL REFERENCES images, box TEXT NOT NULL, embedding BLOB, model_version TEXT, person_id INTEGER REFERENCES people ON DELETE SET NULL, locked INTEGER NOT NULL DEFAULT 0, ignored INTEGER NOT NULL DEFAULT 0, candidates TEXT NOT NULL DEFAULT '[]', revision INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS reference_images(id INTEGER PRIMARY KEY, person_id INTEGER NOT NULL REFERENCES people ON DELETE CASCADE, image_id INTEGER REFERENCES images, face_id INTEGER REFERENCES faces, filename TEXT, box TEXT, embedding BLOB NOT NULL, model_version TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS tasks(id INTEGER PRIMARY KEY, kind TEXT NOT NULL, image_id INTEGER REFERENCES images, payload TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'queued', stage TEXT NOT NULL DEFAULT '等待处理', target_version INTEGER NOT NULL DEFAULT 0, processed_version INTEGER NOT NULL DEFAULT -1, done INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0, speed REAL NOT NULL DEFAULT 0, error TEXT, cancel_requested INTEGER NOT NULL DEFAULT 0, created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')));
+CREATE TABLE IF NOT EXISTS tasks(id INTEGER PRIMARY KEY, kind TEXT NOT NULL, image_id INTEGER REFERENCES images, payload TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'queued', stage TEXT NOT NULL DEFAULT '等待处理', target_version INTEGER NOT NULL DEFAULT 0, processed_version INTEGER NOT NULL DEFAULT -1, done INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0, speed REAL NOT NULL DEFAULT 0, error TEXT, cancel_requested INTEGER NOT NULL DEFAULT 0, finished_at TEXT, created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')));
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_rematch ON tasks(image_id) WHERE kind='rematch' AND status IN ('queued','running');
 CREATE TABLE IF NOT EXISTS duplicate_decisions(a INTEGER REFERENCES images, b INTEGER REFERENCES images, decision TEXT NOT NULL, score REAL, PRIMARY KEY(a,b));
 CREATE TABLE IF NOT EXISTS review_history(id INTEGER PRIMARY KEY, face_id INTEGER REFERENCES faces, before_json TEXT NOT NULL, after_revision INTEGER NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
@@ -93,6 +93,10 @@ def init():
         db.execute("PRAGMA journal_mode=WAL")
         db.executescript(SCHEMA)
     with connect(True) as db:
+        task_columns = {row[1] for row in db.execute("PRAGMA table_info(tasks)")}
+        for column in ("finished_at",):
+            if column not in task_columns:
+                db.execute(f"ALTER TABLE tasks ADD COLUMN {column} TEXT")
         if "author_name" not in {row[1] for row in db.execute("PRAGMA table_info(posts)")}:
             db.execute("ALTER TABLE posts ADD COLUMN author_name TEXT")
         if "box" not in {row[1] for row in db.execute("PRAGMA table_info(reference_images)")}:
@@ -118,7 +122,7 @@ def init():
             db.execute(f"CREATE INDEX IF NOT EXISTS image_{column} ON images({column})")
     backfill_media_hashes()
     with connect(True) as db:
-        db.execute("UPDATE schema_version SET version=7 WHERE version<7")
+        db.execute("UPDATE schema_version SET version=8 WHERE version<8")
 
 
 def file_hash(path):

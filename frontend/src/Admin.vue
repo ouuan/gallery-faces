@@ -12,7 +12,7 @@ import {
   useMessage,
 } from "naive-ui";
 import { Download, Users, ScanFace, Copy, Settings, LogOut } from "@lucide/vue";
-import { api, send } from "./api";
+import { api, send, dateLabel } from "./api";
 import { useLibrary } from "./store";
 import { usePageTitle } from "./page-title";
 import People from "./People.vue";
@@ -62,6 +62,7 @@ const taskKindLabels: Record<string, string> = {
 const taskStatusLabels = {
   queued: "排队中", running: "执行中", done: "已完成", failed: "失败", cancelled: "已取消",
 };
+const taskFinishLabels: Record<string, string> = { done: "完成时间", failed: "失败时间", cancelled: "取消时间" };
 const taskKindOptions = Object.entries(taskKindLabels).map(([value, label]) => ({ value, label }));
 const taskStatusOptions = Object.entries(taskStatusLabels).map(([value, label]) => ({ value, label }));
 const hasTaskFilters = computed(() => taskKinds.value.length > 0 || taskStatuses.value.length > 0);
@@ -99,7 +100,7 @@ async function loadTasks(page = taskPage.value, background = false) {
       page: number;
     }>(`/admin/tasks?${query}`, { signal });
     if (request !== taskRequest) return;
-    tasks.value = data.items;
+    tasks.value = data.items.map(task => ({ ...task, payload: JSON.parse(task.payload) }));
     taskTotal.value = data.total;
     taskPage.value = data.page;
     tasksError.value = "";
@@ -384,11 +385,19 @@ onUnmounted(() => {
                   >
                   <p class="task-target">
                     {{
-                      JSON.parse(task.payload).url ||
-                      JSON.parse(task.payload).directory ||
+                      task.payload.url ||
+                      task.payload.directory ||
                       (task.image_id ? "图片 #" + task.image_id : "")
                     }}
                   </p>
+                  <div v-if="task.kind === 'download' && (task.payload.start || task.payload.end)" class="task-dates hint">
+                    <span v-if="task.payload.start">下载开始：<time :datetime="task.payload.start">{{ dateLabel(task.payload.start) }}</time></span>
+                    <span v-if="task.payload.end">下载截止：<time :datetime="task.payload.end">{{ dateLabel(task.payload.end) }}</time>（不含）</span>
+                  </div>
+                  <div v-if="task.created_at || task.finished_at" class="task-dates hint">
+                    <span v-if="task.created_at">创建时间：<time :datetime="task.created_at">{{ dateLabel(task.created_at) }}</time></span>
+                    <span v-if="task.finished_at && taskFinishLabels[task.status]">{{ taskFinishLabels[task.status] }}：<time :datetime="task.finished_at">{{ dateLabel(task.finished_at) }}</time></span>
+                  </div>
                   <p v-if="task.error" class="error-text">{{ task.error }}</p>
                 </td>
                 <td>
@@ -587,6 +596,16 @@ onUnmounted(() => {
 }
 .task-table {
   min-width: 640px;
+}
+.task-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.task-dates time {
+  white-space: nowrap;
 }
 .task-metric {
   white-space: nowrap;

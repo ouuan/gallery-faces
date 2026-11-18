@@ -65,7 +65,7 @@ def rematch(task):
                     "SELECT cancel_requested FROM tasks WHERE id=?", (task["id"],)
                 ).fetchone()[0]:
                     db.execute(
-                        "UPDATE tasks SET status='cancelled',stage='已取消' WHERE id=?",
+                        "UPDATE tasks SET status='cancelled',finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),stage='已取消' WHERE id=?",
                         (task["id"],),
                     )
                     return
@@ -97,7 +97,7 @@ def rematch(task):
             )
             if latest <= version or not remaining:
                 db.execute(
-                    "UPDATE tasks SET status='done',stage='已完成' WHERE id=?",
+                    "UPDATE tasks SET status='done',finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),stage='已完成' WHERE id=?",
                     (task["id"],),
                 )
                 return
@@ -318,7 +318,7 @@ def claim(kinds=("detect", "rematch", "import", "download")):
             return None
         task = dict(task)
         db.execute(
-            "UPDATE tasks SET status='running',stage=?,done=0,speed=0,total=CASE WHEN kind='detect' THEN 1 ELSE 0 END WHERE id=?",
+            "UPDATE tasks SET status='running',finished_at=NULL,stage=?,done=0,speed=0,total=CASE WHEN kind='detect' THEN 1 ELSE 0 END WHERE id=?",
             ("检测人脸" if task["kind"] == "detect" else "开始处理", task["id"]),
         )
         return task
@@ -345,13 +345,13 @@ def execute(task):
             import_task(task)
         with connect(True) as db:
             db.execute(
-                "UPDATE tasks SET status=CASE WHEN cancel_requested THEN 'cancelled' ELSE 'done' END,stage=CASE WHEN cancel_requested THEN '已取消' ELSE '已完成' END WHERE id=?",
+                "UPDATE tasks SET status=CASE WHEN cancel_requested THEN 'cancelled' ELSE 'done' END,finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),stage=CASE WHEN cancel_requested THEN '已取消' ELSE '已完成' END WHERE id=?",
                 (task["id"],),
             )
     except DetectionCancelled:
         with connect(True) as db:
             db.execute(
-                "UPDATE tasks SET status='cancelled',stage='已取消' WHERE id=?",
+                "UPDATE tasks SET status='cancelled',finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),stage='已取消' WHERE id=?",
                 (task["id"],),
             )
     except Exception as error:
@@ -360,7 +360,7 @@ def execute(task):
                 str(error) if isinstance(error, ValueError) else type(error).__name__
             )
             db.execute(
-                "UPDATE tasks SET status='failed',stage='处理失败',error=? WHERE id=?",
+                "UPDATE tasks SET status='failed',finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),stage='处理失败',error=? WHERE id=?",
                 (message, task["id"]),
             )
             if task["kind"] == "detect":
@@ -394,7 +394,7 @@ def main():
 def recover_tasks():
     with connect(True) as db:
         db.execute(
-            "UPDATE tasks SET status=CASE WHEN cancel_requested THEN 'cancelled' ELSE 'queued' END WHERE status='running'"
+            "UPDATE tasks SET status=CASE WHEN cancel_requested THEN 'cancelled' ELSE 'queued' END,finished_at=CASE WHEN cancel_requested THEN strftime('%Y-%m-%dT%H:%M:%SZ','now') ELSE NULL END WHERE status='running'"
         )
 
 

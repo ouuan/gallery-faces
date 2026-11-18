@@ -1512,7 +1512,7 @@ def task_action(
             fail("任务不存在", 404)
         if action == "cancel":
             db.execute(
-                "UPDATE tasks SET cancel_requested=1,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END WHERE id=? AND status IN ('queued','running')",
+                "UPDATE tasks SET cancel_requested=1,finished_at=CASE WHEN status='queued' THEN strftime('%Y-%m-%dT%H:%M:%SZ','now') ELSE finished_at END,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END WHERE id=? AND status IN ('queued','running')",
                 (task_id,),
             )
         elif row["status"] in ("failed", "cancelled"):
@@ -1525,7 +1525,7 @@ def task_action(
             ):
                 fail("已有活动重匹配任务", 409)
             db.execute(
-                "UPDATE tasks SET status='queued',stage='等待重试',error=NULL,cancel_requested=0,done=0,total=0,speed=0 WHERE id=?",
+                "UPDATE tasks SET status='queued',finished_at=NULL,stage='等待重试',error=NULL,cancel_requested=0,done=0,total=0,speed=0 WHERE id=?",
                 (task_id,),
             )
         else:
