@@ -21,11 +21,11 @@ test("review more menu adds references for the selected person", async ({ page }
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/admin/review?state=all");
   const row = page.locator(".face-review").first();
-  const more = row.getByRole("button", { name: "更多", exact: true });
-  const reference = page.getByRole("menuitem", { name: "添加参考图" });
+  const more = row.getByRole("button", { name: "新增", exact: true });
+  const reference = page.getByRole("menuitem", { name: "参考图", exact: true });
   await more.hover();
   await expect(reference).toHaveAttribute("aria-disabled", "true");
-  await page.getByRole("menuitem", { name: "添加新人物" }).click();
+  await page.getByRole("menuitem", { name: "人物", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("从人脸添加人物");
   await page.getByRole("button", { name: "取消", exact: true }).click();
   await row.getByText("人物8", { exact: false }).click();
@@ -38,7 +38,7 @@ test("review more menu adds references for the selected person", async ({ page }
   await reference.click();
   await expect(page.getByText("参考图已添加", { exact: true })).toBeVisible();
   expect(requests).toEqual(Array(2).fill({ path: "/api/v1/admin/people/8/references", body: { face_id: 1 } }));
-  await page.locator(".face-review").nth(1).getByRole("button", { name: "更多", exact: true }).hover();
+  await page.locator(".face-review").nth(1).getByRole("button", { name: "新增", exact: true }).hover();
   await expect(reference).toHaveAttribute("aria-disabled", "true");
   await page.mouse.move(0, 0);
   await expect(reference).toBeHidden();

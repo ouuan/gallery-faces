@@ -276,9 +276,9 @@ function facePerson(face: any): number | null {
 }
 function faceMoreOptions(face: any): DropdownOption[] {
   return [
-    { label: "添加新人物", key: "person", props: { role: "menuitem" } },
+    { label: "人物", key: "person", props: { role: "menuitem" } },
     {
-      label: "添加参考图",
+      label: "参考图",
       key: "reference",
       disabled: facePerson(face) === null || !face.has_embedding,
       props: {
@@ -701,7 +701,7 @@ onMounted(load);
                     @click="moreFace = face.id"
                     @keydown.down.prevent="moreFace = face.id"
                     @keydown.esc="moreFace = null"
-                  >更多</n-button>
+                  >新增</n-button>
                 </n-dropdown>
                 <n-button type="error" secondary :disabled="savingFaces" @click="edit(face, true)"
                   >删除</n-button

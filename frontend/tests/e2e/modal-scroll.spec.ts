@@ -52,10 +52,10 @@ for (const width of [390, 1280]) {
       if (kind === "group") await page.getByRole("button", { name: "分组", exact: true }).click();
       const open = async () => {
         if (kind === "person") {
-          const more = page.getByRole("button", { name: "更多", exact: true }).first();
+          const more = page.getByRole("button", { name: "新增", exact: true }).first();
           await more.focus();
           await page.keyboard.press("Enter");
-          await page.getByRole("menuitem", { name: "添加新人物" }).click();
+          await page.getByRole("menuitem", { name: "人物", exact: true }).click();
         } else {
           await page.getByRole("button", { name: kind === "source" ? "补全 / 编辑" : "编辑成员", exact: true }).first().click();
         }
