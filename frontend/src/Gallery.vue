@@ -40,8 +40,7 @@ const photos = ref<Photo[]>([]),
   error = ref(""),
   detail = ref<Photo | null>(null),
   detailError = ref(""),
-  zoom = ref(1),
-  allSources = ref(false);
+  zoom = ref(1);
 const authenticated = ref(false);
 let requestVersion = 0,
   detailVersion = 0,
@@ -93,7 +92,6 @@ async function loadDetail() {
   detailError.value = "";
   detail.value = null;
   zoom.value = 1;
-  allSources.value = false;
   if (!selectedId.value) return;
   try {
     const result = await api<Photo>(
@@ -317,68 +315,15 @@ onUnmounted(() => window.removeEventListener("keydown", keys));
             {{ detail.width }} × {{ detail.height }} ·
             {{ detail.source_count }} 个来源
           </p>
-          <div class="source-block">
-            <h3>当前匹配来源</h3>
-            <p>
-              {{ platformLabel(detail.matched_source.platform) }} ·
-              {{ store.publisherName(detail.matched_source) }}
+          <div v-for="source in detail.sources" :key="source.id" class="source-block">
+            <h3>{{ platformLabel(source.platform) }} · {{ store.publisherName(source) }}</h3>
+            <time>{{ dateLabel(source.published_at) }}</time>
+            <p v-if="detail.source_count > 1" class="muted">
+              {{ [...new Set((source.images || []).map(image => image.width + " × " + image.height))].join("、") }}
             </p>
-            <time>{{
-              dateLabel(detail.matched_source.published_at)
-            }}</time><SourceText
-              :key="detail.matched_source.id"
-              :text="detail.matched_source.post_text"
-            /><a
-              :href="detail.matched_source.url"
-              target="_blank"
-              rel="noopener noreferrer"
-              >打开此帖子 <ExternalLink :size="14"
-            /></a>
+            <SourceText :text="source.post_text" />
+            <a :href="source.url" target="_blank" rel="noopener noreferrer">打开帖子 <ExternalLink :size="14" /></a>
           </div>
-          <div
-            v-if="
-              detail.earliest_source &&
-              detail.earliest_source.id !== detail.matched_source.id
-            "
-            class="source-block"
-          >
-            <h3>最早收录来源</h3>
-            <p>
-              {{ platformLabel(detail.earliest_source.platform) }} ·
-              {{ store.publisherName(detail.earliest_source) }}
-            </p>
-            <time>{{
-              dateLabel(detail.earliest_source!.published_at)
-            }}</time><SourceText :text="detail.earliest_source?.post_text" />
-          </div>
-          <a
-            v-if="detail.source_count > 1"
-            class="primary-link"
-            :href="detail.earliest_source?.url"
-            target="_blank"
-            rel="noopener noreferrer"
-            >查看来源（最早收录帖子）</a
-          ><n-button
-            v-if="detail.source_count > 1"
-            @click="allSources = !allSources"
-            >{{ allSources ? "收起" : "全部来源" }}</n-button
-          ><template v-if="allSources"
-            ><div
-              v-for="source in detail.sources"
-              :key="source.id"
-              class="source-block"
-            >
-              <h3>
-                {{ platformLabel(source.platform) }} ·
-                {{ store.publisherName(source) }}
-              </h3>
-              <time>{{ dateLabel(source.published_at) }}</time><SourceText
-                :text="source.post_text"
-              /><a :href="source.url" target="_blank" rel="noopener noreferrer"
-                >打开帖子</a
-              >
-            </div></template
-          >
           <FeedbackPanel :key="detail.image_id" :image-id="detail.image_id" :pending-count="detail.pending_feedback_count" @changed="detail.pending_feedback_count = (detail.pending_feedback_count || 0) + 1" />
         </aside>
       </div>

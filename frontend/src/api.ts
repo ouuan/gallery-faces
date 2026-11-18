@@ -69,6 +69,7 @@ export function publisherLabel(source: Source, people: Person[]) {
     "缺少发布者"
   );
 }
+export type DetailSource = Source & { images: { image_id: number; width: number; height: number }[] };
 export type Photo = {
   id: number;
   image_id: number;
@@ -78,7 +79,7 @@ export type Photo = {
   source_count: number;
   pending_feedback_count?: number;
   matched_source: Source;
-  sources?: Source[];
+  sources?: DetailSource[];
   earliest_source?: Source;
   members?: any[];
 };

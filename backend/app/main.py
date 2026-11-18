@@ -781,6 +781,14 @@ def detail(group_id: int, matched_post: int | None = None):
                 ids,
             )
         ]
+        for source in sources:
+            source["images"] = [
+                dict(row) for row in db.execute(
+                    f"SELECT DISTINCT i.id AS image_id,i.width,i.height FROM images i "
+                    f"JOIN sources s ON s.image_id=i.id WHERE s.post_id=? AND i.id IN ({marks}) ORDER BY i.id",
+                    [source["id"], *ids],
+                )
+            ]
         matched = next((s for s in sources if s["id"] == matched_post), sources[0])
         result = summary(
             db,
