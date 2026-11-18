@@ -11,6 +11,7 @@ import {
 import { useLibrary } from "./store";
 import { hasFilters, type Filter } from "./filters";
 import { platformLabel } from "./api";
+import DateRangeHint from "./DateRangeHint.vue";
 import PeopleMultiSelect from "./PeopleMultiSelect.vue";
 const props = defineProps<{ modelValue: Filter }>(),
   emit = defineEmits(["update:modelValue", "clear"]);
@@ -155,6 +156,7 @@ const publisherExtraOptions = computed(() => {
           :value="modelValue.end"
           @input="set('end', ($event.target as HTMLInputElement).value)"
       /></label>
+      <DateRangeHint :start="modelValue.start" :end="modelValue.end" />
     </fieldset>
     <n-checkbox
       :checked="modelValue.include_no_faces"

@@ -655,6 +655,56 @@
         }
       }
     },
+    "/api/v1/date-bounds": {
+      "get": {
+        "summary": "Date Bounds Preview",
+        "operationId": "date_bounds_preview_api_v1_date_bounds_get",
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DateBounds"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/gallery": {
       "get": {
         "summary": "Gallery",
@@ -2075,6 +2125,64 @@
           "box"
         ],
         "title": "BoxInput"
+      },
+      "DateBoundary": {
+        "properties": {
+          "utc": {
+            "type": "string",
+            "title": "Utc"
+          },
+          "offset_seconds": {
+            "type": "integer",
+            "title": "Offset Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "utc",
+          "offset_seconds"
+        ],
+        "title": "DateBoundary"
+      },
+      "DateBounds": {
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DateBoundary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "end": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DateBoundary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_offset_seconds": {
+            "type": "integer",
+            "title": "Current Offset Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timezone",
+          "start",
+          "end",
+          "current_offset_seconds"
+        ],
+        "title": "DateBounds"
       },
       "DuplicateInput": {
         "properties": {

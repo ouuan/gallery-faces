@@ -16,6 +16,7 @@ import { usePageTitle } from "./page-title";
 import People from "./People.vue";
 import Review from "./Review.vue";
 import DuplicateReview from "./DuplicateReview.vue";
+import DateRangeHint from "./DateRangeHint.vue";
 import CookieGuide from "./CookieGuide.vue";
 const store = useLibrary();
 const router = useRouter();
@@ -294,6 +295,7 @@ onUnmounted(() => {
               >结束日期（含当天）<input v-model="end" type="date"
             /></label>
           </div>
+          <DateRangeHint :start="start" :end="end" />
           <n-button
             type="primary"
             attr-type="submit"

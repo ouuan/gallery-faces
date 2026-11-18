@@ -54,7 +54,10 @@ test("all sources render once and legacy source changes do not reload details", 
   await page.goto("/?photo=1&source=99");
   const sources = page.locator(".source-block");
   await expect(sources).toHaveCount(2);
-  await expect(sources.first()).toContainText("01:02");
+  const localTime = await page.evaluate(value => new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).format(new Date(value)), source.published_at);
+  await expect(sources.first()).toContainText(localTime);
   await expect(sources.first().locator(".source-resolution > span:last-child")).toHaveText("800 × 600");
   await expect(sources.last().locator(".source-resolution > span:last-child")).toHaveText("1200 × 900");
   await expect(sources.getByRole("link", { name: "X · fixture", exact: true })).toHaveCount(2);

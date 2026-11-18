@@ -4,11 +4,11 @@ import { useRouter } from "vue-router";
 import { NAlert, NButton, NModal } from "naive-ui";
 import {
   send,
-  siteTimezone,
   platformLabel,
   type Person,
   type ImportResult,
 } from "./api";
+import DateRangeHint from "./DateRangeHint.vue";
 const props = defineProps<{ people: Person[] }>();
 const emit = defineEmits<{ close: []; busy: [value: boolean] }>();
 const router = useRouter();
@@ -143,9 +143,8 @@ function viewTasks() {
               :disabled="busy"
           /></label>
         </div>
-        <p class="hint">
-          按站点时区 {{ siteTimezone }} 计算；留空表示不限对应日期
-        </p>
+        <DateRangeHint :start="start" :end="end" />
+        <p class="hint">留空表示不限对应日期</p>
         <n-alert v-if="invalidRange" type="error"
           >结束日期不能早于开始日期</n-alert
         >

@@ -591,30 +591,47 @@ def reference_delete(reference_id: int, _: None = Depends(admin)):
     return {"ok": True}
 
 
+class DateBoundary(BaseModel):
+    utc: str
+    offset_seconds: int
+
+
+class DateBounds(BaseModel):
+    timezone: str
+    start: DateBoundary | None
+    end: DateBoundary | None
+    current_offset_seconds: int
+
+
+def date_range_info(start, end, zone):
+    tz = ZoneInfo(zone)
+    def boundary(value, exclusive=False):
+        if not value:
+            return None
+        if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+            fail("日期格式应为 YYYY-MM-DD")
+        try:
+            local = (datetime.fromisoformat(value) + timedelta(days=int(exclusive))).replace(tzinfo=tz)
+            utc = local.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        except (ValueError, OverflowError):
+            fail("日期无效或超出支持范围")
+        return DateBoundary(utc=utc, offset_seconds=int(local.utcoffset().total_seconds()))
+    lower, upper = boundary(start), boundary(end, True)
+    if lower and upper and lower.utc >= upper.utc:
+        fail("结束日期不能早于开始日期")
+    return DateBounds(timezone=zone, start=lower, end=upper,
+                      current_offset_seconds=int(datetime.now(tz).utcoffset().total_seconds()))
+
+
 def date_bounds(start, end, zone):
-    try:
-        tz = ZoneInfo(zone)
-        lower = (
-            datetime.fromisoformat(start)
-            .replace(tzinfo=tz)
-            .astimezone(timezone.utc)
-            .strftime("%Y-%m-%dT%H:%M:%SZ")
-            if start
-            else None
-        )
-        upper = (
-            (datetime.fromisoformat(end) + timedelta(days=1))
-            .replace(tzinfo=tz)
-            .astimezone(timezone.utc)
-            .strftime("%Y-%m-%dT%H:%M:%SZ")
-            if end
-            else None
-        )
-        if lower and upper and lower >= upper:
-            fail("结束日期不能早于开始日期")
-        return lower, upper
-    except ValueError:
-        fail("日期格式应为 YYYY-MM-DD")
+    result = date_range_info(start, end, zone)
+    return result.start.utc if result.start else None, result.end.utc if result.end else None
+
+
+@app.get("/api/v1/date-bounds", response_model=DateBounds)
+def date_bounds_preview(start: str = "", end: str = ""):
+    with connect() as db:
+        return date_range_info(start, end, settings(db)["timezone"])
 
 
 def gallery_rows(

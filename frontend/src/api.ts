@@ -93,7 +93,6 @@ export function setSiteTimezone(value: string) {
 export const dateLabel = (value: string | null | undefined) =>
   !value ? "缺少日期" :
   new Intl.DateTimeFormat("zh-CN", {
-    timeZone: siteTimezone.value,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

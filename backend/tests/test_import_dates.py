@@ -107,3 +107,39 @@ def test_site_timezone_dst_boundaries(client):
     from app.main import date_bounds
     assert date_bounds('2026-03-08', '2026-03-08', 'America/New_York') == (
         '2026-03-08T05:00:00Z', '2026-03-09T04:00:00Z')
+
+
+@pytest.mark.parametrize('zone,day,lower,upper,offsets', [
+    ('Asia/Shanghai', '2026-11-18', '2026-11-17T16:00:00Z', '2026-11-18T16:00:00Z', (28800, 28800)),
+    ('America/New_York', '2026-03-08', '2026-03-08T05:00:00Z', '2026-03-09T04:00:00Z', (-18000, -14400)),
+    ('America/New_York', '2026-11-01', '2026-11-01T04:00:00Z', '2026-11-02T05:00:00Z', (-14400, -18000)),
+    ('Asia/Kolkata', '2026-01-01', '2025-12-31T18:30:00Z', '2026-01-01T18:30:00Z', (19800, 19800)),
+    ('Asia/Kathmandu', '2026-01-01', '2025-12-31T18:15:00Z', '2026-01-01T18:15:00Z', (20700, 20700)),
+])
+def test_date_bounds_preview_matches_import(client, zone, day, lower, upper, offsets):
+    with db.connect(True) as conn:
+        conn.execute("UPDATE settings SET value=? WHERE key='timezone'", (zone,))
+    info = client.get('/api/v1/date-bounds', params={'start': day, 'end': day}).json()
+    assert info['timezone'] == zone
+    assert info['start'] == {'utc': lower, 'offset_seconds': offsets[0]}
+    assert info['end'] == {'utc': upper, 'offset_seconds': offsets[1]}
+    task = client.post('/api/v1/admin/import', json={'urls': ['https://x.com/alice'], 'start': day, 'end': day}).json()[0]
+    with db.connect() as conn:
+        payload = json.loads(conn.execute('SELECT payload FROM tasks WHERE id=?', (task['task_id'],)).fetchone()[0])
+    assert (payload['start'], payload['end']) == (lower, upper)
+    for params in ({}, {'start': day}, {'end': day}):
+        result = client.get('/api/v1/date-bounds', params=params).json()
+        assert (result['start'] is None) == ('start' not in params)
+        assert (result['end'] is None) == ('end' not in params)
+        assert isinstance(result['current_offset_seconds'], int)
+
+
+@pytest.mark.parametrize('params', [
+    {'start': '2026-11-18T12:34:56+00:00'}, {'start': '20261118'},
+    {'start': '2026-02-30'}, {'end': '9999-12-31'},
+    {'start': '2026-11-19', 'end': '2026-11-18'},
+])
+def test_invalid_dates_rejected_consistently(client, params):
+    assert client.get('/api/v1/date-bounds', params=params).status_code == 400
+    assert client.get('/api/v1/gallery', params=params).status_code == 400
+    assert client.post('/api/v1/admin/import', json={'urls': ['https://x.com/alice'], **params}).status_code == 400

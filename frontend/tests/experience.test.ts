@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { computed } from "vue";
 import { createPinia, setActivePinia } from "pinia";
 import { dateLabel, setSiteTimezone } from "../src/api";
 import { clearFilters, emptyFilter, hasFilters } from "../src/filters";
@@ -12,12 +11,16 @@ describe("gallery experience", () => {
     expect(hasFilters({ ...sorted, include_no_faces: true })).toBe(true);
     expect(clearFilters({ ...sorted, people: [1] })).toEqual({ ...emptyFilter(), sort: "oldest" });
   });
-  it("reactively formats publication times to the minute", () => {
-    setSiteTimezone("Asia/Shanghai");
-    const label = computed(() => dateLabel("2026-01-01T15:04:59Z"));
-    expect(label.value).toContain("23:04");
-    setSiteTimezone("UTC");
-    expect(label.value).toContain("15:04");
+  it("formats times in the browser timezone independently of site settings", () => {
+    const date = "2026-01-01T15:04:59Z";
+    const expected = new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).format(new Date(date));
+    for (const zone of ["Asia/Shanghai", "UTC", "America/New_York"]) {
+      setSiteTimezone(zone);
+      expect(dateLabel(date)).toBe(expected);
+    }
     expect(dateLabel(null)).toBe("缺少日期");
   });
   it("shares concurrent loads and caches site configuration until forced", async () => {

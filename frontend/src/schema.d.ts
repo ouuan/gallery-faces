@@ -279,6 +279,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/date-bounds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Date Bounds Preview */
+        get: operations["date_bounds_preview_api_v1_date_bounds_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/gallery": {
         parameters: {
             query?: never;
@@ -722,6 +739,22 @@ export interface components {
             box: number[];
             /** Person Id */
             person_id?: number | null;
+        };
+        /** DateBoundary */
+        DateBoundary: {
+            /** Utc */
+            utc: string;
+            /** Offset Seconds */
+            offset_seconds: number;
+        };
+        /** DateBounds */
+        DateBounds: {
+            /** Timezone */
+            timezone: string;
+            start: components["schemas"]["DateBoundary"] | null;
+            end: components["schemas"]["DateBoundary"] | null;
+            /** Current Offset Seconds */
+            current_offset_seconds: number;
         };
         /** DuplicateInput */
         DuplicateInput: {
@@ -1579,6 +1612,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    date_bounds_preview_api_v1_date_bounds_get: {
+        parameters: {
+            query?: {
+                start?: string;
+                end?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DateBounds"];
                 };
             };
             /** @description Validation Error */
