@@ -2187,6 +2187,11 @@ export interface operations {
             query?: {
                 state?: string;
                 image_id?: number | null;
+                start?: string;
+                end?: string;
+                people?: string;
+                match?: "any" | "all";
+                publishers?: string;
             };
             header?: never;
             path?: never;

@@ -11,6 +11,7 @@ test.beforeEach(async ({ page }) => {
         : url.searchParams.get("state") === "failed" ? [] : [11, 22, 33];
       return route.fulfill({ json: ids.map((id) => ({ id, width: 800, height: 600, detection: "done", faces: [], sources: [] })) });
     }
+    if (path.endsWith("/date-bounds")) return route.fulfill({ json: { timezone: "UTC", start: null, end: null, current_offset_seconds: 0 } });
     if (path.endsWith("/feedback")) return route.fulfill({ json: { items: [], next_cursor: null } });
     if (path.endsWith("/session")) return route.fulfill({ json: { admin: true } });
     if (path.endsWith("/site") || path.endsWith("/settings")) return route.fulfill({ json: {} });
@@ -61,5 +62,42 @@ test("falls back for invalid categories and missing images", async ({ page }) =>
     await expect(page.getByRole("heading", { name: "代表图 #11 · 共 1 个版本", exact: true })).toBeVisible();
     await expect(page).toHaveURL(/image=11/);
     expect(new URL(page.url()).searchParams.get("state")).toBe(query.includes("unknown") ? "unknown" : query.includes("state=all") ? "all" : "review");
+  }
+});
+
+
+test("edits gallery filters in a modal, applies together, restores and clears", async ({ page }) => {
+  const requests: URL[] = [];
+  page.on("request", request => {
+    const url = new URL(request.url());
+    if (url.pathname.endsWith("/admin/images")) requests.push(url);
+  });
+  await page.goto("/admin/review?state=unknown&image=22&people=1,2&match=all&publishers=x:alice");
+  await expect(page.getByRole("heading", { name: "代表图 #22 · 共 1 个版本", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "筛选（已启用）", exact: true }).click();
+  await expect(page.getByText("包含无人脸图片", { exact: true })).toHaveCount(0);
+  await page.getByLabel("开始日期", { exact: true }).fill("2026-01-02");
+  await page.getByLabel("结束日期", { exact: true }).fill("2026-01-03");
+  expect(requests).toHaveLength(1);
+  await page.getByRole("button", { name: "取消", exact: true }).click();
+  await page.getByRole("button", { name: "筛选（已启用）", exact: true }).click();
+  await expect(page.getByLabel("开始日期", { exact: true })).toHaveValue("");
+  await page.getByLabel("开始日期", { exact: true }).fill("2026-01-02");
+  await page.getByLabel("结束日期", { exact: true }).fill("2026-01-03");
+  await page.getByRole("button", { name: "应用筛选", exact: true }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.get("end")).toBe("2026-01-03");
+  for (const [key, value] of Object.entries({state:"unknown",people:"1,2",match:"all",publishers:"x:alice"})) {
+    expect(requests.at(-1)?.searchParams.get(key)).toBe(value);
+  }
+  await page.reload();
+  await page.getByRole("button", { name: "筛选（已启用）", exact: true }).click();
+  await expect(page.getByLabel("开始日期", { exact: true })).toHaveValue("2026-01-02");
+  await expect(page.getByLabel("结束日期", { exact: true })).toHaveValue("2026-01-03");
+  await page.getByRole("button", { name: "清空", exact: true }).click();
+  expect(new URL(page.url()).searchParams.has("end")).toBe(true);
+  await page.getByRole("button", { name: "应用筛选", exact: true }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.has("start")).toBe(false);
+  for (const key of ["people", "match", "publishers", "start", "end"]) {
+    expect(new URL(page.url()).searchParams.has(key)).toBe(false);
   }
 });

@@ -773,6 +773,23 @@ class GalleryPage(BaseModel):
     next_cursor: str | None
 
 
+def parse_people_publishers(people, publishers):
+    try:
+        if len(people.split(",")) > 50 or len(publishers.split(",")) > 50:
+            raise ValueError()
+        ids = sorted(set(int(i) for i in people.split(",") if i))
+        if any(not 0 < i <= 9223372036854775807 for i in ids):
+            raise ValueError()
+        accounts = [a.split(":", 1) for a in publishers.split(",") if a]
+        if any(len(a) != 2 or a[0] not in ("x", "instagram", "person") or not a[1] for a in accounts):
+            raise ValueError()
+        if any(platform == "person" and (not author.isascii() or not author.isdigit() or not 0 < int(author) <= 9223372036854775807) for platform, author in accounts):
+            raise ValueError()
+    except (ValueError, OverflowError):
+        fail("筛选条件无效")
+    return ids, accounts
+
+
 @app.get("/api/v1/gallery", response_model=GalleryPage)
 def gallery(
     people: str = "",
@@ -785,18 +802,8 @@ def gallery(
     cursor: str = "",
     limit: int = Query(default=40, ge=1, le=100),
 ):
-    try:
-        if len(people.split(",")) > 50 or len(publishers.split(",")) > 50 or len(cursor) > 1024:
-            raise ValueError()
-        ids = sorted(set(int(i) for i in people.split(",") if i))
-        if any(not 0 < i <= 9223372036854775807 for i in ids):
-            raise ValueError()
-        accounts = [a.split(":", 1) for a in publishers.split(",") if a]
-        if any(len(a) != 2 or a[0] not in ("x", "instagram", "person") or not a[1] for a in accounts):
-            raise ValueError()
-        if any(platform == "person" and (not author.isascii() or not author.isdigit() or not 0 < int(author) <= 9223372036854775807) for platform, author in accounts):
-            raise ValueError()
-    except (ValueError, OverflowError):
+    ids, accounts = parse_people_publishers(people, publishers)
+    if len(cursor) > 1024:
         fail("筛选条件无效")
     with connect() as db:
         db.execute("BEGIN")
@@ -1148,8 +1155,11 @@ class ReviewImage(BaseModel):
 
 @app.get("/api/v1/admin/images", response_model=list[ReviewImage])
 def admin_images(
-    state: str = "review", image_id: int | None = None, _: None = Depends(admin)
+    state: str = "review", image_id: int | None = None,
+    start: str = "", end: str = "", people: str = "",
+    match: Literal["any", "all"] = "any", publishers: str = "", _: None = Depends(admin)
 ):
+    ids, accounts = parse_people_publishers(people, publishers)
     with connect() as db:
         db.execute("BEGIN")
         incomplete = f"EXISTS(SELECT 1 FROM images m WHERE m.group_id=i.group_id AND m.hidden=0 AND NOT {complete_source_sql('m')})"
@@ -1177,6 +1187,35 @@ def admin_images(
             else:
                 condition = f"({condition}) AND i.id=?"
             params.append(image_id)
+        lower, upper = date_bounds(start, end, settings(db)["timezone"])
+        if lower or upper or accounts:
+            source_conditions = ["m.group_id=i.group_id", "m.hidden=0"] if grouped else ["m.id=i.id"]
+            if lower:
+                source_conditions.append("p.published_at>=?")
+                params.append(lower)
+            if upper:
+                source_conditions.append("p.published_at<?")
+                params.append(upper)
+            if accounts:
+                publisher_conditions = []
+                for platform, author in accounts:
+                    if platform == "person":
+                        publisher_conditions.append("EXISTS(SELECT 1 FROM accounts a WHERE a.person_id=? AND a.platform=p.platform AND lower(a.username)=lower(p.author))")
+                        params.append(int(author))
+                    else:
+                        publisher_conditions.append("(p.platform=? AND lower(p.author)=lower(?))")
+                        params.extend((platform, author))
+                source_conditions.append("(" + " OR ".join(publisher_conditions) + ")")
+            condition = f"({condition}) AND EXISTS(SELECT 1 FROM images m JOIN sources s ON s.image_id=m.id JOIN posts p ON p.id=s.post_id WHERE {' AND '.join(source_conditions)})"
+        if ids:
+            marks = ",".join("?" for _ in ids)
+            if match == "all":
+                condition = f"({condition}) AND (SELECT count(DISTINCT person_id) FROM faces f WHERE f.image_id=i.id AND f.ignored=0 AND f.person_id IN ({marks}))=?"
+                params.extend(ids)
+                params.append(len(ids))
+            else:
+                condition = f"({condition}) AND EXISTS(SELECT 1 FROM faces f WHERE f.image_id=i.id AND f.ignored=0 AND f.person_id IN ({marks}))"
+                params.extend(ids)
         order = "i.group_id" if grouped else "i.id"
         return [review_image(db, row, grouped=grouped) for row in db.execute(
             "SELECT i.* FROM images i WHERE " + condition + f" ORDER BY {order} LIMIT 500", params,

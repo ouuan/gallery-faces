@@ -13,7 +13,7 @@ import { hasFilters, type Filter } from "./filters";
 import { platformLabel } from "./api";
 import DateRangeHint from "./DateRangeHint.vue";
 import PeopleMultiSelect from "./PeopleMultiSelect.vue";
-const props = defineProps<{ modelValue: Filter }>(),
+const props = defineProps<{ modelValue: Filter; hideNoFaces?: boolean }>(),
   emit = defineEmits(["update:modelValue", "clear"]);
 const store = useLibrary();
 const publisherPlatform = ref("x"),
@@ -159,6 +159,7 @@ const publisherExtraOptions = computed(() => {
       <DateRangeHint :start="modelValue.start" :end="modelValue.end" />
     </fieldset>
     <n-checkbox
+      v-if="!hideNoFaces"
       :checked="modelValue.include_no_faces"
       @update:checked="set('include_no_faces', $event)"
       >包含无人脸图片</n-checkbox

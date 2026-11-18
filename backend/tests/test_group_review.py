@@ -225,3 +225,66 @@ def test_import_new_copy_and_selective_restore(client, tmp_path, monkeypatch):
         assert conn.execute('SELECT locked FROM faces WHERE image_id=?', (first,)).fetchone()[0] == 1
     assert expected == second
     assert listing(client, 'all')[0]['id'] == second
+
+
+def test_review_dates_match_active_member_sources_and_same_post(client):
+    small, large, group, _, _ = seed()
+    with db.connect(True) as conn:
+        conn.execute("UPDATE settings SET value='Asia/Shanghai' WHERE key='timezone'")
+        conn.execute("UPDATE posts SET published_at='2026-01-01T16:00:00Z' WHERE id IN (SELECT post_id FROM sources WHERE image_id=?)", (small,))
+        hidden = image(conn, date="2026-02-01T00:00:00Z", group=group)
+        conn.execute('UPDATE images SET hidden=1 WHERE id=?', (hidden,))
+        missing = image(conn, date=None)
+    assert [row['id'] for row in listing(client, start='2026-01-02', end='2026-01-02')] == [large]
+    assert listing(client, image_id=small, start='2026-01-02')[0]['id'] == large
+    assert listing(client, start='2026-02-01') == []
+    assert listing(client, end='2025-12-31') == []
+    assert listing(client, start='2026-01-03', end='2026-01-31') == []
+    assert missing in [row['id'] for row in listing(client)]
+    # Both bounds must match a single source, not different sources in the group.
+    with db.connect(True) as conn:
+        conn.execute("UPDATE posts SET published_at='2026-01-03T16:00:00Z' WHERE id IN (SELECT post_id FROM sources WHERE image_id=?)", (small,))
+    assert listing(client, start='2026-01-02', end='2026-01-03') == []
+
+
+def test_review_dates_include_end_day_and_validate_range(client):
+    with db.connect(True) as conn:
+        conn.execute("UPDATE settings SET value='Asia/Shanghai' WHERE key='timezone'")
+        before = image(conn, date='2026-01-01T15:59:59Z')
+        first = image(conn, date='2026-01-01T16:00:00Z')
+        last = image(conn, date='2026-01-02T15:59:59Z')
+        after = image(conn, date='2026-01-02T16:00:00Z')
+    assert {row['id'] for row in listing(client, start='2026-01-02', end='2026-01-02')} == {first, last}
+    assert {row['id'] for row in listing(client, end='2026-01-02')} == {before, first, last}
+    assert {row['id'] for row in listing(client, start='2026-01-02')} == {first, last, after}
+    for params in [{'start': '2026-02-30'}, {'end': 'bad'}, {'start': '2026-01-03', 'end': '2026-01-02'}]:
+        assert client.get('/api/v1/admin/images', params=params).status_code == 400
+
+
+def test_review_people_use_representative_and_ignore_ignored_faces(client):
+    small, large, _, alice, bob = seed()
+    assert listing(client, people=str(alice)) == []
+    assert listing(client, people=str(bob))[0]['id'] == large
+    assert listing(client, people=f'{alice},{bob}', match='any')[0]['id'] == large
+    assert listing(client, people=f'{alice},{bob}', match='all') == []
+    with db.connect(True) as conn:
+        conn.execute("INSERT INTO faces(image_id,box,person_id) VALUES(?, '[0,0,10,10]', ?)", (large, alice))
+    assert listing(client, people=f'{alice},{bob}', match='all')[0]['id'] == large
+    with db.connect(True) as conn:
+        conn.execute('UPDATE faces SET ignored=1 WHERE image_id=? AND person_id=?', (large, alice))
+    assert listing(client, people=f'{alice},{bob}', match='all') == []
+
+
+def test_review_publisher_and_date_match_same_source(client):
+    small, large, _, alice, bob = seed()
+    with db.connect(True) as conn:
+        conn.execute("UPDATE settings SET value='UTC' WHERE key='timezone'")
+        conn.execute("UPDATE posts SET author='bob', published_at='2026-02-01T00:00:00Z' WHERE id IN (SELECT post_id FROM sources WHERE image_id=?)", (small,))
+        conn.execute("INSERT INTO accounts(person_id,platform,username) VALUES(?,'x','BOB')", (bob,))
+    assert listing(client, publishers='x:Bob')[0]['id'] == large
+    assert listing(client, publishers=f'person:{bob}', people=str(bob), start='2026-02-01')[0]['id'] == large
+    assert listing(client, publishers='x:alice', start='2026-02-01') == []
+    assert listing(client, publishers=f'person:{alice}') == []
+    assert listing(client, publishers='instagram:bob') == []
+    for params in [{'people':'bad'}, {'people':'-1'}, {'publishers':'person:bad'}, {'publishers':'invalid:alice'}, {'match':'bad'}]:
+        assert client.get('/api/v1/admin/images', params=params).status_code in (400, 422)

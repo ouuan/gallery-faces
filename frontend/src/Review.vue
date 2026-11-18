@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import LoadingOverlay from "./LoadingOverlay.vue";
+import Filters from "./Filters.vue";
+import { emptyFilter, fromQuery, toQuery, hasFilters } from "./filters";
 import TrashReview from "./TrashReview.vue";
 import { useReviewShortcuts } from "./review-shortcuts";
 import { useConfirm } from "./confirm";
@@ -44,6 +46,27 @@ const state = computed({
     void router.replace({ query: { ...route.query, state: value, image: undefined } });
   },
 });
+const filter = computed(() => ({ ...fromQuery(route.query), include_no_faces: false, sort: "newest" as const }));
+const filterQuery = computed(() => toQuery(filter.value));
+const queryKey = computed(() => JSON.stringify([state.value, filterQuery.value]));
+const showFilters = ref(false);
+const draftFilter = ref(emptyFilter());
+function openFilters() {
+  draftFilter.value = { ...filter.value, people: [...filter.value.people], publishers: [...filter.value.publishers] };
+  showFilters.value = true;
+}
+async function applyFilters() {
+  if (dirty.value && !await confirm("有未保存的修改，确定放弃吗？")) return;
+  box.value = "";
+  sourceEdit.value = null;
+  newPersonFace.value = null;
+  const query = { ...route.query };
+  for (const key of ["people", "match", "publishers", "start", "end"]) delete query[key];
+  await router.replace({ query: { ...query, ...toQuery(draftFilter.value),
+    image: state.value === "image" ? route.query.image : undefined,
+  } });
+  showFilters.value = false;
+}
 const store = useLibrary(),
   message = useMessage(),
   images = ref<any[]>([]),
@@ -215,9 +238,9 @@ watch(
 );
 let loadVersion = 0;
 const imageRequest = useLatestRequest();
-let loadedState: string | null = null;
+let loadedQuery: string | null = null;
 function syncQuery() {
-  if (state.value === "trash" || loading.value || error.value || loadedState !== state.value) return;
+  if (state.value === "trash" || loading.value || error.value || loadedQuery !== queryKey.value) return;
   const image = active.value ? String(active.value.id) : undefined;
   if (route.query.state === state.value && route.query.image === image) return;
   void router.replace({ query: { ...route.query, state: state.value, image } });
@@ -234,8 +257,11 @@ async function loadImages(currentOnly: boolean) {
   const signal = imageRequest.start();
   const version = ++loadVersion;
   const requestedState = state.value;
+  const requestedKey = queryKey.value;
+  const filters = new URLSearchParams(filterQuery.value);
+  const filtersQuery = filters.size ? `&${filters}` : "";
   const requestedImage = targetImage.value;
-  const previousGroup = loadedState === requestedState && requestedImage === active.value?.id
+  const previousGroup = loadedQuery === requestedKey && requestedImage === active.value?.id
     ? active.value?.group_id : null;
   selected.value = [];
   loading.value = true;
@@ -243,20 +269,20 @@ async function loadImages(currentOnly: boolean) {
   try {
     if (requestedState === "trash") {
       images.value = [];
-      loadedState = requestedState;
+      loadedQuery = requestedKey;
       return;
     }
     let result = requestedState === "image" && !requestedImage ? [] : await api(
       requestedState === "image"
-        ? `/admin/images?state=all&image_id=${requestedImage}`
-        : "/admin/images?state=" + requestedState + (refreshedImage ? `&image_id=${refreshedImage.id}` : ""),
+        ? `/admin/images?state=all&image_id=${requestedImage}${filtersQuery}`
+        : "/admin/images?state=" + requestedState + filtersQuery + (refreshedImage ? `&image_id=${refreshedImage.id}` : ""),
       { signal },
     );
     if (version !== loadVersion) return;
     // Refill the server-capped queue before publishing an empty intermediate state.
     // Keeping one request lifecycle also avoids a route sync starting another load.
     if (refreshedImage && !result.length && images.value.length === 1 && requestedState !== "image") {
-      result = await api("/admin/images?state=" + requestedState, { signal });
+      result = await api("/admin/images?state=" + requestedState + filtersQuery, { signal });
       if (version !== loadVersion) return;
       refreshedImage = null;
     }
@@ -272,10 +298,10 @@ async function loadImages(currentOnly: boolean) {
     const index = groupIndex >= 0 ? groupIndex : images.value.findIndex(image =>
       image.id === requestedImage || image.member_ids?.includes(requestedImage));
     current.value = index >= 0 ? index : Math.min(
-      loadedState === requestedState ? current.value : 0,
+      loadedQuery === requestedKey ? current.value : 0,
       Math.max(0, images.value.length - 1),
     );
-    loadedState = requestedState;
+    loadedQuery = requestedKey;
   } catch (e) {
     if (version === loadVersion) error.value = (e as Error).message;
   } finally {
@@ -285,8 +311,8 @@ async function loadImages(currentOnly: boolean) {
     }
   }
 }
-watch([state, targetImage], () => {
-  if (loadedState !== state.value || loading.value || error.value ||
+watch([queryKey, targetImage], () => {
+  if (loadedQuery !== queryKey.value || loading.value || error.value ||
       (state.value === "image" && targetImage.value !== (active.value?.id ?? null))) {
     void load();
   } else {
@@ -534,7 +560,11 @@ onMounted(load);
           { value: 'trash', label: '回收站' },
           { value: 'all', label: '全部在库重复组' },
         ]"
-      /><span v-if="state !== 'trash'">{{
+      />
+      <n-button v-if="state !== 'trash'" :disabled="navigationDisabled" @click="openFilters">
+        {{ hasFilters(filter) ? '筛选（已启用）' : '筛选' }}
+      </n-button>
+      <span v-if="state !== 'trash'">{{
         selected.length
           ? `已选 ${selected.length} 组`
           : active
@@ -562,6 +592,15 @@ onMounted(load);
       >
     </div>
   </div>
+  <n-modal v-model:show="showFilters">
+    <div class="form-dialog" role="dialog" aria-modal="true" aria-label="筛选审核照片">
+      <Filters v-model="draftFilter" hide-no-faces @clear="draftFilter = emptyFilter()" />
+      <div class="form-actions">
+        <n-button @click="showFilters = false">取消</n-button>
+        <n-button type="primary" @click="applyFilters">应用筛选</n-button>
+      </div>
+    </div>
+  </n-modal>
   <TrashReview v-if="state === 'trash'" />
   <template v-else>
   <n-alert v-if="error" type="error"
@@ -571,7 +610,7 @@ onMounted(load);
   <LoadingOverlay :show="loading" label="正在加载审核项目…" />
   <div v-if="!error && !images.length" :style="{ visibility: loading ? 'hidden' : undefined }" class="empty-state">
     <h2>没有需要处理的照片</h2>
-    <p>此分类中的项目已处理完毕，也可以切换其他状态</p>
+    <p>{{ hasFilters(filter) ? "没有符合当前筛选条件的照片，可调整或清空筛选" : "此分类中的项目已处理完毕，也可以切换其他状态" }}</p>
   </div>
   <div v-if="images.length" class="review-workspace">
     <div ref="thumbnailStrip" class="review-strip">
