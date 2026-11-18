@@ -5,7 +5,7 @@ test("each face selects and saves its own person independently", async ({ page }
   const saved: { face: number; person_id: number | null; locked: boolean; ignored: boolean }[] = [];
   const faces = [1, 2].map((id) => ({
     id, box: [id * 30, 20, 20, 20], person_id: (id === 2 ? 8 : null) as number | null,
-    locked: 0, ignored: 0, revision: 0, candidates: [{ person_id: 8, score: 0.9 }],
+    locked: 0, ignored: 0, revision: 0, candidates: [8, 9, 10, 11, 12].map((person_id, i) => ({ person_id, score: 0.9 - i * 0.1 })),
   }));
   await page.route("**/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -23,7 +23,7 @@ test("each face selects and saves its own person independently", async ({ page }
     if (path.endsWith("/feedback"))
       return route.fulfill({ json: { items: [], next_cursor: null } });
     if (path.endsWith("/people"))
-      return route.fulfill({ json: [{ id: 7, name: "人物甲", groups: [], accounts: [] }, { id: 8, name: "人物乙", groups: [], accounts: [] }] });
+      return route.fulfill({ json: [{ id: 7, name: "人物甲", groups: [], accounts: [] }, { id: 8, name: "人物乙", groups: [], accounts: [] }, ...[9, 10, 11, 12].map(id => ({ id, name: `候选人物较长的姓名${id}`, groups: [], accounts: [] }))] });
     if (path.endsWith("/references"))
       return route.fulfill({ json: [{ id: Number(path.split("/").at(-2)) }] });
     if (path.endsWith("/session")) return route.fulfill({ json: { admin: true } });
@@ -40,22 +40,40 @@ test("each face selects and saves its own person independently", async ({ page }
   await expect(page.locator('.review-main > .field-label')).toHaveCount(0);
   await expect(first.getByRole("button", { name: "撤销", exact: true })).toBeDisabled();
   await expect(second.getByRole("button", { name: "撤销", exact: true })).toBeDisabled();
-  await first.getByRole("button", { name: /人物乙 · 相似度/ }).click();
+  await first.locator("label").filter({ has: page.getByRole("radio", { name: /人物乙/ }) }).click();
+  await expect(first.getByRole("radio", { name: /人物乙/ })).toBeChecked();
   await first.getByRole("button", { name: "撤销", exact: true }).click();
   await expect(first.locator(".n-cascader")).toContainText("未知人物");
   await expect(first.getByRole("button", { name: "撤销", exact: true })).toBeDisabled();
+  await expect(first.locator("input:checked")).toHaveCount(0);
   expect(saved).toEqual([]);
   await first.locator(".n-base-selection").click();
   await page.locator(".people-cascader-menu .n-cascader-option__label").filter({ hasText: /^未分组$/ }).click();
   await page.locator(".people-cascader-menu .n-cascader-option__label").filter({ hasText: /^人物甲$/ }).click();
   await expect(first.getByRole("button", { name: "确认", exact: true })).toBeEnabled();
   await expect(second.locator(".n-cascader")).toContainText("人物乙");
-  await second.getByRole("button", { name: /人物乙 · 相似度/ }).click();
+  await second.locator("label").filter({ has: page.getByRole("radio", { name: /人物乙/ }) }).click();
   await expect(page.getByAltText("候选人物参考图")).toHaveCount(0);
-  for (const width of [390, 1280]) {
+  await expect(first.locator("input:checked")).toHaveCount(0);
+  for (const width of [390, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    await first.screenshot({ path: `/tmp/gallery-faces/face-person-${width}.png` });
+    for (const theme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      const candidates = first.getByRole("radiogroup");
+      expect(await candidates.evaluate(el => el.scrollWidth > el.clientWidth)).toBeTruthy();
+      expect(await candidates.locator("label").evaluateAll(els => new Set(els.map(el => el.getBoundingClientRect().top)).size)).toBe(1);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+      await first.screenshot({ path: `/tmp/gallery-faces/face-person-${width}-${theme}.png` });
+    }
   }
+  const secondCandidates = second.getByRole("radiogroup");
+  await second.getByRole("radio", { name: /人物乙/ }).focus();
+  for (let i = 0; i < 4; i++) await page.keyboard.press("ArrowRight");
+  await expect(second.getByRole("radio", { name: /姓名12/ })).toBeChecked();
+  expect(await secondCandidates.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+  await second.getByRole("button", { name: "撤销", exact: true }).click();
+  await expect(second.getByRole("radio", { name: /人物乙/ })).toBeChecked();
   await first.getByRole("button", { name: "确认", exact: true }).click();
   await expect(first.locator(".n-cascader")).toContainText("人物甲");
   await expect(first.getByRole("button", { name: "确认", exact: true })).toBeDisabled();
@@ -67,14 +85,14 @@ test("each face selects and saves its own person independently", async ({ page }
     { face: 1, person_id: 7, locked: true, ignored: false },
     { face: 2, person_id: 8, locked: true, ignored: false },
   ]);
-  await first.getByRole("button", { name: /人物乙 · 相似度/ }).click();
+  await first.locator("label").filter({ has: page.getByRole("radio", { name: /人物乙/ }) }).click();
   await first.getByRole("button", { name: "撤销", exact: true }).click();
   await expect(first.locator(".n-cascader")).toContainText("人物甲");
   await expect(second.locator(".n-cascader")).toContainText("人物乙");
   await expect(first.getByRole("button", { name: "确认", exact: true })).toBeDisabled();
   await expect(first.getByRole("button", { name: "撤销", exact: true })).toBeDisabled();
   expect(saved).toHaveLength(2);
-  await first.getByRole("button", { name: /人物乙 · 相似度/ }).click();
+  await first.locator("label").filter({ has: page.getByRole("radio", { name: /人物乙/ }) }).click();
   await page.getByRole("button", { name: "下一张", exact: true }).click();
   await page.getByRole("button", { name: "审核图片 1", exact: true }).click();
   await expect(first.locator(".n-cascader")).toContainText("人物甲");

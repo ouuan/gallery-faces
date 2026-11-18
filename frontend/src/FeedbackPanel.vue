@@ -72,12 +72,11 @@ async function moderate(item: Feedback, remove = false) {
 watch(endpoint, () => { items.value = []; cursor.value = null; void load(); }, { immediate: true });
 </script>
 <template>
-  <section class="feedback-panel" aria-label="图片反馈">
+  <section v-if="!admin || loading || error || submitError || items.length" class="feedback-panel" aria-label="图片反馈">
     <h3>图片反馈<span v-if="!admin && pendingCount" class="muted">（已有 {{ pendingCount }} 条反馈）</span><span v-if="admin && pendingCount" class="muted">（{{ pendingCount }} 条待处理）</span></h3>
     <template v-if="admin">
       <n-alert v-if="error" type="error">{{ error }} <n-button :disabled="loading" @click="load()">重试</n-button></n-alert>
       <p v-if="loading" role="status" class="hint">正在加载反馈…</p>
-      <p v-else-if="!items.length && !error" class="muted">暂无反馈</p>
       <ul class="feedback-list">
         <li v-for="item in items" :key="item.id">
           <div class="feedback-meta"><n-tag size="small" :type="item.status === 'pending' ? 'warning' : 'default'">{{ item.status === 'pending' ? '待处理' : '已处理' }}</n-tag><time :datetime="item.created_at">{{ dateLabel(item.created_at) }}</time></div>

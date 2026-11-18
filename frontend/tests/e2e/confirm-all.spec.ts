@@ -37,7 +37,7 @@ for (const failOnce of [false, true]) {
       return route.fulfill({ json: [] });
     });
     await page.goto("/admin/review?image=1");
-    await page.locator('.face-review').nth(1).getByRole('button', { name: /人物8 · 相似度/ }).click();
+    await page.locator('.face-review').nth(1).locator('label').filter({ has: page.getByRole('radio', { name: /人物8/ }) }).click();
     const all = page.getByRole('button', { name: '全部确认', exact: true });
     for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 900 });
@@ -48,6 +48,7 @@ for (const failOnce of [false, true]) {
     await expect(all).toBeDisabled();
     await expect(page.getByRole('button', { name: '下一张', exact: true })).toBeDisabled();
     await expect(page.locator('.face-review').first().getByRole('button', { name: '确认', exact: true })).toBeDisabled();
+    await expect(page.getByRole('radio').first()).toBeDisabled();
     release!();
     if (failOnce) {
       await expect(page.getByText(/已确认 1 个人脸，1 个失败/)).toBeVisible();

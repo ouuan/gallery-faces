@@ -7,6 +7,8 @@ import {
   NButton,
   NSelect,
   NCheckbox,
+  NRadio,
+  NRadioGroup,
   NAlert,
   NInput,
   NModal,
@@ -196,6 +198,10 @@ async function load() {
   } finally {
     loading.value = false;
   }
+}
+function revealCandidate(event: FocusEvent) {
+  const target = event.target as HTMLElement;
+  target.closest(".n-radio")?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 function facePerson(face: any): number | null {
   const selection = facePeople.value[face.id];
@@ -499,6 +505,7 @@ onMounted(load);
                 人脸审核 <span class="muted">（{{ visibleFaces.length }}）</span>
               </h3>
               <n-button
+                type="primary"
                 :disabled="actionsDisabled || !pendingFaces.length"
                 :loading="savingFaces"
                 aria-label="全部确认"
@@ -528,25 +535,32 @@ onMounted(load);
                   />
                 </div>
               </div>
-              <div
-                v-for="candidate in face.candidates"
-                :key="candidate.person_id"
-                class="candidate"
-              >
-                <button
-                  class="text-button"
+              <div v-if="face.candidates.length" class="candidate-row">
+                <span :id="`similarity-${face.id}`" class="candidate-heading">相似度</span>
+                <n-radio-group
+                  class="candidate-options"
+                  role="radiogroup"
+                  :aria-labelledby="`similarity-${face.id}`"
+                  :name="`face-candidates-${face.id}`"
+                  :value="facePerson(face)"
                   :disabled="savingFaces"
-                  @click="selectFacePerson(face.id, candidate.person_id)"
+                  @update:value="selectFacePerson(face.id, $event)"
+                  @focusin="revealCandidate"
                 >
-                  {{
-                    store.people.find((p) => p.id === candidate.person_id)?.name
-                  }}
-                  · 相似度 {{ candidate.score.toFixed(3) }}
-                </button>
+                  <n-radio
+                    v-for="candidate in face.candidates"
+                    :key="candidate.person_id"
+                    :value="candidate.person_id"
+                  >
+                    {{ store.people.find((p) => p.id === candidate.person_id)?.name }}
+                    <span class="candidate-score">{{ candidate.score.toFixed(3) }}</span>
+                  </n-radio>
+                </n-radio-group>
               </div>
               <div class="button-row">
                 <n-button
                   type="primary"
+                  secondary
                   :disabled="savingFaces || faceConfirmed(face)"
                   @click="edit(face)"
                   >确认</n-button
@@ -789,6 +803,7 @@ onMounted(load);
 }
 .review-details {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
 }
 .face-review {
@@ -820,10 +835,44 @@ onMounted(load);
 .face-review .button-row {
   margin-top: 12px;
 }
-.candidate .text-button {
+.candidate-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  min-width: 0;
+}
+.candidate-heading {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.candidate-options {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 16px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted) transparent;
+  padding: 2px;
+}
+.candidate-options :deep(.n-radio) {
+  flex-shrink: 0;
+  align-items: center;
   min-height: 44px;
-  text-align: left;
-  overflow-wrap: anywhere;
+  margin: 0;
+  white-space: nowrap;
+}
+.candidate-options :deep(.n-radio:has(input:focus-visible)) {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+.candidate-score {
+  margin-left: 4px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 .review-sources .person-row {
   align-items: start;

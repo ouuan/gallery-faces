@@ -96,6 +96,14 @@ test('anonymous feedback, pagination, throttling and moderation', async ({ page 
   await panel.getByRole('button', { name: '标记已处理' }).click();
   await page.goto('/?photo=7');
   await expect(heading).toHaveText('图片反馈');
+  await page.goto('/admin/review?image=501');
+  await expect(panel.getByRole('button', { name: '恢复待处理' })).toBeVisible();
+  await panel.getByRole('button', { name: '删除反馈' }).click();
+  await expect(panel).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: /人脸审核/ })).toBeVisible();
+  await expect(page.getByText('正在加载反馈…')).toHaveCount(0);
+  await expect(panel).toHaveCount(0);
 });
 
 test('a delayed submission cannot replace another image or its draft', async ({ page }) => {
