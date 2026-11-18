@@ -6,6 +6,7 @@ import { ref, onMounted, onUnmounted, computed, watch } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import {
   NButton,
+  NDropdown,
   NSelect,
   NCheckbox,
   NRadio,
@@ -14,6 +15,7 @@ import {
   NInput,
   NModal,
   useMessage,
+  type DropdownOption,
 } from "naive-ui";
 import { api, send, platformLabel, dateLabel } from "./api";
 import { useLibrary } from "./store";
@@ -62,6 +64,7 @@ const newPersonFace = ref<any>(null),
   addReference = ref(true),
   creatingPerson = ref(false),
   createError = ref("");
+const moreFace = ref<number | null>(null);
 const personDirty = computed(
   () =>
     !!(
@@ -160,7 +163,7 @@ useReviewShortcuts({
   arrowright: { run: () => moveImage(current.value + 1), enabled: () => current.value < images.value.length - 1 },
   c: { run: confirmAll, enabled: () => !actionsDisabled.value && pendingFaces.value.length > 0 },
   d: { run: () => deleteImages(actionIds.value), enabled: () => !actionsDisabled.value },
-}, () => !!active.value && !navigationDisabled.value && !sourceEdit.value && !newPersonFace.value);
+}, () => !!active.value && !navigationDisabled.value && !sourceEdit.value && !newPersonFace.value && moreFace.value === null);
 const visibilityAction = computed(() =>
   (selected.value.length ? state.value === "hidden" : active.value?.hidden) ? "show" : "hide",
 );
@@ -202,6 +205,7 @@ watch(
     box.value = "";
     boxPerson.value = null;
     facePeople.value = {};
+    moreFace.value = null;
   },
 );
 let loadVersion = 0;
@@ -265,6 +269,47 @@ function revealCandidate(event: FocusEvent) {
 function facePerson(face: any): number | null {
   const selection = facePeople.value[face.id];
   return selection === undefined ? face.person_id ?? null : selection;
+}
+function faceMoreOptions(face: any): DropdownOption[] {
+  return [
+    { label: "添加新人物", key: "person", props: { role: "menuitem" } },
+    {
+      label: "添加参考图",
+      key: "reference",
+      disabled: facePerson(face) === null || !face.has_embedding,
+      props: {
+        role: "menuitem",
+        "aria-disabled": facePerson(face) === null || !face.has_embedding,
+        title: facePerson(face) === null
+          ? "请先选择人物"
+          : !face.has_embedding ? "此人脸暂无有效特征" : undefined,
+      },
+    },
+  ];
+}
+async function selectFaceMore(key: string | number, face: any) {
+  moreFace.value = null;
+  if (savingFaces.value) return;
+  if (key === "person") {
+    openNewPerson(face);
+    return;
+  }
+  const personId = facePerson(face);
+  if (key !== "reference" || personId === null || !face.has_embedding) return;
+  savingFaces.value = true;
+  try {
+    await send(`/admin/people/${personId}/references`, { face_id: face.id });
+    message.success("参考图已添加");
+    try {
+      await store.load();
+    } catch (e) {
+      message.error(`参考图已添加，但人物列表刷新失败：${(e as Error).message}`);
+    }
+  } catch (e) {
+    message.error((e as Error).message);
+  } finally {
+    savingFaces.value = false;
+  }
 }
 function faceConfirmed(face: any): boolean {
   const personId = facePerson(face);
@@ -642,7 +687,25 @@ onMounted(load);
                   @click="undoFacePerson(face.id)"
                   >撤销</n-button
                 >
-                <n-button :disabled="savingFaces" @click="openNewPerson(face)">添加新人物</n-button>
+                <n-dropdown
+                  trigger="hover"
+                  :show="moreFace === face.id"
+                  :disabled="savingFaces"
+                  :options="faceMoreOptions(face)"
+                  :menu-props="() => ({ role: 'menu' })"
+                  @update:show="moreFace = $event ? face.id : moreFace === face.id ? null : moreFace"
+                  @select="(key: string | number) => selectFaceMore(key, face)"
+                  @clickoutside="moreFace = null"
+                >
+                  <n-button
+                    :disabled="savingFaces"
+                    aria-haspopup="menu"
+                    :aria-expanded="moreFace === face.id"
+                    @click="moreFace = face.id"
+                    @keydown.down.prevent="moreFace = face.id"
+                    @keydown.esc="moreFace = null"
+                  >更多</n-button>
+                </n-dropdown>
                 <n-button type="error" secondary :disabled="savingFaces" @click="edit(face, true)"
                   >删除</n-button
                 >
