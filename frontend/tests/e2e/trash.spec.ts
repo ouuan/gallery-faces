@@ -3,14 +3,14 @@ import { test, expect } from "@playwright/test";
 const preview = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480"><rect width="640" height="480" fill="#8799aa"/></svg>';
 const photo = (id: number) => ({
   id, group_id: 1, width: 1600, height: 1200, trashed_at: "2026-11-18T04:00:00Z",
-  cleanup_pending: false, restore_task: null as null | { id: number; status: string; stage: string; error: string | null },
+  has_references: false, cleanup_pending: false, restore_task: null as null | { id: number; status: string; stage: string; error: string | null },
   faces: [{ id, person_id: 7, locked: 1, ignored: 0 }],
   sources: [{ id, platform: "x", author: "fixture", published_at: "2026-01-01T00:00:00Z", url: `https://x.com/fixture/status/${id}` }],
 });
 
 test("trash preserves read-only previews and supports cancellation, failure and selective restore", async ({ page }) => {
   page.on("pageerror", error => { throw error; });
-  let images = [photo(11), photo(12)];
+  let images = [{ ...photo(11), has_references: true }, photo(12)];
   const restores: { action: string; ids: number[]; directory: string | null }[] = [];
   const media: string[] = [];
   let failNextRead = false;
@@ -41,6 +41,12 @@ test("trash preserves read-only previews and supports cancellation, failure and 
   });
   await page.goto("/admin/review?state=hidden");
   await expect(page.getByRole("heading", { name: "图片 #11", exact: true })).toBeVisible();
+  const referenceHint = page.getByText("关联参考图已暂停使用，恢复成功后重新启用", { exact: true });
+  await expect(referenceHint).toBeVisible();
+  await page.getByRole("button", { name: "下一张", exact: true }).click();
+  await expect(referenceHint).toHaveCount(0);
+  await page.getByRole("button", { name: "上一张", exact: true }).click();
+  await expect(referenceHint).toBeVisible();
   await expect(page.locator('[aria-label="审核状态"]')).toContainText("回收站");
   await expect(page.getByRole("button", { name: "全部确认", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "重新检测", exact: true })).toHaveCount(0);

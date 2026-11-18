@@ -122,6 +122,9 @@ def test_restore_local_retains_identity_reviews_and_references(client, tmp_path,
         conn.execute("INSERT INTO review_history(face_id,before_json,after_revision) VALUES(?,'{}',0)", (face,))
     assert recycle(client, [identifier]).json()["deleted"] == 2
     assert client.get("/api/v1/people").json()[0]["reference_count"] == 0
+    trashed = {item["id"]: item for item in client.get("/api/v1/admin/trash").json()["items"]}
+    assert trashed[identifier]["has_references"] is True
+    assert trashed[other]["has_references"] is False
     assert client.put(f"/api/v1/admin/faces/{face}", json={"person_id": person, "revision": 0}).status_code == 409
     assert client.post("/api/v1/admin/images/actions", json={"action": "redetect", "ids": [identifier]}).status_code == 409
     result = run_restore(client, identifier)

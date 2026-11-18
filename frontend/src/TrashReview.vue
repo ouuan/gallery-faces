@@ -10,7 +10,7 @@ import LoadingOverlay from "./LoadingOverlay.vue";
 type RestoreTask = { id: number; status: string; stage: string; error: string | null };
 type TrashImage = {
   id: number; group_id: number; width: number; height: number; trashed_at: string;
-  cleanup_pending: boolean; restore_task: RestoreTask | null; sources: Source[];
+  has_references: boolean; cleanup_pending: boolean; restore_task: RestoreTask | null; sources: Source[];
   faces: { id: number; person_id: number | null; locked: number; ignored: number }[];
 };
 const store = useLibrary(), message = useMessage(), request = useLatestRequest();
@@ -137,7 +137,7 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
         </div>
         <div class="trash-records">
           <p class="muted">移入时间：{{ dateLabel(active.trashed_at) }} · 重复组 #{{ active.group_id }}</p>
-          <section><h3>审核记录</h3><p v-if="!active.faces.length" class="hint">没有人脸记录</p><p v-for="face in active.faces" :key="face.id">人脸 #{{ face.id }} · {{ store.people.find(person => person.id === face.person_id)?.name || '未知人物' }} · {{ face.ignored ? '已忽略' : face.locked ? '已确认' : '待确认' }}</p><p class="hint">关联参考图已暂停使用，恢复成功后重新启用。</p></section>
+          <section><h3>审核记录</h3><p v-if="!active.faces.length" class="hint">没有人脸记录</p><p v-for="face in active.faces" :key="face.id">人脸 #{{ face.id }} · {{ store.people.find(person => person.id === face.person_id)?.name || '未知人物' }} · {{ face.ignored ? '已忽略' : face.locked ? '已确认' : '待确认' }}</p><p v-if="active.has_references" class="hint">关联参考图已暂停使用，恢复成功后重新启用</p></section>
           <section><h3>来源</h3><p v-if="!active.sources.length" class="hint">没有来源记录</p><div v-for="(source, index) in active.sources" :key="source.id ?? index" class="trash-source"><a v-if="source.url" :href="source.url" target="_blank" rel="noopener noreferrer">{{ platformLabel(source.platform) }} · {{ store.publisherName(source) }}</a><span v-else>{{ platformLabel(source.platform) }} · {{ store.publisherName(source) }}</span><p class="hint">{{ dateLabel(source.published_at) }}</p></div></section>
         </div>
       </div>

@@ -1195,6 +1195,7 @@ def trash_list(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=1
             item = review_image(db, row)
             task = db.execute("SELECT id,status,error,stage FROM tasks WHERE image_id=? AND kind='restore' ORDER BY status IN ('queued','running') DESC,id DESC LIMIT 1", (row["id"],)).fetchone()
             item["restore_task"] = dict(task) if task else None
+            item["has_references"] = bool(db.execute("SELECT 1 FROM reference_images WHERE image_id=? LIMIT 1", (row["id"],)).fetchone())
             item["cleanup_pending"] = bool(db.execute("SELECT 1 FROM pending_file_deletions WHERE sha256=?", (row["sha256"],)).fetchone())
             items.append(item)
         return {"items": items, "total": total, "page": page, "page_size": page_size}
