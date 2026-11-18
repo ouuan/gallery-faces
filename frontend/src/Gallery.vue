@@ -284,29 +284,31 @@ onUnmounted(() => {
       aria-label="照片详情"
     >
       <div class="lightbox-tools">
-        <n-button aria-label="上一张" :disabled="index <= 0" @click="move(-1)"
-          ><ChevronLeft /></n-button
-        ><n-button
-          aria-label="下一张"
-          :disabled="index < 0 || index >= photos.length - 1"
-          @click="move(1)"
-          ><ChevronRight /></n-button
-        ><n-button
-          aria-label="缩小"
-          :disabled="zoom <= 1"
-          @click="zoom = Math.max(1, zoom - 0.25)"
-          ><ZoomOut /></n-button
-        ><n-button aria-label="放大" :disabled="zoom >= 3" @click="zoom += 0.25"
-          ><ZoomIn /></n-button
-        ><a
-          v-if="detail"
-          class="icon-link"
-          :href="`/api/v1/media/${detail.image_id}?download=true`"
-          aria-label="下载原图"
-          ><Download /></a
-        ><n-button class="close-detail" aria-label="关闭详情" @click="close"
-          ><X
-        /></n-button>
+        <div class="lightbox-tool-group" role="group" aria-label="切换图片">
+          <n-button aria-label="上一张" :disabled="index <= 0" @click="move(-1)">
+            <ChevronLeft />
+          </n-button>
+          <n-button
+            aria-label="下一张"
+            :disabled="index < 0 || index >= photos.length - 1"
+            @click="move(1)"
+          ><ChevronRight /></n-button>
+        </div>
+        <div class="lightbox-tool-group" role="group" aria-label="图片操作">
+          <n-button aria-label="缩小" :disabled="zoom <= 1" @click="zoom = Math.max(1, zoom - 0.25)">
+            <ZoomOut />
+          </n-button>
+          <n-button aria-label="放大" :disabled="zoom >= 3" @click="zoom += 0.25">
+            <ZoomIn />
+          </n-button>
+          <a
+            v-if="detail"
+            class="icon-link"
+            :href="`/api/v1/media/${detail.image_id}?download=true`"
+            aria-label="下载原图"
+          ><Download /></a>
+        </div>
+        <n-button class="close-detail" aria-label="关闭详情" @click="close"><X /></n-button>
       </div>
       <n-alert v-if="detailError" type="error"
         >{{ detailError }}<n-button @click="loadDetail">重试</n-button></n-alert
@@ -324,28 +326,35 @@ onUnmounted(() => {
           />
         </div>
         <aside class="detail-sidebar">
-          <router-link
-            v-if="authenticated"
-            class="primary-link"
-            :to="{ path: '/admin/review', query: { state: 'image', image: detail.image_id } }"
-            >管理此图片</router-link
-          >
-          <h2>
-            {{ detail.people.map((p) => p.name).join("、") || "未知人物" }}
-          </h2>
-          <p class="muted">
-            {{ detail.width }} × {{ detail.height }} ·
-            {{ detail.source_count }} 个来源
-          </p>
-          <div v-for="source in detail.sources" :key="source.id" class="source-block">
-            <h3>{{ platformLabel(source.platform) }} · {{ store.publisherName(source) }}</h3>
-            <time>{{ dateLabel(source.published_at) }}</time>
-            <p v-if="detail.source_count > 1" class="muted">
-              {{ [...new Set((source.images || []).map(image => image.width + " × " + image.height))].join("、") }}
-            </p>
-            <SourceText :text="source.post_text" />
-            <a :href="source.url" target="_blank" rel="noopener noreferrer">打开帖子 <ExternalLink :size="14" /></a>
-          </div>
+          <header class="detail-summary">
+            <h2>{{ detail.people.map((p) => p.name).join("、") || "未知人物" }}</h2>
+            <router-link
+              v-if="authenticated"
+              class="detail-manage"
+              :to="{ path: '/admin/review', query: { state: 'image', image: detail.image_id } }"
+              >管理此图片</router-link>
+          </header>
+          <section class="detail-sources" aria-label="图片来源">
+            <h2 class="detail-sources-heading">来源 · {{ detail.source_count }}</h2>
+            <div v-for="source in detail.sources" :key="source.id" class="source-block">
+              <header class="source-header">
+                <h3>
+                  <a class="source-title-link" :href="source.url" target="_blank" rel="noopener noreferrer">
+                    <span>{{ platformLabel(source.platform) }} · {{ store.publisherName(source) }}</span>
+                    <ExternalLink :size="14" aria-hidden="true" />
+                  </a>
+                </h3>
+                <div class="source-meta">
+                  <time :datetime="source.published_at">{{ dateLabel(source.published_at) }}</time>
+                  <span v-if="source.images?.length" class="source-resolution">
+                    <span aria-hidden="true">·</span>
+                    <span>{{ [...new Set(source.images.map(image => image.width + " × " + image.height))].join("、") }}</span>
+                  </span>
+                </div>
+              </header>
+              <SourceText :text="source.post_text" />
+            </div>
+          </section>
           <FeedbackPanel :key="detail.image_id" :image-id="detail.image_id" :pending-count="detail.pending_feedback_count" @changed="detail.pending_feedback_count = (detail.pending_feedback_count || 0) + 1" />
         </aside>
       </div>

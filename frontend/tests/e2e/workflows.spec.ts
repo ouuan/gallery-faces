@@ -341,7 +341,7 @@ test("publisher names, cross-platform selector and single-source links", async (
   await page.locator(".photo-card").click();
   const dialog = page.getByRole("dialog", { name: "照片详情" });
   await expect(dialog.getByText("X · 关联人物", { exact: true })).toBeVisible();
-  await expect(dialog.getByRole("link", { name: /打开帖子/ })).toHaveCount(1);
+  await expect(dialog.getByRole("link", { name: "X · 关联人物", exact: true })).toHaveCount(1);
   await expect(
     dialog.getByRole("link", { name: "查看来源（最早收录帖子）" }),
   ).toHaveCount(0);

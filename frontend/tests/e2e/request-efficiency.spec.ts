@@ -55,19 +55,32 @@ test("all sources render once and legacy source changes do not reload details", 
   const sources = page.locator(".source-block");
   await expect(sources).toHaveCount(2);
   await expect(sources.first()).toContainText("01:02");
-  await expect(sources.first().locator("p").first()).toHaveText("800 × 600");
-  await expect(sources.last().locator("p").first()).toHaveText("1200 × 900");
-  await expect(page.getByRole("link", { name: "打开帖子" })).toHaveCount(2);
+  await expect(sources.first().locator(".source-resolution > span:last-child")).toHaveText("800 × 600");
+  await expect(sources.last().locator(".source-resolution > span:last-child")).toHaveText("1200 × 900");
+  await expect(sources.getByRole("link", { name: "X · fixture", exact: true })).toHaveCount(2);
+  await expect(sources.first().getByRole("link", { name: "X · fixture", exact: true })).toHaveAttribute("href", source.url);
+  await expect(page.getByRole("link", { name: "打开帖子" })).toHaveCount(0);
   await page.evaluate(() => { history.pushState({}, "", "/?photo=1&source=1"); dispatchEvent(new PopStateEvent("popstate")); });
   await expect(sources).toHaveCount(2);
   expect(details).toBe(1);
-  for (const width of [390, 1280]) {
+  for (const width of [320, 390, 768, 900, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     for (const theme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+      expect(await page.locator(".lightbox").evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
       await page.screenshot({ path: `/tmp/gallery-faces/sources-${width}-${theme}.png` });
     }
   }
+  photo.source_count = 1;
+  photo.sources = [source];
+  source.images.push({ image_id: 4, width: 1600, height: 1200 });
+  await page.reload();
+  await expect(sources).toHaveCount(1);
+  await expect(sources.locator(".source-resolution > span:last-child")).toHaveText("800 × 600、1600 × 1200");
+  source.images = [];
+  await page.reload();
+  await expect(sources.locator(".source-resolution")).toHaveCount(0);
+  await expect(sources.getByRole("link", { name: "X · fixture", exact: true })).toBeVisible();
 });
 
 test("task polling pauses when hidden and does not overlap slow requests", async ({ page }) => {
