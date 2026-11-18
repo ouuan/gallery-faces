@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type Route } from "@playwright/test";
 
 const photos = Array.from({ length: 16 }, (_, i) => ({
   id: i + 1, image_id: i + 1,
@@ -73,6 +73,7 @@ test("masonry preserves sorted reading order through append, resize, layout and 
   await checkLayout(page, 3);
   expect(await boxes(page)).toEqual(beforeImages);
 
+  await page.getByRole("button", { name: "加载更多" }).scrollIntoViewIfNeeded();
   const beforeAppend = await boxes(page);
   await page.getByRole("button", { name: "加载更多" }).click();
   await expect(page.locator(".photo-card")).toHaveCount(16);
@@ -111,3 +112,58 @@ test("masonry preserves sorted reading order through append, resize, layout and 
   await checkLayout(page, 4);
   expect(errors).toEqual([]);
 });
+
+for (const [width, columns] of [[390, 2], [1280, 3], [1440, 4]]) {
+  test(`masonry preserves scroll position through consecutive pages at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.addInitScript(() => localStorage.setItem("layout", "masonry"));
+    const items = Array.from({ length: 42 }, (_, i) => ({
+      ...photos[i % photos.length], id: i + 1, image_id: i + 1,
+    }));
+    let pending: Route | undefined;
+    await page.route("**/fixtures/masonry-*.svg", (route) => {
+      const i = Number(route.request().url().match(/masonry-(\d+)/)![1]);
+      return route.fulfill({ contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="${photos[i].height}"/>` });
+    });
+    await page.route("**/api/v1/**", (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/gallery")) {
+        if (url.searchParams.has("cursor")) { pending = route; return; }
+        return route.fulfill({ json: { items: items.slice(0, 18), next_cursor: "18" } });
+      }
+      return route.fulfill({ json: /\/(people|groups)$/.test(url.pathname) ? [] : {} });
+    });
+    await page.goto("/");
+    await expect(page.locator(".photo-card")).toHaveCount(18);
+    await checkLayout(page, columns);
+
+    for (const [start, end] of [[18, 36], [36, 42]]) {
+      const more = page.getByRole("button", { name: "加载更多", exact: true });
+      await more.scrollIntoViewIfNeeded();
+      const beforeScroll = await page.evaluate(() => window.scrollY);
+      expect(beforeScroll).toBeGreaterThan(500);
+      const beforeCards = await boxes(page);
+      const expectStable = async () => {
+        expect(Math.abs(await page.evaluate(() => window.scrollY) - beforeScroll)).toBeLessThanOrEqual(1);
+        const afterCards = (await boxes(page)).slice(0, start);
+        for (let i = 0; i < start; i++) {
+          for (const key of ["x", "y", "width", "height"] as const)
+            expect(Math.abs(afterCards[i][key] - beforeCards[i][key])).toBeLessThanOrEqual(1);
+        }
+      };
+      await more.click();
+      await expect.poll(() => !!pending).toBe(true);
+      expect(new URL(pending!.request().url()).searchParams.get("cursor")).toBe(String(start));
+      await expect(page.locator(".load-more button")).toHaveClass(/n-button--loading/);
+      await expectStable();
+      await pending!.fulfill({ json: { items: items.slice(start, end), next_cursor: end < items.length ? String(end) : null } });
+      pending = undefined;
+      await expect(page.locator(".photo-card")).toHaveCount(end);
+      await checkLayout(page, columns);
+      // Include the subsequent ResizeObserver/animation-frame layout pass.
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await expectStable();
+    }
+    await expect(page.getByRole("button", { name: "加载更多", exact: true })).toHaveCount(0);
+  });
+}

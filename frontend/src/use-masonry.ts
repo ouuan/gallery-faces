@@ -40,22 +40,29 @@ export function useMasonry(
     if (!frame) frame = requestAnimationFrame(arrange);
   }
 
-  function reset() {
+  function stopObserving() {
     observer?.disconnect();
     cancelAnimationFrame(frame);
     frame = 0;
+    observedWidth = -1;
+  }
+
+  function clearLayout() {
     observedContainer?.style.removeProperty("height");
     for (const card of cards) {
       card.style.removeProperty("--masonry-left");
       card.style.removeProperty("--masonry-top");
     }
     cards = [];
+    observedContainer = null;
   }
 
   function refresh() {
-    reset();
+    stopObserving();
+    // Keep the current height and positions while measuring appended cards.
+    // Clearing them first collapses the page and clamps its scroll position.
+    if (observedContainer !== container.value || !enabled()) clearLayout();
     observedContainer = container.value;
-    observedWidth = -1;
     if (!observedContainer || !enabled()) return;
     cards = Array.from(observedContainer.children) as HTMLElement[];
     observer?.observe(observedContainer);
@@ -79,7 +86,8 @@ export function useMasonry(
     refresh();
   });
   onUnmounted(() => {
-    reset();
+    stopObserving();
+    clearLayout();
     window.removeEventListener("resize", schedule);
   });
 }
