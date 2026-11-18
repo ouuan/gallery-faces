@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingOverlay from "./LoadingOverlay.vue";
 import { computed, ref } from "vue";
 import { useReviewImages } from "./use-review-images";
 
@@ -114,6 +115,8 @@ function clear() {
   <div
     ref="surface"
     class="annotated-image face-box-editor"
+    :style="{ aspectRatio: `${image.width} / ${image.height}` }"
+    :aria-busy="!urls.has(image.id) && !failed.has(image.id)"
     :class="{ disabled }"
     tabindex="0"
     role="group"
@@ -134,8 +137,7 @@ function clear() {
       :draggable="false"
       @error="failed.add(image.id)"
     />
-    <p v-if="failed.has(image.id)" role="status">图片加载失败</p>
-    <p v-else-if="!urls.has(image.id)" role="status">正在加载图片…</p>
+    <LoadingOverlay :show="failed.has(image.id) || !urls.has(image.id)" center :error="failed.has(image.id)" :label="failed.has(image.id) ? '图片加载失败' : '正在加载图片…'" />
     <span
       v-for="face in image.faces"
       :key="face.id"

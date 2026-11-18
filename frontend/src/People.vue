@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingOverlay from "./LoadingOverlay.vue";
 import { useConfirm } from "./confirm";
 const confirm = useConfirm();
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
@@ -363,7 +364,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
         <p v-if="!person.reference_count" class="hint">尚不能自动匹配</p>
       </div>
       <n-button @click="open(person)">编辑</n-button
-      ><n-button
+      ><n-button class="stable-loading-button"
         type="error"
         secondary
         :aria-label="`删除人物 ${person.name}`"
@@ -452,7 +453,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
               >
             </div>
           </div>
-          <p v-else-if="!confirmedLoading && !confirmedError" class="hint">
+          <p v-else-if="!confirmedError" :style="{ visibility: confirmedLoading ? 'hidden' : undefined }" class="hint">
             暂无参考图，可选择已确认人脸或上传图片
           </p>
           <template v-if="id">
@@ -469,13 +470,12 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
               >{{ confirmedError
               }}<n-button @click="loadConfirmedFaces">重试</n-button></n-alert
             >
-            <p v-else-if="confirmedLoading" role="status">
-              正在加载已确认人脸…
-            </p>
-            <p v-else-if="!availableFaces.length" class="hint">
+            <div class="loading-region" :aria-busy="confirmedLoading">
+            <LoadingOverlay :show="confirmedLoading" label="正在加载已确认人脸…" />
+            <p v-if="!availableFaces.length && !confirmedError" :style="{ visibility: confirmedLoading ? 'hidden' : undefined }" class="hint">
               暂无可添加的已确认人脸。可到识别审核中确认更多人脸
             </p>
-            <div v-else class="confirmed-face-grid">
+            <div v-if="availableFaces.length" class="confirmed-face-grid">
               <label
                 v-for="face in availableFaces"
                 :key="face.id"
@@ -492,10 +492,10 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
                     selectedReferenceFaces.includes(face.id)
                   "
                   :disabled="
-                    saving || !!face.is_reference || !face.has_embedding
+                    saving || confirmedLoading || !!face.is_reference || !face.has_embedding
                   "
                   :aria-disabled="
-                    saving || !!face.is_reference || !face.has_embedding
+                    saving || confirmedLoading || !!face.is_reference || !face.has_embedding
                   "
                   :aria-label="`人脸 #${face.id} 设为参考图`"
                   @update:checked="toggleReference(face.id, $event)"
@@ -510,10 +510,13 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
                 }}</span>
               </label>
             </div>
+            </div>
             <p v-if="selectedReferenceFaces.length" class="hint">
               将添加 {{ selectedReferenceFaces.length }} 张参考图
             </p>
           </template>
+          <div class="loading-region" :aria-busy="uploading">
+          <LoadingOverlay :show="uploading" label="正在上传并检测人脸…" />
           <label class="field-label"
             >上传参考图片<input
               type="file"
@@ -521,11 +524,10 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
               :disabled="saving || uploading"
               @change="uploadFile"
           /></label>
-          <p v-if="uploading" role="status">正在上传并检测人脸…</p>
+          </div>
           <div v-if="upload">
-            <p v-if="failedUploads.has(0)" role="status">图片加载失败</p>
-            <p v-else-if="!uploadUrls.has(0)" role="status">正在加载图片…</p>
-            <div class="annotated-image">
+            <div class="annotated-image" :style="{ aspectRatio: `${upload.width} / ${upload.height}` }" :aria-busy="!uploadUrls.has(0) && !failedUploads.has(0)">
+              <LoadingOverlay :show="failedUploads.has(0) || !uploadUrls.has(0)" center :error="failedUploads.has(0)" :label="failedUploads.has(0) ? '图片加载失败' : '正在加载图片…'" />
               <img
                 v-if="uploadUrls.has(0)"
                 :src="uploadUrls.get(0)"
@@ -577,7 +579,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
         <div class="form-actions">
           <n-button :disabled="saving || uploading" @click="close"
             >取消</n-button
-          ><n-button
+          ><n-button class="stable-loading-button"
             type="primary"
             attr-type="submit"
             :loading="saving"

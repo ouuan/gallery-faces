@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingOverlay from "./LoadingOverlay.vue";
 import { ref, watch, computed, onMounted, onUnmounted, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -8,7 +9,6 @@ import {
   NDrawerContent,
   NModal,
   NAlert,
-  NSpin,
 } from "naive-ui";
 import {
   SlidersHorizontal,
@@ -183,7 +183,8 @@ onUnmounted(() => {
         @clear="apply(clearFilters(filter))"
       />
     </aside>
-    <div class="gallery-content">
+    <div class="gallery-content loading-region" :aria-busy="loading">
+      <LoadingOverlay :show="loading && !cursor" label="正在加载照片" />
       <div class="gallery-toolbar">
         <div>
           <h1>照片库</h1>
@@ -221,7 +222,7 @@ onUnmounted(() => {
         >{{ error }}
         <button class="text-button" @click="load()">重试</button></n-alert
       >
-      <div v-if="!loading && !photos.length && !error" class="empty-state">
+      <div v-if="!photos.length && !error" :style="{ visibility: loading ? 'hidden' : undefined }" class="empty-state">
         <Images :size="48" :stroke-width="1" />
         <h2>这里还没有照片</h2>
         <p>调整筛选条件，或在管理工作台导入第一批照片</p>
@@ -257,8 +258,8 @@ onUnmounted(() => {
         </button>
       </div>
       <div class="load-more" role="status" aria-live="polite">
-        <n-spin v-if="loading" aria-label="正在加载照片" /><n-button
-          v-else-if="cursor"
+        <n-button class="stable-loading-button"
+          v-if="cursor" :loading="loading"
           @click="load(true)"
           >加载更多</n-button
         >
@@ -324,7 +325,7 @@ onUnmounted(() => {
         >{{ detailError }}<n-button @click="loadDetail">重试</n-button></n-alert
       >
       <div v-else-if="detail" class="detail-body">
-        <div class="detail-image">
+        <div class="detail-image loading-region" :aria-busy="!detailImageUrls.has(detail.image_id) && !failedDetailImages.has(detail.image_id)">
           <img
             v-if="detailImageUrls.has(detail.image_id)"
             :src="detailImageUrls.get(detail.image_id)"
@@ -336,8 +337,7 @@ onUnmounted(() => {
             alt="当前照片"
             @error="failedDetailImages.add(detail.image_id)"
           />
-          <p v-if="failedDetailImages.has(detail.image_id)" role="status">图片加载失败</p>
-          <p v-else-if="!detailImageUrls.has(detail.image_id)" role="status">正在加载图片…</p>
+          <LoadingOverlay :show="failedDetailImages.has(detail.image_id) || !detailImageUrls.has(detail.image_id)" center :error="failedDetailImages.has(detail.image_id)" :label="failedDetailImages.has(detail.image_id) ? '图片加载失败' : '正在加载图片…'" />
         </div>
         <aside class="detail-sidebar">
           <header class="detail-summary">
@@ -372,6 +372,6 @@ onUnmounted(() => {
           <FeedbackPanel :key="detail.image_id" :image-id="detail.image_id" :pending-count="detail.pending_feedback_count" @changed="detail.pending_feedback_count = (detail.pending_feedback_count || 0) + 1" />
         </aside>
       </div>
-      <div v-else class="empty-state" role="status" aria-label="正在加载照片详情"><n-spin /></div></div
+      <div v-else class="detail-loading loading-region" aria-busy="true"><LoadingOverlay show center label="正在加载照片详情" /></div></div
   ></n-modal>
 </template>

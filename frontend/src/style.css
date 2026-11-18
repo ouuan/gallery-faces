@@ -1103,3 +1103,11 @@ td:first-child {
   font-size: 12px;
   opacity: 0.8;
 }
+
+/* Async feedback never participates in the surrounding layout. */
+.loading-region { position: relative; }
+.initial-loading { position: relative; min-height: calc(100dvh - 64px); }
+.detail-loading { flex: 1; min-height: 0; }
+.stable-loading-button.n-button--loading .n-button__content { opacity: 0; }
+.stable-loading-button .n-button__icon { position: absolute; inset: 0; margin: auto !important; transition: none !important; }
+.load-more { min-height: 108px; }

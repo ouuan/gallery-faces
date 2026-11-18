@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingOverlay from "./LoadingOverlay.vue";
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useLatestRequest } from "./use-latest-request";
 import { useRouter, useRoute } from "vue-router";
@@ -71,9 +72,6 @@ function clearTaskFilters() {
   taskStatuses.value = [];
 }
 watch([taskKinds, taskStatuses], () => {
-  tasks.value = [];
-  taskTotal.value = 0;
-  taskPage.value = 1;
   tasksError.value = "";
   void loadTasks(1);
 });
@@ -246,7 +244,7 @@ onUnmounted(() => {
 });
 </script>
 <template>
-  <div v-if="checking" class="empty-state">正在检查登录状态…</div>
+  <div v-if="checking" class="initial-loading" aria-busy="true"><LoadingOverlay show center label="正在检查登录状态…" /></div>
   <main v-else-if="!authenticated" class="login">
     <h1>管理员登录</h1>
     <p class="muted">登录后可导入照片、整理人物和审核识别结果</p>
@@ -258,7 +256,7 @@ onUnmounted(() => {
           type="password"
           placeholder="输入管理员密码"
           :input-props="{ autocomplete: 'current-password' }" /></label
-      ><n-button attr-type="submit" type="primary" block :loading="busy"
+      ><n-button class="stable-loading-button" attr-type="submit" type="primary" block :loading="busy"
         >登录工作台</n-button
       >
     </form>
@@ -309,7 +307,7 @@ onUnmounted(() => {
             /></label>
           </div>
           <DateRangeHint :start="start" :end="end" />
-          <n-button
+          <n-button class="stable-loading-button"
             type="primary"
             attr-type="submit"
             :disabled="!urls.trim() && directory === null"
@@ -341,17 +339,20 @@ onUnmounted(() => {
           </label>
           <n-button v-if="hasTaskFilters" @click="clearTaskFilters">清空筛选</n-button>
         </div>
+        <div class="loading-region" :aria-busy="tasksLoading">
+        <LoadingOverlay :show="tasksLoading" label="正在加载任务记录…" />
         <n-alert v-if="tasksError" type="error" title="任务记录加载失败">
           {{ tasksError }}
-          <n-button
+          <n-button class="stable-loading-button"
             :loading="tasksLoading"
             @click="loadTasks(requestedTaskPage)"
             >重新加载</n-button
           >
         </n-alert>
-        <p v-if="tasksLoading" role="status" class="hint">正在加载任务记录…</p>
+
         <div
-          v-if="!tasks.length && !tasksLoading && !tasksError"
+          v-if="!tasks.length && !tasksError"
+          :style="{ visibility: tasksLoading ? 'hidden' : undefined }"
           class="empty-state"
         >
           <template v-if="hasTaskFilters">
@@ -418,10 +419,12 @@ onUnmounted(() => {
                 <td>
                   <n-button
                     v-if="['queued', 'running'].includes(task.status)"
+                    :disabled="tasksLoading"
                     @click="taskAction(task.id, 'cancel')"
                     >取消</n-button
                   ><n-button
                     v-if="['failed', 'cancelled'].includes(task.status)"
+                    :disabled="tasksLoading"
                     @click="taskAction(task.id, 'retry')"
                     >重试</n-button
                   >
@@ -449,7 +452,7 @@ onUnmounted(() => {
               >下一页</n-button
             >
           </div>
-        </nav></template
+        </nav></div></template
       ><People v-else-if="section === 'people'" /><Review
         v-else-if="section === 'review'"
       /><DuplicateReview v-else-if="section === 'duplicates'"
@@ -523,7 +526,7 @@ onUnmounted(() => {
           <p class="hint">低于待审核下限的候选不显示，调低后可重新显示。达到自动合并下限还须通过 pHash、长宽比和跨组检查；修改阈值不会撤销已有合并或人工决定。</p>
           <label class="field-label"
             >站点时区<n-input v-model:value="settings.timezone" /></label
-          ><n-button
+          ><n-button class="stable-loading-button"
             type="primary"
             attr-type="submit"
             :loading="savingSettings"

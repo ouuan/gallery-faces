@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingOverlay from "./LoadingOverlay.vue";
 import { useReviewShortcuts } from "./review-shortcuts";
 import { computed, ref, watch, onUnmounted } from "vue";
 import { NButton, NModal, NSelect, NAlert, useMessage } from "naive-ui";
@@ -54,7 +55,7 @@ async function load() {
     if (id === request) loading.value = false;
   }
 }
-watch(statuses, () => { successors = null; rows.value = []; current.value = 0; void load(); }, { immediate: true });
+watch(statuses, () => { successors = null; void load(); }, { immediate: true });
 onUnmounted(() => { request++; });
 function moveGroup(index: number) {
   if (blocked.value || index < 0 || index >= rows.value.length) return;
@@ -87,8 +88,9 @@ async function decide(action: "merge" | "separate") {
     <n-select id="duplicate-status" v-model:value="statuses" multiple clearable :disabled="saving" :options="statusOptions" placeholder="全部状态" :input-props="{ 'aria-label': '审核状态' }" />
   </div>
   <n-alert v-if="error" type="error">{{ error }} <n-button @click="load()">重试加载</n-button></n-alert>
-  <p v-if="loading" role="status">正在加载候选…</p>
-  <div v-else-if="!row && !error" class="duplicates-empty">
+  <div class="duplicate-content loading-region" :aria-busy="loading">
+  <LoadingOverlay :show="loading" label="正在加载候选…" />
+  <div v-if="!row && !error" :style="{ visibility: loading ? 'hidden' : undefined }" class="duplicates-empty">
     <Copy :size="40" /><h2>当前状态下暂无重复图片候选</h2>
     <p>导入图片后自动检测相同文件和尺寸、压缩变体</p>
   </div>
@@ -104,10 +106,10 @@ async function decide(action: "merge" | "separate") {
     </div>
     <div class="duplicate-pair">
       <section v-for="image in row.images" :key="image.id" class="duplicate-photo" :aria-label="`图片 #${image.id}`">
-        <div class="duplicate-image">
-          <p v-if="failedImages.has(image.id)" role="status">图片加载失败</p>
-          <img v-else-if="imageUrls.has(image.id)" :src="imageUrls.get(image.id)" :alt="`重复图片候选 #${image.id}`" @error="failedImages.add(image.id)" />
-          <p v-else role="status">正在加载图片…</p>
+        <div class="duplicate-image loading-region" :aria-busy="!imageUrls.has(image.id) && !failedImages.has(image.id)">
+          <LoadingOverlay :show="!imageUrls.has(image.id) || failedImages.has(image.id)" center :error="failedImages.has(image.id)" :label="failedImages.has(image.id) ? '图片加载失败' : '正在加载图片…'" />
+          <img v-if="imageUrls.has(image.id) && !failedImages.has(image.id)" :src="imageUrls.get(image.id)" :alt="`重复图片候选 #${image.id}`" @error="failedImages.add(image.id)" />
+
         </div>
         <div class="duplicate-caption">
           <p>{{ image.width }} × {{ image.height }}</p>
@@ -118,10 +120,11 @@ async function decide(action: "merge" | "separate") {
       </section>
     </div>
     <div class="duplicate-actions">
-      <n-button type="primary" :disabled="blocked" :loading="saving" aria-label="合并为一组" aria-keyshortcuts="m" @click="decide('merge')">合并为一组<kbd class="shortcut-key" aria-hidden="true">M</kbd></n-button>
+      <n-button class="stable-loading-button" type="primary" :disabled="blocked" :loading="saving" aria-label="合并为一组" aria-keyshortcuts="m" @click="decide('merge')">合并为一组<kbd class="shortcut-key" aria-hidden="true">M</kbd></n-button>
       <n-button :disabled="blocked" :aria-label="row.images[0]?.group_id === row.images[1]?.group_id ? '拆分图片' : '不是重复'" aria-keyshortcuts="x" @click="decide('separate')">{{ row.images[0]?.group_id === row.images[1]?.group_id ? '拆分图片' : '不是重复' }}<kbd class="shortcut-key" aria-hidden="true">X</kbd></n-button>
     </div>
   </article>
+  </div>
   <n-modal :show="!!details" @update:show="!$event && (details = null)" preset="card" role="dialog" aria-modal="true" :title="`图片 #${details?.id} 详情`" class="duplicate-details-dialog" :bordered="false">
     <template v-if="details">
       <p>{{ details.width }} × {{ details.height }}</p>
@@ -137,6 +140,7 @@ async function decide(action: "merge" | "separate") {
 </template>
 
 <style scoped>
+.duplicate-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .duplicate-filter { display: flex; align-items: center; gap: 12px; flex-shrink: 0; margin-bottom: 12px; }
 .duplicate-filter label { flex-shrink: 0; }
 .duplicate-filter .n-select { max-width: 560px; }

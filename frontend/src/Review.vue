@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingOverlay from "./LoadingOverlay.vue";
 import { useReviewShortcuts } from "./review-shortcuts";
 import { useConfirm } from "./confirm";
 const confirm = useConfirm();
@@ -510,7 +511,7 @@ onMounted(load);
       <n-button :disabled="actionsDisabled" @click="action(visibilityAction)">
         {{ visibilityAction === "show" ? "恢复可见" : "隐藏" }}
       </n-button>
-      <n-button
+      <n-button class="stable-loading-button"
         type="error"
         secondary
         :disabled="actionsDisabled"
@@ -525,8 +526,9 @@ onMounted(load);
   <n-alert v-if="error" type="error"
     >{{ error }}<n-button @click="load">重试</n-button></n-alert
   >
-  <p v-if="loading && !images.length">正在加载审核项目…</p>
-  <div v-if="!loading && !images.length" class="empty-state">
+  <div class="loading-region" :aria-busy="loading">
+  <LoadingOverlay :show="loading" label="正在加载审核项目…" />
+  <div v-if="!error && !images.length" :style="{ visibility: loading ? 'hidden' : undefined }" class="empty-state">
     <h2>没有需要处理的照片</h2>
     <p>此分类中的项目已处理完毕，也可以切换其他状态</p>
   </div>
@@ -600,7 +602,7 @@ onMounted(load);
               :disabled="savingBox || savingFaces"
             />
             <div class="inline-form">
-              <n-button
+              <n-button class="stable-loading-button"
                 :disabled="!box || savingBox || savingFaces"
                 :loading="savingBox"
                 @click="addBox"
@@ -612,14 +614,14 @@ onMounted(load);
             </div>
           </div>
         </section>
-        <div class="review-details">
+        <div class="review-details loading-region">
           <FeedbackPanel :key="active.id" :image-id="active.id" :pending-count="active.pending_feedback_count" admin @changed="load" />
           <section class="review-faces" aria-labelledby="review-faces-title">
             <div class="review-heading">
               <h3 id="review-faces-title">
                 人脸审核 <span class="muted">（{{ visibleFaces.length }}）</span>
               </h3>
-              <n-button
+              <n-button class="stable-loading-button"
                 type="primary"
                 :disabled="actionsDisabled || !pendingFaces.length"
                 :loading="savingFaces"
@@ -735,6 +737,7 @@ onMounted(load);
       </div>
     </div>
   </div>
+  </div>
   <n-modal :show="!!newPersonFace" @update:show="!$event && closeNewPerson()">
     <div
       v-if="newPersonFace"
@@ -787,7 +790,7 @@ onMounted(load);
           <n-button :disabled="creatingPerson" @click="closeNewPerson"
             >取消</n-button
           >
-          <n-button
+          <n-button class="stable-loading-button"
             type="primary"
             attr-type="submit"
             :loading="creatingPerson"

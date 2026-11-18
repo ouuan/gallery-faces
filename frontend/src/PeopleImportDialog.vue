@@ -150,7 +150,7 @@ function viewTasks() {
         >
         <div class="form-actions">
           <n-button :disabled="busy" @click="close">取消</n-button
-          ><n-button
+          ><n-button class="stable-loading-button"
             type="primary"
             attr-type="submit"
             :loading="busy"
