@@ -41,7 +41,7 @@ test('anonymous feedback, pagination, throttling and moderation', async ({ page 
   const heading = panel.getByRole('heading', { level: 3 });
   await expect(heading).toHaveText('图片反馈');
   await expect(panel).toBeVisible();
-  await expect(panel.getByText('反馈仅管理员可见。')).toBeVisible();
+  await expect(panel.getByText('反馈仅管理员可见')).toBeVisible();
   await expect(input).toHaveAttribute('maxlength', '1000');
   await input.fill('字'.repeat(1001));
   await expect(input).toHaveValue('字'.repeat(1000));

@@ -355,7 +355,7 @@ async function deleteImages(ids: number[]) {
     );
     message.success(`已删除 ${result.deleted} 张图片`);
     if (result.cleanup_pending)
-      message.warning("部分文件暂未清理，后台将自动重试。");
+      message.warning("部分文件暂未清理，后台将自动重试");
     await load();
     await store.load();
   } catch (e) {
@@ -453,7 +453,7 @@ onMounted(load);
   <p v-if="loading && !images.length">正在加载审核项目…</p>
   <div v-if="!loading && !images.length" class="empty-state">
     <h2>没有需要处理的照片</h2>
-    <p>此分类中的项目已处理完毕，也可以切换其他状态。</p>
+    <p>此分类中的项目已处理完毕，也可以切换其他状态</p>
   </div>
   <div v-if="images.length" class="review-workspace">
     <div class="review-strip">
@@ -497,7 +497,7 @@ onMounted(load);
       </div>
 
       <n-alert v-if="reviewIssues.length" type="info" title="待审核问题">
-        {{ reviewIssues.join("；") }}。
+        {{ reviewIssues.join("；") }}
       </n-alert>
       <div class="review-columns">
         <section class="review-preview" aria-label="原图与补框">
@@ -513,7 +513,7 @@ onMounted(load);
             />
           </div>
           <p class="hint">
-            直接在图片上拖拽补框，可向任意方向框选；按 Escape 取消。
+            直接在图片上拖拽补框，可向任意方向框选；按 Escape 取消
           </p>
 
           <n-alert v-if="active.error" type="error">{{ active.error }}</n-alert>
@@ -655,7 +655,7 @@ onMounted(load);
           :src="`/api/v1/admin/faces/${newPersonFace.id}/crop`"
           :alt="`人脸 #${newPersonFace.id}`"
         />
-        <p>创建后，人脸 #{{ newPersonFace.id }} 将确认为这位人物。</p>
+        <p>创建后，人脸 #{{ newPersonFace.id }} 将确认为这位人物</p>
       </div>
       <n-alert v-if="createError" type="error">{{ createError }}</n-alert>
       <form @submit.prevent="createPerson">
@@ -684,8 +684,8 @@ onMounted(load);
         <p class="hint">
           {{
             newPersonFace.has_embedding
-              ? "参考图用于自动匹配其他未知人脸。"
-              : "此人脸暂无有效特征，可先创建人物，再到人物管理中添加参考图。"
+              ? "参考图用于自动匹配其他未知人脸"
+              : "此人脸暂无有效特征，可先创建人物，再到人物管理中添加参考图"
           }}
         </p>
         <div class="form-actions">

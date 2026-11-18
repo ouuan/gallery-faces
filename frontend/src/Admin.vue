@@ -235,7 +235,7 @@ onUnmounted(() => {
   <div v-if="checking" class="empty-state">正在检查登录状态…</div>
   <main v-else-if="!authenticated" class="login">
     <h1>管理员登录</h1>
-    <p class="muted">登录后可导入照片、整理人物和审核识别结果。</p>
+    <p class="muted">登录后可导入照片、整理人物和审核识别结果</p>
     <n-alert v-if="error" type="error">{{ error }}</n-alert>
     <form @submit.prevent="login">
       <label class="field-label"
@@ -271,7 +271,7 @@ onUnmounted(() => {
         error
       }}</n-alert><template v-if="section === 'import'"
         ><p class="intro">
-          添加帖子或账号链接，或导入已挂载的 gallery-dl 目录。
+          添加帖子或账号链接，或导入已挂载的 gallery-dl 目录
         </p>
         <form class="import-form" @submit.prevent="submitImport">
           <label class="field-label"
@@ -302,7 +302,7 @@ onUnmounted(() => {
             >创建导入任务</n-button
           >
           <p class="hint">
-            再次导入同一账号可获取新增照片，已收录的媒体不会重复创建。
+            再次导入同一账号可获取新增照片，已收录的媒体不会重复创建
           </p>
         </form>
         <div v-for="(r, i) in results" :key="i" class="import-result">
@@ -345,7 +345,7 @@ onUnmounted(() => {
           </template>
           <template v-else>
             <h3>还没有导入任务</h3>
-            <p>创建任务后，可在这里查看进度、取消或重试。</p>
+            <p>创建任务后，可在这里查看进度、取消或重试</p>
           </template>
         </div>
         <div v-if="tasks.length" class="table-scroll" :aria-busy="tasksLoading">
@@ -442,7 +442,7 @@ onUnmounted(() => {
               show-count
               :disabled="savingSettings"
           /></label>
-          <p class="hint">显示在页面顶部和浏览器标签页，最多 100 个字符。</p>
+          <p class="hint">显示在页面顶部和浏览器标签页，最多 100 个字符</p>
           <h2>人脸检测</h2>
           <label class="field-label"
             >人脸检测阈值<n-input-number
@@ -456,11 +456,11 @@ onUnmounted(() => {
           /></label>
           <p id="detection-threshold-help" class="hint">
             范围 0–1，默认 0.5。调低可检出更多人脸，也可能增加误检；调高可减少误检，也可能漏检。
-            保存后用于后续检测和参考图上传；已有照片需重新检测才会应用。
+            保存后用于后续检测和参考图上传；已有照片需重新检测才会应用
           </p>
           <h2>人物匹配</h2>
           <p class="muted">
-            相似度不表示准确率。只有同时满足阈值和领先差值时才会自动采用。
+            相似度不表示准确率。只有同时满足阈值和领先差值时才会自动采用
           </p>
           <label class="field-label"
             >最低余弦相似度<n-input-number
@@ -513,7 +513,7 @@ onUnmounted(() => {
           <CookieGuide />
         </div>
         <p class="muted">
-          仅接受 Netscape cookies 文件。替换后用于后续下载任务。
+          仅接受 Netscape cookies 文件。替换后用于后续下载任务
         </p>
         <div
           v-for="platform in ['instagram', 'x']"
@@ -539,7 +539,7 @@ onUnmounted(() => {
           {{
             settings.models_ready
               ? "模型文件已安装"
-              : "模型尚未安装，请按部署文档安装后再处理图片。"
+              : "模型尚未安装，请按部署文档安装后再处理图片"
           }}
         </p></template
       >

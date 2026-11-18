@@ -84,7 +84,7 @@ function viewTasks() {
         已选 {{ people.length }} 人：{{ people.map((p) => p.name).join("、") }}
       </p>
       <p class="hint">
-        导入关联账号发布的照片，照片中的人物将由识别和审核确定。
+        导入关联账号发布的照片，照片中的人物将由识别和审核确定
       </p>
       <n-alert v-if="skipped" type="warning"
         >以下人物未关联账号，将跳过：{{ skipped }}</n-alert
@@ -98,7 +98,7 @@ function viewTasks() {
         <p role="status">
           已创建
           {{ results.filter((r) => r.status === "queued").length }} 个任务，复用
-          {{ results.filter((r) => r.status === "duplicate").length }} 个任务。
+          {{ results.filter((r) => r.status === "duplicate").length }} 个任务
         </p>
         <div
           v-for="result in results"
@@ -144,7 +144,7 @@ function viewTasks() {
           /></label>
         </div>
         <p class="hint">
-          按站点时区 {{ siteTimezone }} 计算；留空表示不限对应日期。
+          按站点时区 {{ siteTimezone }} 计算；留空表示不限对应日期
         </p>
         <n-alert v-if="invalidRange" type="error"
           >结束日期不能早于开始日期</n-alert

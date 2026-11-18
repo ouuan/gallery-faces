@@ -92,8 +92,8 @@ watch(endpoint, () => { items.value = []; cursor.value = null; void load(); }, {
     <n-alert v-if="submitError" type="error">{{ submitError }}</n-alert>
     <form v-if="!admin" class="feedback-form" @submit.prevent="submit">
       <n-input :input-props="{ id: `feedback-${imageId}`, 'aria-label': '反馈内容' }" v-model:value="draft" type="textarea" :maxlength="1000" show-count :autosize="{ minRows: 3, maxRows: 8 }" :disabled="busy" placeholder="例如：人物识别有误、来源需要补充" />
-      <p class="hint">反馈仅管理员可见。</p>
-      <p v-if="remaining" role="status" class="hint">提交过于频繁，{{ remaining }} 秒后可重试。</p>
+      <p class="hint">反馈仅管理员可见</p>
+      <p v-if="remaining" role="status" class="hint">提交过于频繁，{{ remaining }} 秒后可重试</p>
       <n-button type="primary" attr-type="submit" :loading="busy" :disabled="busy || remaining > 0 || !draft.trim()">提交反馈</n-button>
     </form>
   </section>

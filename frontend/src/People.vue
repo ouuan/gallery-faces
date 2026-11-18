@@ -302,7 +302,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
     ><div v-if="!store.people.length" class="empty-state">
       <UserRound :size="40" />
       <h2>建立你的人物库</h2>
-      <p>先添加姓名，再选择参考人脸。有效参考图会用于匹配未知人物。</p>
+      <p>先添加姓名，再选择参考人脸。有效参考图会用于匹配未知人物</p>
       <n-button @click="open()">添加第一位人物</n-button>
     </div>
     <div v-if="store.people.length" class="people-selection">
@@ -363,7 +363,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
     </div></template
   ><template v-else
     ><p v-if="!store.groups.length" class="empty-state">
-      暂无分组。可在人物编辑中直接新建。
+      暂无分组。可在人物编辑中直接新建
     </p>
     <div v-for="g in store.groups" :key="g.id" class="person-row">
       <strong class="grow">{{ g.name }}</strong
@@ -418,7 +418,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
         />
         <section aria-labelledby="references-title">
           <h3 id="references-title">参考图</h3>
-          <p class="hint">选择、删除或上传参考图，保存人物后生效。</p>
+          <p class="hint">选择、删除或上传参考图，保存人物后生效</p>
           <div v-if="references.length" class="reference-grid">
             <div
               v-for="r in references"
@@ -440,7 +440,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
             </div>
           </div>
           <p v-else-if="!confirmedLoading && !confirmedError" class="hint">
-            暂无参考图，可选择已确认人脸或上传图片。
+            暂无参考图，可选择已确认人脸或上传图片
           </p>
           <template v-if="id">
             <div class="section-heading">
@@ -451,7 +451,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
                 >刷新人脸</n-button
               >
             </div>
-            <p class="hint">可多选；已有参考图可在上方删除。</p>
+            <p class="hint">可多选；已有参考图可在上方删除</p>
             <n-alert v-if="confirmedError" type="error"
               >{{ confirmedError
               }}<n-button @click="loadConfirmedFaces">重试</n-button></n-alert
@@ -460,7 +460,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
               正在加载已确认人脸…
             </p>
             <p v-else-if="!availableFaces.length" class="hint">
-              暂无可添加的已确认人脸。可到识别审核中确认更多人脸。
+              暂无可添加的已确认人脸。可到识别审核中确认更多人脸
             </p>
             <div v-else class="confirmed-face-grid">
               <label

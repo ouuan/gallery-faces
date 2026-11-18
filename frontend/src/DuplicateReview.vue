@@ -40,7 +40,7 @@ async function decide(action: "merge" | "separate") {
 <template>
   <div v-if="!row" class="duplicates-empty">
     <Copy :size="40" /><h2>暂无重复图片候选</h2>
-    <p>导入图片后自动检测相同文件和尺寸、压缩变体。</p>
+    <p>导入图片后自动检测相同文件和尺寸、压缩变体</p>
   </div>
   <article v-else class="duplicate-review" aria-label="重复图片审核">
     <nav class="duplicate-navigation" aria-label="候选组切换">
@@ -79,7 +79,7 @@ async function decide(action: "merge" | "separate") {
       <p v-for="source in details.sources" :key="source.id">
         <a :href="source.url" target="_blank" rel="noopener noreferrer">{{ platformLabel(source.platform) }} · {{ store.publisherName(source) }} · {{ dateLabel(source.published_at) }}</a>
       </p>
-      <p class="hint">拆分后的图片不会再次自动合并。</p>
+      <p class="hint">拆分后的图片不会再次自动合并</p>
     </template>
   </n-modal>
 </template>

@@ -49,7 +49,7 @@ function addGroup() {
       >新建分组</n-button
     >
   </div>
-  <p class="hint">新分组将在保存人物时创建。移除标签仅取消此人的归属。</p>
+  <p class="hint">新分组将在保存人物时创建。移除标签仅取消此人的归属</p>
   <div class="section-heading">
     <h3>关联账号</h3>
     <n-button

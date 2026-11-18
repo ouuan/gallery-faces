@@ -40,7 +40,7 @@ const show = ref(false);
           </li>
           <li>
             <h3>导出当前网站的 Cookies</h3>
-            <p>任选以下一种方式导出。</p>
+            <p>任选以下一种方式导出</p>
             <p>
               <strong>Chrome / Edge：</strong>安装
               <a
@@ -105,7 +105,7 @@ const show = ref(false);
           </li>
         </ol>
         <p class="guide-privacy">
-          Cookie 包含登录凭据，请像密码一样保管，只上传到自己信任的图库，勿分享或提交到代码仓库。
+          Cookie 包含登录凭据，请像密码一样保管，只上传到自己信任的图库，勿分享或提交到代码仓库
         </p>
       </div>
       <footer class="guide-footer">

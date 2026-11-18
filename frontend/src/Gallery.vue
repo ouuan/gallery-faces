@@ -216,7 +216,7 @@ onUnmounted(() => {
       <div v-if="!loading && !photos.length && !error" class="empty-state">
         <Images :size="48" :stroke-width="1" />
         <h2>这里还没有照片</h2>
-        <p>调整筛选条件，或在管理工作台导入第一批照片。</p>
+        <p>调整筛选条件，或在管理工作台导入第一批照片</p>
         <n-button v-if="hasFilters(filter)" @click="apply(clearFilters(filter))">清空筛选</n-button
         ><router-link to="/admin/import">前往导入</router-link>
       </div>
