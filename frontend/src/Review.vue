@@ -305,21 +305,31 @@ async function confirmAll() {
   if (actionsDisabled.value || !pendingFaces.value.length) return;
   const faces = [...pendingFaces.value];
   savingFaces.value = true;
-  let saved = 0;
-  const failures: string[] = [];
   try {
+    const result = await send("/admin/faces", {
+      faces: faces.map(face => ({
+        id: face.id,
+        revision: face.revision,
+        person_id: facePerson(face),
+        ignored: false,
+        locked: facePerson(face) !== null,
+      })),
+    }, "PUT");
     for (const face of faces) {
-      try {
-        await saveFace(face);
-        saved++;
-      } catch (e) {
-        failures.push(`人脸 #${face.id}：${(e as Error).message}`);
+      if (result.saved.includes(face.id)) {
+        const personId = facePerson(face);
+        Object.assign(face, { person_id: personId, ignored: false, locked: personId !== null, revision: face.revision + 1 });
+        delete facePeople.value[face.id];
       }
     }
+    const failures = result.failures.map((failure: { id: number; detail: string }) =>
+      `人脸 #${failure.id}：${failure.detail}`);
     if (failures.length)
-      message.error(`已确认 ${saved} 个人脸，${failures.length} 个失败。${failures.join("；")}`, { duration: 8000 });
-    else message.success(`已确认 ${saved} 个人脸`);
+      message.error(`已确认 ${result.saved.length} 个人脸，${failures.length} 个失败。${failures.join("；")}`, { duration: 8000 });
+    else message.success(`已确认 ${result.saved.length} 个人脸`);
     await load();
+  } catch (e) {
+    message.error((e as Error).message);
   } finally {
     savingFaces.value = false;
   }

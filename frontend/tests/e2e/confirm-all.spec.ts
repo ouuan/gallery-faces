@@ -10,6 +10,7 @@ for (const failOnce of [false, true]) {
       { id: 5, person_id: 7, locked: true, ignored: true },
     ].map(face => ({ ...face, revision: 3, box: [20, 20, 40, 40], candidates: [{ person_id: 8, score: 0.9 }] }));
     const saved: { id: number; person_id: number; revision: number; locked: boolean }[] = [];
+    const batches: number[][] = [];
     let failed = false;
     let release: (() => void) | undefined;
     const gate = new Promise<void>(resolve => { release = resolve; });
@@ -17,17 +18,23 @@ for (const failOnce of [false, true]) {
       const path = new URL(route.request().url()).pathname;
       if (path.includes("/media/") || path.endsWith("/crop"))
         return route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"/>' });
-      if (/\/admin\/faces\/\d+$/.test(path)) {
-        const id = Number(path.split("/").pop());
-        const body = route.request().postDataJSON();
+      if (path.endsWith("/admin/faces")) {
+        expect(route.request().method()).toBe("PUT");
+        const { faces: edits } = route.request().postDataJSON();
+        batches.push(edits.map((face: { id: number }) => face.id));
         await gate;
-        if (failOnce && id === 2 && !failed) {
-          failed = true;
-          return route.fulfill({ status: 409, json: { detail: "人脸已更新，请刷新后再操作" } });
+        const result = { saved: [] as number[], failures: [] as { id: number; detail: string; status: number }[] };
+        for (const { id, ...body } of edits) {
+          if (failOnce && id === 2 && !failed) {
+            failed = true;
+            result.failures.push({ id, detail: "人脸已更新，请刷新后再操作", status: 409 });
+            continue;
+          }
+          saved.push({ id, person_id: body.person_id, revision: body.revision, locked: body.locked });
+          Object.assign(faces.find(face => face.id === id)!, body, { revision: body.revision + 1 });
+          result.saved.push(id);
         }
-        saved.push({ id, person_id: body.person_id, revision: body.revision, locked: body.locked });
-        Object.assign(faces.find(face => face.id === id)!, body, { revision: body.revision + 1 });
-        return route.fulfill({ json: { ok: true } });
+        return route.fulfill({ json: result });
       }
       if (path.endsWith("/admin/images")) return route.fulfill({ json: [1, 2].map(id => ({ id, width: 800, height: 600, detection: "done", faces: id === 1 ? faces : [{ ...faces[0], id: 6 }], sources: [] })) });
       if (path.endsWith("/feedback")) return route.fulfill({ json: { items: [], next_cursor: null } });
@@ -59,6 +66,7 @@ for (const failOnce of [false, true]) {
     await expect.poll(() => saved.length).toBe(2);
     await expect(page.locator(".review-faces .n-button--loading")).toHaveCount(0);
     await expect(all).toBeDisabled();
+    expect(batches).toEqual(failOnce ? [[1, 2], [2]] : [[1, 2]]);
     expect(saved).toEqual([
       { id: 1, person_id: 7, revision: 3, locked: true },
       { id: 2, person_id: 8, revision: 3, locked: true },

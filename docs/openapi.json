@@ -1423,6 +1423,44 @@
         }
       }
     },
+    "/api/v1/admin/faces": {
+      "put": {
+        "summary": "Faces Edit",
+        "operationId": "faces_edit_api_v1_admin_faces_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchFaceEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchFaceEditResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/faces/{face_id}": {
       "put": {
         "summary": "Face Edit",
@@ -2110,6 +2148,86 @@
         ],
         "title": "Account"
       },
+      "BatchFaceEdit": {
+        "properties": {
+          "faces": {
+            "items": {
+              "$ref": "#/components/schemas/BatchFaceEditItem"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Faces"
+          }
+        },
+        "type": "object",
+        "required": [
+          "faces"
+        ],
+        "title": "BatchFaceEdit"
+      },
+      "BatchFaceEditItem": {
+        "properties": {
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Id"
+          },
+          "ignored": {
+            "type": "boolean",
+            "title": "Ignored",
+            "default": false
+          },
+          "locked": {
+            "type": "boolean",
+            "title": "Locked",
+            "default": true
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "revision",
+          "id"
+        ],
+        "title": "BatchFaceEditItem"
+      },
+      "BatchFaceEditResult": {
+        "properties": {
+          "saved": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Saved"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/FaceEditFailure"
+            },
+            "type": "array",
+            "title": "Failures"
+          }
+        },
+        "type": "object",
+        "required": [
+          "saved",
+          "failures"
+        ],
+        "title": "BatchFaceEditResult"
+      },
       "Body_cookie_upload_api_v1_admin_cookies__platform__post": {
         "properties": {
           "file": {
@@ -2285,6 +2403,29 @@
           "revision"
         ],
         "title": "FaceEdit"
+      },
+      "FaceEditFailure": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "detail",
+          "status"
+        ],
+        "title": "FaceEditFailure"
       },
       "FeedbackInput": {
         "properties": {

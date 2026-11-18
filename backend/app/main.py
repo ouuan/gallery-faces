@@ -1166,37 +1166,81 @@ def person_from_face(
     return {"id": person_id}
 
 
+def write_face_edit(db, face_id: int, body: FaceEdit):
+    old = db.execute(
+        "SELECT id,person_id,ignored,locked,revision FROM faces WHERE id=?",
+        (face_id,),
+    ).fetchone()
+    if not old:
+        fail("人脸不存在", 404)
+    if old["revision"] != body.revision:
+        fail("人脸已更新，请刷新后再操作", 409)
+    if (
+        body.person_id is not None
+        and not db.execute(
+            "SELECT 1 FROM people WHERE id=?", (body.person_id,)
+        ).fetchone()
+    ):
+        fail("人物不存在")
+    db.execute(
+        "INSERT INTO review_history(face_id,before_json,after_revision) VALUES(?,?,?)",
+        (face_id, json.dumps(dict(old)), body.revision + 1),
+    )
+    db.execute(
+        "UPDATE faces SET person_id=?,ignored=?,locked=?,revision=revision+1 WHERE id=?",
+        (
+            None if body.ignored else body.person_id,
+            body.ignored,
+            body.locked,
+            face_id,
+        ),
+    )
+
+
+class BatchFaceEditItem(FaceEdit):
+    id: int
+
+
+class BatchFaceEdit(BaseModel):
+    faces: list[BatchFaceEditItem] = Field(min_length=1)
+
+
+class FaceEditFailure(BaseModel):
+    id: int
+    detail: str
+    status: int
+
+
+class BatchFaceEditResult(BaseModel):
+    saved: list[int]
+    failures: list[FaceEditFailure]
+
+
+@app.put("/api/v1/admin/faces", response_model=BatchFaceEditResult)
+def faces_edit(body: BatchFaceEdit, _: None = Depends(admin)):
+    if len({face.id for face in body.faces}) != len(body.faces):
+        fail("人脸不能重复")
+    saved = []
+    failures = []
+    with connect(True) as db:
+        for face in body.faces:
+            db.execute("SAVEPOINT face_edit")
+            try:
+                write_face_edit(db, face.id, face)
+            except HTTPException as error:
+                db.execute("ROLLBACK TO face_edit")
+                failures.append({"id": face.id, "detail": error.detail, "status": error.status_code})
+            else:
+                saved.append(face.id)
+            finally:
+                db.execute("RELEASE face_edit")
+    return {"saved": saved, "failures": failures}
+
+
 @app.put("/api/v1/admin/faces/{face_id}")
 def face_edit(face_id: int, body: FaceEdit, _: None = Depends(admin)):
     with connect(True) as db:
-        old = db.execute(
-            "SELECT id,person_id,ignored,locked,revision FROM faces WHERE id=?",
-            (face_id,),
-        ).fetchone()
-        if not old:
-            fail("人脸不存在", 404)
-        if old["revision"] != body.revision:
-            fail("人脸已更新，请刷新后再操作", 409)
-        if (
-            body.person_id is not None
-            and not db.execute(
-                "SELECT 1 FROM people WHERE id=?", (body.person_id,)
-            ).fetchone()
-        ):
-            fail("人物不存在")
-        db.execute(
-            "INSERT INTO review_history(face_id,before_json,after_revision) VALUES(?,?,?)",
-            (face_id, json.dumps(dict(old)), body.revision + 1),
-        )
-        db.execute(
-            "UPDATE faces SET person_id=?,ignored=?,locked=?,revision=revision+1 WHERE id=?",
-            (
-                None if body.ignored else body.person_id,
-                body.ignored,
-                body.locked,
-                face_id,
-            ),
-        )
+        write_face_edit(db, face_id, body)
     return {"ok": True}
 
 

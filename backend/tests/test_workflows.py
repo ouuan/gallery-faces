@@ -1440,3 +1440,43 @@ def test_duplicate_threshold_classification(client, monkeypatch, score, phash, w
     with db.connect() as conn:
         assert conn.execute('SELECT decision FROM duplicate_decisions').fetchone()[0] == 'separate'
         assert conn.execute('SELECT count(DISTINCT group_id) FROM images').fetchone()[0] == 2
+
+
+def test_batch_face_edit_partial_failure_retry_and_undo(client):
+    with db.connect(True) as conn:
+        for _ in range(4):
+            image(conn)
+        ids = [row[0] for row in conn.execute("SELECT id FROM faces ORDER BY id")]
+        person = conn.execute("INSERT INTO people(name) VALUES('Batch')").lastrowid
+    edits = [{"id": id, "revision": 0, "person_id": person} for id in ids]
+    edits[1]["revision"] = 1
+    edits[2]["person_id"] = person + 100
+    edits.append({"id": 9999, "revision": 0})
+    response = client.put('/api/v1/admin/faces', json={"faces": edits})
+    assert response.status_code == 200
+    result = response.json()
+    assert result["saved"] == [ids[0], ids[3]]
+    assert [(f["id"], f["status"]) for f in result["failures"]] == [(ids[1], 409), (ids[2], 400), (9999, 404)]
+    with db.connect() as conn:
+        assert [r[0] for r in conn.execute("SELECT revision FROM faces ORDER BY id")] == [1, 0, 0, 1]
+        assert conn.execute("SELECT count(*) FROM review_history").fetchone()[0] == 2
+    retry = [{"id": id, "revision": 0, "person_id": person} for id in ids[1:3]]
+    assert client.put('/api/v1/admin/faces', json={"faces": retry}).json() == {"saved": ids[1:3], "failures": []}
+    for id in ids:
+        assert client.post(f'/api/v1/admin/faces/{id}/undo').status_code == 200
+    with db.connect() as conn:
+        assert all(r[0] is None and not r[1] for r in conn.execute("SELECT person_id,locked FROM faces"))
+
+
+def test_batch_face_edit_validation_and_auth(client):
+    with db.connect(True) as conn:
+        image(conn)
+        id = conn.execute("SELECT id FROM faces").fetchone()[0]
+    edit = {"id": id, "revision": 0}
+    assert client.put('/api/v1/admin/faces', json={"faces": []}).status_code == 422
+    assert client.put('/api/v1/admin/faces', json={"faces": [edit, edit]}).status_code == 400
+    with db.connect() as conn:
+        assert conn.execute("SELECT revision FROM faces").fetchone()[0] == 0
+        assert conn.execute("SELECT count(*) FROM review_history").fetchone()[0] == 0
+    client.cookies.clear()
+    assert client.put('/api/v1/admin/faces', json={"faces": [edit]}).status_code == 401

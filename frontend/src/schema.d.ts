@@ -468,6 +468,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/faces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Faces Edit */
+        put: operations["faces_edit_api_v1_admin_faces_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/faces/{face_id}": {
         parameters: {
             query?: never;
@@ -723,6 +740,37 @@ export interface components {
             /** Username */
             username: string;
         };
+        /** BatchFaceEdit */
+        BatchFaceEdit: {
+            /** Faces */
+            faces: components["schemas"]["BatchFaceEditItem"][];
+        };
+        /** BatchFaceEditItem */
+        BatchFaceEditItem: {
+            /** Person Id */
+            person_id?: number | null;
+            /**
+             * Ignored
+             * @default false
+             */
+            ignored: boolean;
+            /**
+             * Locked
+             * @default true
+             */
+            locked: boolean;
+            /** Revision */
+            revision: number;
+            /** Id */
+            id: number;
+        };
+        /** BatchFaceEditResult */
+        BatchFaceEditResult: {
+            /** Saved */
+            saved: number[];
+            /** Failures */
+            failures: components["schemas"]["FaceEditFailure"][];
+        };
         /** Body_cookie_upload_api_v1_admin_cookies__platform__post */
         Body_cookie_upload_api_v1_admin_cookies__platform__post: {
             /** File */
@@ -784,6 +832,15 @@ export interface components {
             locked: boolean;
             /** Revision */
             revision: number;
+        };
+        /** FaceEditFailure */
+        FaceEditFailure: {
+            /** Id */
+            id: number;
+            /** Detail */
+            detail: string;
+            /** Status */
+            status: number;
         };
         /** FeedbackInput */
         FeedbackInput: {
@@ -2077,6 +2134,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    faces_edit_api_v1_admin_faces_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchFaceEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchFaceEditResult"];
                 };
             };
             /** @description Validation Error */
