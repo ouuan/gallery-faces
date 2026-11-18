@@ -49,12 +49,12 @@ test("gallery query restores filters, follows history and clears applied filters
   await expect.poll(apiParams).toEqual(updated);
 
   await filters.getByRole("button", { name: "清空", exact: true }).click();
-  await expect.poll(params).toEqual({});
-  await expect.poll(apiParams).toEqual({});
+  await expect.poll(params).toEqual({ sort: "oldest" });
+  await expect.poll(apiParams).toEqual({ sort: "oldest" });
   await expect(start).toHaveValue("");
   await expect(end).toHaveValue("");
   await expect(noFaces).not.toBeChecked();
-  await expect(page.locator('[aria-label="排序"]')).toContainText("最新发布");
+  await expect(page.locator('[aria-label="排序"]')).toContainText("最早发布");
   await page.goBack();
   await expect.poll(params).toEqual(updated);
   await expect(start).toHaveValue("2026-01-02");

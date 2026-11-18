@@ -73,7 +73,7 @@ test("person editor stages all reference changes and preserves drafts on failure
   await page.getByRole("checkbox", { name: "#11" }).check();
   await expect(page.getByRole("checkbox", { name: "#12" })).toBeDisabled();
   expect(writes).toHaveLength(0);
-  page.once("dialog", (dialog) => dialog.accept());
+  await page.addLocatorHandler(page.getByRole("dialog").filter({ hasText: "确认操作" }), async dialog => { await dialog.getByRole("button", { name: "确认", exact: true }).click(); }, { times: 1 });
   await page.getByRole("button", { name: "取消", exact: true }).click();
   await page.getByRole("button", { name: "编辑", exact: true }).click();
   await expect(page.getByRole("checkbox", { name: "#11" })).not.toBeChecked();

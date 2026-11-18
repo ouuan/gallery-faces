@@ -46,7 +46,12 @@ let requestVersion = 0,
   detailVersion = 0,
   lastFocus: HTMLElement | null = null;
 const selectedId = computed(() => Number(route.query.photo) || null);
+let galleryController: AbortController | null = null;
+let detailController: AbortController | null = null;
 async function load(more = false) {
+  if (more && (loading.value || !cursor.value)) return;
+  galleryController?.abort();
+  galleryController = new AbortController();
   const version = ++requestVersion;
   loading.value = true;
   error.value = "";
@@ -55,6 +60,7 @@ async function load(more = false) {
     if (more && cursor.value) q.set("cursor", cursor.value);
     const result = await api<{ items: Photo[]; next_cursor: string | null }>(
       "/gallery?" + q,
+      { signal: galleryController.signal },
     );
     if (version !== requestVersion) return;
     photos.value = more ? [...photos.value, ...result.items] : result.items;
@@ -78,7 +84,7 @@ function open(photo: Photo) {
     query: {
       ...route.query,
       photo: photo.id,
-      source: photo.matched_source.post_id,
+      source: undefined,
     },
   });
 }
@@ -88,6 +94,8 @@ function close() {
   nextTick(() => lastFocus?.focus());
 }
 async function loadDetail() {
+  detailController?.abort();
+  detailController = new AbortController();
   const version = ++detailVersion;
   detailError.value = "";
   detail.value = null;
@@ -95,7 +103,8 @@ async function loadDetail() {
   if (!selectedId.value) return;
   try {
     const result = await api<Photo>(
-      `/gallery/${selectedId.value}${route.query.source ? "?matched_post=" + route.query.source : ""}`,
+      `/gallery/${selectedId.value}`,
+      { signal: detailController.signal },
     );
     if (version === detailVersion) detail.value = result;
   } catch (e) {
@@ -112,7 +121,7 @@ function move(delta: number) {
       query: {
         ...route.query,
         photo: photo.id,
-        source: photo.matched_source.post_id,
+        source: undefined,
       },
     });
 }
@@ -131,7 +140,7 @@ watch(
   () => load(),
   { immediate: true },
 );
-watch(() => [selectedId.value, route.query.source], loadDetail, {
+watch(selectedId, loadDetail, {
   immediate: true,
 });
 watch(layout, (v) => localStorage.setItem("layout", v));
@@ -142,7 +151,13 @@ onMounted(() => {
   store.load().catch((e) => (error.value = e.message));
   window.addEventListener("keydown", keys);
 });
-onUnmounted(() => window.removeEventListener("keydown", keys));
+onUnmounted(() => {
+  window.removeEventListener("keydown", keys);
+  requestVersion++;
+  detailVersion++;
+  galleryController?.abort();
+  detailController?.abort();
+});
 </script>
 <template>
   <main class="gallery-shell">

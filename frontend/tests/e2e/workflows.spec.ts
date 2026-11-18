@@ -50,7 +50,7 @@ test("gallery responsive states and transactional person groups", async ({
   await page.getByRole("button", { name: "添加人物", exact: true }).click();
   await page.getByPlaceholder("新分组名称").fill("取消不创建");
   await page.getByRole("button", { name: "新建分组", exact: true }).click();
-  page.once("dialog", (d) => d.accept());
+  await page.addLocatorHandler(page.getByRole("dialog").filter({ hasText: "确认操作" }), async dialog => { await dialog.getByRole("button", { name: "确认", exact: true }).click(); }, { times: 1 });
   await page.getByRole("button", { name: "取消", exact: true }).click();
   const groups = await page.request.get("/api/v1/groups");
   expect((await groups.json()).some((g: any) => g.name === "取消不创建")).toBe(
@@ -134,7 +134,7 @@ test("photo layouts, source text, keyboard close and error recovery", async ({
   });
   await page.locator(".photo-card").first().click();
   await expect(page.getByRole("dialog", { name: "照片详情" })).toBeVisible();
-  await page.getByRole("button", { name: "全部来源" }).click();
+  await expect(page.getByRole("button", { name: "全部来源" })).toHaveCount(0);
   await expect(page.getByText("另一来源自己的正文")).toBeVisible();
   await expect(page.locator(".post-text script")).toHaveCount(0);
   for (const width of [390, 900, 1440]) {
@@ -341,7 +341,7 @@ test("publisher names, cross-platform selector and single-source links", async (
   await page.locator(".photo-card").click();
   const dialog = page.getByRole("dialog", { name: "照片详情" });
   await expect(dialog.getByText("X · 关联人物", { exact: true })).toBeVisible();
-  await expect(dialog.getByRole("link", { name: /打开此帖子/ })).toHaveCount(1);
+  await expect(dialog.getByRole("link", { name: /打开帖子/ })).toHaveCount(1);
   await expect(
     dialog.getByRole("link", { name: "查看来源（最早收录帖子）" }),
   ).toHaveCount(0);
@@ -485,13 +485,11 @@ test("delete current or selected images with cancel and failure recovery", async
   await expect(
     page.getByRole("heading", { name: "图片 #1", exact: true }),
   ).toBeVisible();
-  page.once("dialog", (d) => d.dismiss());
+  await page.addLocatorHandler(page.getByRole("dialog").filter({ hasText: "确认操作" }), async dialog => { await dialog.getByRole("button", { name: "取消", exact: true }).click(); }, { times: 1 });
   await page.getByRole("button", { name: "删除当前图片", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(deleted).toHaveLength(0);
-  page.once("dialog", (d) => {
-    expect(d.message()).toContain("不可撤销");
-    d.accept();
-  });
+  await page.addLocatorHandler(page.getByRole("dialog").filter({ hasText: "确认操作" }), async dialog => { await expect(dialog).toContainText("不可撤销"); await dialog.getByRole("button", { name: "确认", exact: true }).click(); }, { times: 1 });
   await page.getByRole("button", { name: "删除当前图片", exact: true }).click();
   await expect(
     page.getByText("图片处理任务正在运行，请稍后重试"),
@@ -499,7 +497,7 @@ test("delete current or selected images with cancel and failure recovery", async
   await expect(
     page.getByRole("heading", { name: "图片 #1", exact: true }),
   ).toBeVisible();
-  page.once("dialog", (d) => d.accept());
+  await page.addLocatorHandler(page.getByRole("dialog").filter({ hasText: "确认操作" }), async dialog => { await dialog.getByRole("button", { name: "确认", exact: true }).click(); }, { times: 1 });
   await page.getByRole("button", { name: "删除当前图片", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "图片 #2", exact: true }),
@@ -514,10 +512,7 @@ test("delete current or selected images with cancel and failure recovery", async
     animations: "disabled",
     fullPage: true,
   });
-  page.once("dialog", (d) => {
-    expect(d.message()).toContain("2 张图片");
-    d.accept();
-  });
+  await page.addLocatorHandler(page.getByRole("dialog").filter({ hasText: "确认操作" }), async dialog => { await expect(dialog).toContainText("2 张图片"); await dialog.getByRole("button", { name: "确认", exact: true }).click(); }, { times: 1 });
   await page.getByRole("button", { name: "删除所选图片", exact: true }).click();
   await expect(page.getByText("没有需要处理的照片")).toBeVisible();
   expect(deleted).toEqual([[1], [2, 3]]);

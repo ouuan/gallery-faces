@@ -27,10 +27,11 @@ test("image actions use the current image unless images are checked", async ({ p
     await page.setViewportSize({ width, height: 900 });
     await page.locator(".review-toolbar").screenshot({ path: `/tmp/gallery-faces/image-actions-${width}.png` });
   }
-  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.addLocatorHandler(page.getByRole("dialog").filter({ hasText: "确认操作" }), async dialog => { await dialog.getByRole("button", { name: "取消", exact: true }).click(); }, { times: 1 });
   await page.getByRole("button", { name: "重新检测", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(calls).toEqual([]);
-  page.on("dialog", (dialog) => dialog.accept());
+  await page.addLocatorHandler(page.getByRole("dialog").filter({ hasText: "确认操作" }), async dialog => { await dialog.getByRole("button", { name: "确认", exact: true }).click(); });
   await page.getByRole("button", { name: "重新检测", exact: true }).click();
   await expect(page.getByRole("button", { name: "重新检测", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "隐藏", exact: true }).click();

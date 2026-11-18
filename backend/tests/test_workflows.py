@@ -1191,3 +1191,21 @@ def test_title_uses_representative_face_centers(client):
     detail = client.get(f"/api/v1/gallery/{group}").json()
     assert [p["name"] for p in detail["people"]] == ["left", "wide"]
     assert client.get("/api/v1/gallery").json()["items"][0]["people"] == detail["people"]
+
+
+def test_detail_sources_dimensions(client):
+    with db.connect(True) as conn:
+        first = image(conn)
+        group = conn.execute("SELECT group_id FROM images WHERE id=?", (first,)).fetchone()[0]
+        second = image(conn, group=group)
+        hidden = image(conn, group=group)
+        conn.execute("UPDATE images SET width=200 WHERE id=?", (second,))
+        conn.execute("UPDATE images SET hidden=1 WHERE id=?", (hidden,))
+        conn.execute("INSERT INTO sources(image_id,post_id,media_key) VALUES(?,1,'extra')", (second,))
+    detail = client.get(f"/api/v1/gallery/{group}?matched_post=2").json()
+    assert [s["id"] for s in detail["sources"]] == [1, 2]
+    assert detail["sources"][0]["images"] == [
+        {"image_id": first, "width": 100, "height": 100},
+        {"image_id": second, "width": 200, "height": 100},
+    ]
+    assert detail["sources"][1]["images"] == [{"image_id": second, "width": 200, "height": 100}]

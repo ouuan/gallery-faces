@@ -69,9 +69,10 @@ const taskPageCount = computed(() =>
 let taskRequest = 0;
 let requestedTaskPage = 1;
 async function loadTasks(page = taskPage.value, background = false) {
+  if (background && tasksLoading.value) return;
   const request = ++taskRequest;
   requestedTaskPage = page;
-  if (!background) tasksLoading.value = true;
+  tasksLoading.value = true;
   const query = new URLSearchParams({ page: String(page), page_size: String(taskPageSize) });
   taskKinds.value.forEach((kind) => query.append("kind", kind));
   taskStatuses.value.forEach((status) => query.append("status", status));
@@ -100,14 +101,21 @@ const nav = [
   { id: "settings", label: "设置", icon: Settings },
 ];
 async function refresh() {
-  await store.load();
-  [directories.value, settings.value, duplicates.value] =
+  if (section.value === "import") {
     await Promise.all([
-      api("/admin/directories"),
-      api("/admin/settings"),
-      api("/admin/duplicates"),
+      api("/admin/directories").then(value => directories.value = value),
       loadTasks(),
     ]);
+  } else if (section.value === "settings") {
+    settings.value = await api("/admin/settings");
+  } else if (section.value === "duplicates") {
+    await Promise.all([
+      store.load(),
+      api("/admin/duplicates").then(value => duplicates.value = value),
+    ]);
+  } else {
+    await store.load();
+  }
 }
 async function login() {
   busy.value = true;
@@ -157,7 +165,7 @@ async function saveSettings() {
   savingSettings.value = true;
   try {
     await send("/admin/settings", settings.value, "PUT");
-    await store.loadSite();
+    await store.loadSite(true);
     settings.value.site_title = store.siteTitle;
     message.success("设置已保存");
   } catch (e) {
@@ -183,6 +191,14 @@ async function deleteCookie(platform: string) {
   await api("/admin/cookies/" + platform, { method: "DELETE" });
   settings.value = await api("/admin/settings");
 }
+watch(section, () => {
+  if (authenticated.value) void refresh().catch(e => error.value = e.message);
+});
+function onVisibility() {
+  if (document.visibilityState === "visible" && authenticated.value &&
+      section.value === "import" && !tasksLoading.value) void loadTasks(taskPage.value, true);
+}
+document.addEventListener("visibilitychange", onVisibility);
 let interval: ReturnType<typeof setInterval>;
 onMounted(async () => {
   try {
@@ -199,13 +215,14 @@ onMounted(async () => {
       authenticated.value &&
       section.value === "import" &&
       !tasksLoading.value &&
-      !tasksError.value
+      document.visibilityState === "visible"
     )
       await loadTasks(taskPage.value, true);
   }, 3000);
 });
 onUnmounted(() => {
   clearInterval(interval);
+  document.removeEventListener("visibilitychange", onVisibility);
   taskRequest++;
 });
 </script>

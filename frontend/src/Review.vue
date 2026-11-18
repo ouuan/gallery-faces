@@ -404,12 +404,12 @@ onMounted(load);
   <n-alert v-if="error" type="error"
     >{{ error }}<n-button @click="load">重试</n-button></n-alert
   >
-  <p v-if="loading">正在加载审核项目…</p>
-  <div v-else-if="!images.length" class="empty-state">
+  <p v-if="loading && !images.length">正在加载审核项目…</p>
+  <div v-if="!loading && !images.length" class="empty-state">
     <h2>没有需要处理的照片</h2>
     <p>此分类中的项目已处理完毕，也可以切换其他状态。</p>
   </div>
-  <div v-else class="review-workspace">
+  <div v-if="images.length" class="review-workspace">
     <div class="review-strip">
       <div
         v-for="(image, i) in images"

@@ -21,19 +21,29 @@ export const useLibrary = defineStore("library", () => {
     () =>
       theme.value === "dark" || (theme.value === "system" && systemDark.value),
   );
-  async function loadSite() {
-    const site = await api("/site");
-    setSiteTimezone(site.timezone || "Asia/Shanghai");
-    siteTitle.value = site.site_title || "Gallery Faces";
+  let siteLoaded = false;
+  let siteRequest: Promise<void> | null = null;
+  let libraryRequest: Promise<void> | null = null;
+  async function loadSite(force = false): Promise<void> {
+    if (force && siteRequest) await siteRequest;
+    if (siteRequest) return siteRequest;
+    if (siteLoaded && !force) return;
+    siteRequest = (async () => {
+      const site = await api("/site");
+      setSiteTimezone(site.timezone || "Asia/Shanghai");
+      siteTitle.value = site.site_title || "Gallery Faces";
+      siteLoaded = true;
+    })();
+    try { await siteRequest; } finally { siteRequest = null; }
   }
-  async function load() {
-    const [persons, collections] = await Promise.all([
-      api("/people"),
-      api("/groups"),
-      loadSite(),
-    ]);
-    people.value = persons;
-    groups.value = collections;
+  async function load(): Promise<void> {
+    if (libraryRequest) return libraryRequest;
+    libraryRequest = (async () => {
+      const [persons, collections] = await Promise.all([api("/people"), api("/groups")]);
+      people.value = persons;
+      groups.value = collections;
+    })();
+    try { await libraryRequest; } finally { libraryRequest = null; }
   }
   function setTheme(value: string) {
     theme.value = value;

@@ -90,7 +90,7 @@ test('anonymous feedback, pagination, throttling and moderation', async ({ page 
   await page.goto('/admin/review?image=501');
   await panel.getByRole('button', { name: '恢复待处理' }).click();
   await expect(panel.getByRole('button', { name: '标记已处理' })).toBeVisible();
-  page.on('dialog', dialog => dialog.accept());
+  await page.addLocatorHandler(page.getByRole("dialog").filter({ hasText: "确认操作" }), async dialog => { await dialog.getByRole("button", { name: "确认", exact: true }).click(); });
   await panel.getByRole('button', { name: '删除反馈' }).click();
   await expect(page.getByText(/用户反馈（1 条待处理）/)).toBeVisible();
   await panel.getByRole('button', { name: '标记已处理' }).click();
