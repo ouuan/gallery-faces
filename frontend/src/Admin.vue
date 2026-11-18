@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
-import { useRoute } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import {
   NButton,
   NInput,
@@ -10,15 +10,14 @@ import {
   useMessage,
 } from "naive-ui";
 import { Download, Users, ScanFace, Copy, Settings, LogOut } from "@lucide/vue";
-import { api, send, platformLabel, type Source } from "./api";
+import { api, send } from "./api";
 import { useLibrary } from "./store";
 import People from "./People.vue";
 import Review from "./Review.vue";
+import DuplicateReview from "./DuplicateReview.vue";
 import CookieGuide from "./CookieGuide.vue";
 const store = useLibrary();
-function publisherName(source: Source) {
-  return store.publisherName(source);
-}
+const router = useRouter();
 const route = useRoute(),
   message = useMessage(),
   authenticated = ref(false),
@@ -39,8 +38,7 @@ const route = useRoute(),
   end = ref(""),
   settings = ref<any>(null),
   savingSettings = ref(false),
-  duplicates = ref<any[]>([]),
-  dupZoom = ref(1);
+  duplicates = ref<any[]>([]);
 const section = computed(() => String(route.params.section || "import"));
 const taskKinds = ref<string[]>([]);
 const taskStatuses = ref<string[]>([]);
@@ -185,14 +183,6 @@ async function deleteCookie(platform: string) {
   await api("/admin/cookies/" + platform, { method: "DELETE" });
   settings.value = await api("/admin/settings");
 }
-async function duplicate(row: any, action: string) {
-  try {
-    await send("/admin/duplicates", { a: row.a, b: row.b, action });
-    duplicates.value = await api("/admin/duplicates");
-  } catch (e) {
-    message.error((e as Error).message);
-  }
-}
 let interval: ReturnType<typeof setInterval>;
 onMounted(async () => {
   try {
@@ -238,7 +228,11 @@ onUnmounted(() => {
     </form>
     <router-link to="/">返回照片库</router-link>
   </main>
-  <main v-else class="admin-shell">
+  <main v-else class="admin-shell" :class="{ 'duplicates-shell': section === 'duplicates' }">
+    <div v-if="section === 'duplicates'" class="duplicates-mobile-nav">
+      <n-select aria-label="管理页面" :value="section" :options="nav.map(item => ({ label: item.label, value: item.id }))" @update:value="router.push('/admin/' + $event)" />
+      <n-button @click="logout">退出登录</n-button>
+    </div>
     <aside class="admin-nav">
       <p class="nav-title">管理工作台</p>
       <router-link
@@ -413,69 +407,8 @@ onUnmounted(() => {
         </nav></template
       ><People v-else-if="section === 'people'" /><Review
         v-else-if="section === 'review'"
-      /><template v-else-if="section === 'duplicates'"
-        ><p class="intro">
-          对照图片、来源和人物标签。拆分后的图片不会再次自动合并。
-        </p>
-        <label class="field-label"
-          >同步缩放<n-input-number
-            v-model:value="dupZoom"
-            :min="1"
-            :max="3"
-            :step="0.25"
-        /></label>
-        <div v-if="!duplicates.length" class="empty-state">
-          <Copy :size="40" />
-          <h2>暂无重复图片候选</h2>
-          <p>导入图片后自动检测相同文件和尺寸、压缩变体。</p>
-        </div>
-        <article
-          v-for="row in duplicates"
-          :key="row.a + '-' + row.b"
-          class="duplicate-review"
-        >
-          <div class="section-heading">
-            <h3>#{{ row.a }} 与 #{{ row.b }}</h3>
-            <span
-              >{{ row.decision }} · SSIM
-              {{ row.score?.toFixed(3) || "—" }}</span
-            >
-          </div>
-          <div class="duplicate-pair">
-            <div v-for="image in row.images" :key="image.id">
-              <div class="duplicate-image">
-                <img
-                  :src="`/api/v1/admin/media/${image.id}`"
-                  :style="{ width: dupZoom * 100 + '%', maxWidth: 'none' }"
-                  alt="重复图片候选"
-                />
-              </div>
-              <p>
-                {{ image.width }} × {{ image.height }} ·
-                {{
-                  image.people.map((p: any) => p.name).join("、") || "未知人物"
-                }}
-              </p>
-              <p v-for="source in image.sources" :key="source.id">
-                <a :href="source.url" target="_blank" rel="noopener noreferrer"
-                  >{{ platformLabel(source.platform) }} ·
-                  {{ publisherName(source) }} ·
-                  {{ source.published_at }}</a
-                >
-              </p>
-            </div>
-          </div>
-          <div class="button-row">
-            <n-button type="primary" @click="duplicate(row, 'merge')"
-              >合并为一组</n-button
-            ><n-button @click="duplicate(row, 'separate')">{{
-              row.images[0].group_id === row.images[1].group_id
-                ? "拆分图片"
-                : "不是重复"
-            }}</n-button>
-          </div>
-        </article></template
-      ><template v-else-if="section === 'settings' && settings"
+      /><DuplicateReview v-else-if="section === 'duplicates'" v-model:rows="duplicates"
+      /><template v-else-if="section === 'settings' && settings"
         ><form class="settings-form" @submit.prevent="saveSettings">
           <h2>站点信息</h2>
           <label class="field-label"
