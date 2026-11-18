@@ -18,11 +18,15 @@ test("review keyboard navigation, confirmation, deletion and input ownership", a
         Object.assign(images.find(i => i.id === face.id)!.faces[0]!, face, { revision: face.revision + 1 });
       return route.fulfill({ json: { saved: faces.map((face: { id: number }) => face.id), failures: [] } });
     }
+    if (path.endsWith("/images/recycle-preview")) {
+      const { ids } = route.request().postDataJSON();
+      return route.fulfill({ json: { ids, total: ids.length, groups: ids.length, already_trashed: 0, scope_token: "test-scope" } });
+    }
     if (path.endsWith("/images/actions")) {
       if (fail) return route.fulfill({ status: 503, json: { detail: "删除失败测试" } });
       const body = route.request().postDataJSON(); expect(body.action).toBe("delete"); deleted.push(body.ids);
       for (let i = images.length - 1; i >= 0; i--) if (body.ids.includes(images[i]!.id)) images.splice(i, 1);
-      return route.fulfill({ json: { deleted: body.ids.length, cleanup_pending: 0 } });
+      return route.fulfill({ json: { deleted: body.ids.length, ids: body.ids, cleanup_pending: 0 } });
     }
     if (path.endsWith("/admin/images")) return route.fulfill({ json: images });
     if (path.endsWith("/feedback")) return route.fulfill({ json: { items: [], next_cursor: null } });
@@ -57,10 +61,10 @@ test("review keyboard navigation, confirmation, deletion and input ownership", a
   await expect(page.getByText("删除失败测试")).toBeVisible(); await expect(page.getByRole("dialog")).toHaveCount(0); fail = false;
   await page.keyboard.press("d"); await page.getByRole("dialog").getByRole("button", { name: "确认", exact: true }).click();
   await expect.poll(() => deleted).toEqual([[2]]);
-  await expect(page.getByRole("button", { name: "删除当前图片", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "将当前重复组移入回收站", exact: true })).toBeEnabled();
   await page.getByRole("checkbox", { name: "选择图片 1", exact: true }).check();
   await page.getByRole("checkbox", { name: "选择图片 3", exact: true }).check();
-  await page.getByRole("button", { name: "删除所选图片", exact: true }).focus();
+  await page.getByRole("button", { name: "将所选图片及重复组移入回收站", exact: true }).focus();
   await page.keyboard.press("d"); await expect(page.getByRole("dialog")).toContainText("#1、#3");
   await page.getByRole("dialog").getByRole("button", { name: "确认", exact: true }).click();
   await expect(page.getByText("没有需要处理的照片")).toBeVisible();

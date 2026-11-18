@@ -60,9 +60,9 @@ test("sections load only required resources and review refresh retains feedback"
   await page.getByRole("button", { name: "取消全选", exact: true }).click();
   await expect(page.getByRole("checkbox", { name: "选择图片 1", exact: true })).not.toBeChecked();
   await page.getByRole("button", { name: "全选", exact: true }).click();
-  await page.getByRole("button", { name: "隐藏", exact: true }).click();
+  await page.getByRole("button", { name: "重新检测", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "确认", exact: true }).click();
-  await expect.poll(() => actions).toEqual([{ action: "hide", ids: [1, 2] }]);
+  await expect.poll(() => actions).toEqual([{ action: "redetect", ids: [1, 2] }]);
   await expect(page.getByText("当前图片 #1", { exact: true })).toBeVisible();
   expect(counts["/admin/images/1/feedback"]).toBe(1);
 });

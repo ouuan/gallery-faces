@@ -43,7 +43,7 @@ test("opens explicit single-image links and records category changes and empty l
   await expect(page.locator('[aria-label="审核状态"]')).toContainText("当前图片");
   await expect(page).toHaveURL(/state=image/);
   await expect(page.getByRole("button", { name: /^审核图片 / })).toHaveCount(1);
-  for (const [label, state] of [["全部图片", "all"], ["检测失败", "failed"]]) {
+  for (const [label, state] of [["全部在库图片", "all"], ["检测失败", "failed"]]) {
     await page.locator('[aria-label="审核状态"]').click();
     await page.locator(".n-base-select-option").filter({ hasText: new RegExp(`^${label}$`) }).click();
     await expect(page).toHaveURL(new RegExp(`state=${state}`));

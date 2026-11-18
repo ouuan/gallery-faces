@@ -62,6 +62,13 @@ def image(dbh, faces=True, date="2026-01-01T00:00:00Z", author="alice", group=No
     return i
 
 
+def recycle(client, ids):
+    preview = client.post('/api/v1/admin/images/recycle-preview', json={'ids': ids})
+    if preview.status_code != 200:
+        return preview
+    return client.post('/api/v1/admin/images/actions', json={'action': 'delete', 'ids': ids, 'scope_token': preview.json()['scope_token']})
+
+
 def test_detection_tracks_image_speed_even_without_faces(client, monkeypatch):
     clock = SimpleNamespace(monotonic=lambda: 10.0)
     monkeypatch.setattr(worker, "time", clock)
@@ -437,9 +444,7 @@ def test_no_faces_visibility_and_access(client):
     assert len(client.get("/api/v1/gallery").json()["items"]) == 1
     assert len(client.get("/api/v1/gallery?include_no_faces=true").json()["items"]) == 2
     assert (
-        client.post(
-            "/api/v1/admin/images/actions", json={"ids": [known], "action": "hide"}
-        ).status_code
+        recycle(client, [known]).status_code
         == 200
     )
     assert client.get(f"/api/v1/gallery/{known}").status_code == 404
@@ -634,7 +639,9 @@ def test_duplicate_split_memory_and_hidden_member(client):
             == "separate"
         )
     client.post("/api/v1/admin/duplicates", json={"a": a, "b": b, "action": "merge"})
-    client.post("/api/v1/admin/images/actions", json={"ids": [b], "action": "hide"})
+    # A partially restored group may have both visible and trashed members.
+    with db.connect(True) as conn:
+        conn.execute("UPDATE images SET hidden=1 WHERE id=?", (b,))
     detail = client.get(f"/api/v1/gallery/{a}").json()
     assert len(detail["sources"]) == 1 and detail["source_count"] == 1
 
@@ -891,7 +898,7 @@ def test_nickname_schema_upgrade_preserves_existing_posts(client):
     db.init()
     with db.connect() as conn:
         assert conn.execute('SELECT author,author_name FROM posts').fetchone()['author'] == 'alice'
-        assert [r[0] for r in conn.execute('SELECT version FROM schema_version')] == [8]
+        assert [r[0] for r in conn.execute('SELECT version FROM schema_version')] == [9]
 
 
 def test_reference_avatars_crop_selected_face_and_recover_legacy_uploads(client, monkeypatch):
@@ -945,7 +952,7 @@ def test_reference_avatars_crop_selected_face_and_recover_legacy_uploads(client,
     assert client.get(url).status_code == 401
 
 
-def test_delete_images_cleans_dependents_and_preserves_other_group_members(client):
+def test_recycle_preserves_records_and_other_groups(client):
     person = client.post('/api/v1/admin/people', json={'name': 'Keep person'}).json()['id']
     with db.connect(True) as conn:
         first = image(conn)
@@ -962,29 +969,32 @@ def test_delete_images_cleans_dependents_and_preserves_other_group_members(clien
         (db.DATA / relative).write_bytes(b'delete me')
     keep = db.DATA / 'images' / 'fixture.jpg'
     keep.write_bytes(b'keep me')
-    response = client.post('/api/v1/admin/images/actions', json={'action': 'delete', 'ids': [first, first]})
-    assert response.status_code == 200 and response.json()['deleted'] == 1
-    assert response.json()['removed_references'] == 1
-    for relative in ('images/deleted.jpg', 'thumbs/deleted.jpg', 'originals/0.png'):
+    response = recycle(client, [first, first])
+    assert response.status_code == 200 and response.json()['deleted'] == 2
+    assert set(response.json()['ids']) == {first, second}
+    assert client.get('/api/v1/people').json()[0]['reference_count'] == 0
+    assert (db.DATA / 'thumbs/deleted.jpg').exists()
+    for relative in ('images/deleted.jpg', 'originals/0.png'):
         assert not (db.DATA / relative).exists()
     assert keep.read_bytes() == b'keep me'
     with db.connect() as conn:
-        assert {r[0] for r in conn.execute('SELECT id FROM images')} == {second, third}
+        assert {r[0] for r in conn.execute('SELECT id FROM images')} == {first, second, third}
+        assert {r[0] for r in conn.execute('SELECT id FROM images WHERE hidden=1')} == {first, second}
         assert conn.execute('SELECT count(*) FROM people').fetchone()[0] == 1
-        assert conn.execute('SELECT count(*) FROM reference_images').fetchone()[0] == 0
-        assert conn.execute('SELECT count(*) FROM review_history').fetchone()[0] == 0
-        assert conn.execute('SELECT count(*) FROM duplicate_decisions').fetchone()[0] == 0
-        assert conn.execute('SELECT count(*) FROM tasks WHERE image_id=?', (first,)).fetchone()[0] == 0
-        assert conn.execute('SELECT count(*) FROM tasks WHERE image_id=?', (second,)).fetchone()[0] == 1
+        assert conn.execute('SELECT count(*) FROM reference_images').fetchone()[0] == 1
+        assert conn.execute('SELECT count(*) FROM review_history').fetchone()[0] == 1
+        assert conn.execute('SELECT count(*) FROM duplicate_decisions').fetchone()[0] == 1
+        assert not conn.execute("SELECT 1 FROM tasks WHERE image_id=? AND status IN ('queued','running')", (first,)).fetchone()
+        assert not conn.execute("SELECT 1 FROM tasks WHERE image_id=? AND status IN ('queued','running')", (second,)).fetchone()
         assert conn.execute('SELECT 1 FROM posts WHERE id=?', (first,)).fetchone()
         assert not conn.execute('PRAGMA foreign_key_check').fetchall()
     assert client.get(f'/api/v1/admin/media/{first}').status_code == 404
     assert client.get(f'/api/v1/admin/faces/{face}/crop').status_code == 404
-    assert client.post('/api/v1/admin/images/actions', json={'action': 'delete', 'ids': [second, third]}).status_code == 200
+    assert recycle(client, [second, third]).status_code == 200
     with db.connect() as conn:
-        assert conn.execute('SELECT count(*) FROM images').fetchone()[0] == 0
-        assert conn.execute('SELECT count(*) FROM posts').fetchone()[0] == 0
-        assert conn.execute('SELECT count(*) FROM duplicate_groups').fetchone()[0] == 0
+        assert conn.execute('SELECT count(*) FROM images WHERE hidden=0').fetchone()[0] == 0
+        assert conn.execute('SELECT count(*) FROM posts').fetchone()[0] == 3
+        assert conn.execute('SELECT count(*) FROM duplicate_groups').fetchone()[0] == 2
     assert not keep.exists()
 
 
@@ -995,6 +1005,7 @@ def test_delete_images_is_atomic_and_blocks_running_work(client, monkeypatch):
     body = {'action': 'delete', 'ids': [first, 999]}
     assert client.post('/api/v1/admin/images/actions', json=body).status_code == 404
     body['ids'] = [first, second]
+    body['scope_token'] = client.post('/api/v1/admin/images/recycle-preview', json={'ids': body['ids']}).json()['scope_token']
     for kind, image_id in [('detect', first), ('rematch', second), ('import', None), ('download', None)]:
         with db.connect(True) as conn:
             task = conn.execute("INSERT INTO tasks(kind,image_id,status) VALUES(?,?,'running')", (kind, image_id)).lastrowid
@@ -1019,16 +1030,19 @@ def test_deleted_file_cleanup_retries_and_protects_reimport(client, tmp_path, mo
             raise PermissionError('simulated file lock')
         return original_unlink(path, *args, **kwargs)
     monkeypatch.setattr(Path, 'unlink', blocked)
-    result = client.post('/api/v1/admin/images/actions', json={'action':'delete','ids':[i]})
-    assert result.status_code == 200 and result.json()['cleanup_pending'] == 3
+    result = recycle(client, [i])
+    assert result.status_code == 200 and result.json()['cleanup_pending'] == 2
     assert source.exists()
     reimported = importer.import_file(source, raw)
+    assert reimported == i
+    assert client.post('/api/v1/admin/images/actions', json={'action': 'restore', 'ids': [i]}).status_code == 200
+    worker.execute(worker.claim(('restore',)))
     monkeypatch.setattr(Path, 'unlink', original_unlink)
     assert db.cleanup_deleted_files() == 0
     with db.connect() as conn:
         filename = conn.execute('SELECT filename FROM images WHERE id=?', (reimported,)).fetchone()[0]
     assert (db.DATA/'images'/filename).exists()
-    assert client.post('/api/v1/admin/images/actions', json={'action':'delete','ids':[reimported]}).status_code == 200
+    assert recycle(client, [reimported]).status_code == 200
     assert not (db.DATA/'images'/filename).exists() and source.exists()
 
 
@@ -1042,9 +1056,9 @@ def test_image_delete_rolls_back_on_reference_update_failure(client, monkeypatch
     asset.write_bytes(b'original')
     def fail_schedule(conn):
         raise RuntimeError('simulate transaction failure')
-    monkeypatch.setattr(main, 'schedule_rematch', fail_schedule)
+    monkeypatch.setattr(db, 'schedule_rematch', fail_schedule)
     with pytest.raises(RuntimeError):
-        client.post('/api/v1/admin/images/actions', json={'action':'delete','ids':[i]})
+        recycle(client, [i])
     assert asset.read_bytes() == b'original'
     with db.connect() as conn:
         assert conn.execute('SELECT count(*) FROM images').fetchone()[0] == 1
@@ -1077,7 +1091,7 @@ def test_default_review_includes_all_unresolved_categories(client):
     assert {row['id'] for row in client.get('/api/v1/admin/images').json()} == expected
     assert {row['id'] for row in client.get('/api/v1/admin/images?state=review').json()} == expected
     assert {row['id'] for row in client.get('/api/v1/admin/images?state=hidden').json()} == {hidden}
-    assert len(client.get('/api/v1/admin/images?state=all').json()) == 10
+    assert len(client.get('/api/v1/admin/images?state=all').json()) == 9
     assert automatic not in {row['id'] for row in client.get('/api/v1/admin/images?state=unknown').json()}
     face = next(row for row in client.get('/api/v1/admin/images').json() if row['id'] == automatic)['faces'][0]
     assert client.put(f"/api/v1/admin/faces/{face['id']}", json={'revision':face['revision'],'person_id':person}).status_code == 200
@@ -1426,6 +1440,7 @@ def test_duplicate_thresholds_and_status_filters(client):
     (.99, '0', 200, 'pending', True),
 ])
 def test_duplicate_threshold_classification(client, monkeypatch, score, phash, width, decision, visible):
+    (db.DATA / 'images' / 'fixture.jpg').write_bytes(b'fixture')
     with db.connect(True) as conn:
         a, b = image(conn), image(conn)
         conn.execute("UPDATE images SET phash='0' WHERE id=?", (a,))

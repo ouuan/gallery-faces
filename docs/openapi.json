@@ -1376,6 +1376,57 @@
         }
       }
     },
+    "/api/v1/admin/trash": {
+      "get": {
+        "summary": "Trash List",
+        "operationId": "trash_list_api_v1_admin_trash_get",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/faces/{face_id}/person": {
       "post": {
         "summary": "Person From Face",
@@ -1592,6 +1643,42 @@
         }
       }
     },
+    "/api/v1/admin/images/recycle-preview": {
+      "post": {
+        "summary": "Recycle Preview",
+        "operationId": "recycle_preview_api_v1_admin_images_recycle_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/images/actions": {
       "post": {
         "summary": "Image Action",
@@ -1766,7 +1853,8 @@
                   "download",
                   "import",
                   "detect",
-                  "rematch"
+                  "rematch",
+                  "restore"
                 ],
                 "type": "string"
               },
@@ -2666,16 +2754,61 @@
       },
       "ImageAction": {
         "properties": {
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Ids"
+          },
           "action": {
             "type": "string",
             "enum": [
               "hide",
               "show",
               "redetect",
-              "delete"
+              "delete",
+              "restore"
             ],
-            "title": "Action"
+            "title": "Action",
+            "description": "delete recycles complete duplicate groups; restore applies only to selected images. Legacy hide/show requests are rejected."
           },
+          "scope_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Token",
+            "description": "Required for delete: token returned by recycle-preview."
+          },
+          "directory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory",
+            "description": "Optional mounted import directory to search for exact original files during restore."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ids",
+          "action"
+        ],
+        "title": "ImageAction"
+      },
+      "ImageSelection": {
+        "properties": {
           "ids": {
             "items": {
               "type": "integer"
@@ -2688,10 +2821,9 @@
         },
         "type": "object",
         "required": [
-          "action",
           "ids"
         ],
-        "title": "ImageAction"
+        "title": "ImageSelection"
       },
       "ImportInput": {
         "properties": {

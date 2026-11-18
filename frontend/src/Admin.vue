@@ -58,7 +58,7 @@ const section = computed(() => String(route.params.section || "import"));
 const taskKinds = ref<string[]>([]);
 const taskStatuses = ref<string[]>([]);
 const taskKindLabels: Record<string, string> = {
-  download: "链接下载", import: "目录导入", detect: "人脸检测", rematch: "人物匹配",
+  download: "链接下载", import: "目录导入", detect: "人脸检测", rematch: "人物匹配", restore: "图片恢复",
 };
 const taskStatusLabels = {
   queued: "排队中", running: "执行中", done: "已完成", failed: "失败", cancelled: "已取消",
@@ -98,7 +98,7 @@ async function loadTasks(page = taskPage.value, background = false) {
       page: number;
     }>(`/admin/tasks?${query}`, { signal });
     if (request !== taskRequest) return;
-    tasks.value = data.items.map(task => ({ ...task, payload: JSON.parse(task.payload) }));
+    tasks.value = data.items.map(task => ({ ...task, payload: JSON.parse(task.payload), result: JSON.parse(task.result || "{}") }));
     taskTotal.value = data.total;
     taskPage.value = data.page;
     tasksError.value = "";
@@ -315,7 +315,7 @@ onUnmounted(() => {
             >创建导入任务</n-button
           >
           <p class="hint">
-            再次导入同一账号可获取新增照片，已收录的媒体不会重复创建
+            再次导入同一账号可获取新增照片，已收录和回收站中的媒体会在下载前跳过
           </p>
         </form>
         <div v-for="(r, i) in results" :key="i" class="import-result">
@@ -399,6 +399,7 @@ onUnmounted(() => {
                     <span v-if="task.created_at">创建时间：<time :datetime="task.created_at">{{ dateLabel(task.created_at) }}</time></span>
                     <span v-if="task.finished_at && taskFinishLabels[task.status]">{{ taskFinishLabels[task.status] }}：<time :datetime="task.finished_at">{{ dateLabel(task.finished_at) }}</time></span>
                   </div>
+                  <p v-if="task.result && ('imported' in task.result)" class="hint">新入库 {{ task.result.imported }} 张 · 跳过已收录 {{ task.result.skipped_existing }} 张 · 跳过回收站 {{ task.result.skipped_trashed }} 张</p>
                   <p v-if="task.error" class="error-text">{{ task.error }}</p>
                 </td>
                 <td>

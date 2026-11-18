@@ -4,7 +4,7 @@ import pytest
 from PIL import Image
 
 from app import db, importer, main
-from test_workflows import client, image
+from test_workflows import recycle, client, image
 
 
 def seed():
@@ -27,7 +27,7 @@ def test_admin_review_thumbnail(client):
     with db.connect(True) as conn:
         conn.execute('UPDATE images SET hidden=1 WHERE id=?', (identifier,))
     url = f'/api/v1/admin/media/{identifier}'
-    assert client.get(url).content == b'display bytes'
+    assert client.get(url).status_code == 404
     assert client.get(url + '?thumbnail=true').content == b'thumbnail bytes'
     client.cookies.clear()
     assert client.get(url + '?thumbnail=true').status_code == 401
@@ -142,7 +142,7 @@ def test_import_stable_and_changed_derivatives(client, tmp_path, monkeypatch):
 def test_deleted_hash_rejected(client):
     identifier, group = seed()
     url = client.get(f'/api/v1/gallery/{group}').json()['image_url']
-    response = client.post('/api/v1/admin/images/actions', json={'action': 'delete', 'ids': [identifier]})
+    response = recycle(client, [identifier])
     # Use the same deletion endpoint as the management UI.
     assert response.status_code == 200
     assert client.get(url, headers={'If-None-Match': '*'}).status_code == 404

@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS faces(id INTEGER PRIMARY KEY, image_id INTEGER NOT NU
 CREATE TABLE IF NOT EXISTS reference_images(id INTEGER PRIMARY KEY, person_id INTEGER NOT NULL REFERENCES people ON DELETE CASCADE, image_id INTEGER REFERENCES images, face_id INTEGER REFERENCES faces, filename TEXT, box TEXT, embedding BLOB NOT NULL, model_version TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS tasks(id INTEGER PRIMARY KEY, kind TEXT NOT NULL, image_id INTEGER REFERENCES images, payload TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'queued', stage TEXT NOT NULL DEFAULT '等待处理', target_version INTEGER NOT NULL DEFAULT 0, processed_version INTEGER NOT NULL DEFAULT -1, done INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0, speed REAL NOT NULL DEFAULT 0, error TEXT, cancel_requested INTEGER NOT NULL DEFAULT 0, finished_at TEXT, created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')));
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_rematch ON tasks(image_id) WHERE kind='rematch' AND status IN ('queued','running');
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_restore ON tasks(image_id) WHERE kind='restore' AND status IN ('queued','running');
+CREATE INDEX IF NOT EXISTS task_image_status ON tasks(image_id,status,kind,id);
 CREATE TABLE IF NOT EXISTS duplicate_decisions(a INTEGER REFERENCES images, b INTEGER REFERENCES images, decision TEXT NOT NULL, score REAL, PRIMARY KEY(a,b));
 CREATE TABLE IF NOT EXISTS review_history(id INTEGER PRIMARY KEY, face_id INTEGER REFERENCES faces, before_json TEXT NOT NULL, after_revision INTEGER NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, expires REAL NOT NULL);
@@ -44,7 +46,11 @@ CREATE INDEX IF NOT EXISTS source_image ON sources(image_id);
 CREATE INDEX IF NOT EXISTS face_image ON faces(image_id);
 CREATE INDEX IF NOT EXISTS image_group ON images(group_id);
 CREATE INDEX IF NOT EXISTS post_date ON posts(published_at,id);
+CREATE TABLE IF NOT EXISTS import_locations(image_id INTEGER NOT NULL REFERENCES images ON DELETE CASCADE, path TEXT NOT NULL, PRIMARY KEY(image_id,path));
 """
+
+# Uploaded references have no owning image and remain available independently.
+ACTIVE_REFERENCE = "(image_id IS NULL OR EXISTS(SELECT 1 FROM images ri WHERE ri.id=reference_images.image_id AND ri.hidden=0))"
 
 
 @contextmanager
@@ -118,11 +124,29 @@ def init():
         for column in ("image_sha256", "thumbnail_sha256", "original_filename"):
             if column not in columns:
                 db.execute(f"ALTER TABLE images ADD COLUMN {column} TEXT")
+        if "trashed_at" not in columns:
+            db.execute("ALTER TABLE images ADD COLUMN trashed_at TEXT")
+        if "result" not in task_columns:
+            db.execute("ALTER TABLE tasks ADD COLUMN result TEXT NOT NULL DEFAULT '{}'")
+        db.execute("CREATE INDEX IF NOT EXISTS image_trash ON images(hidden,trashed_at,id)")
+        if db.execute("SELECT version FROM schema_version").fetchone()[0] < 9:
+            for row in db.execute("SELECT * FROM images WHERE hidden=1").fetchall():
+                queue_image_cleanup(db, row)
+            db.execute("UPDATE images SET trashed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE hidden=1 AND trashed_at IS NULL")
+            db.execute("UPDATE tasks SET status='cancelled',cancel_requested=1,finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE image_id IN (SELECT id FROM images WHERE hidden=1) AND kind IN ('detect','rematch') AND status IN ('queued','running')")
+            if db.execute("SELECT 1 FROM reference_images r JOIN images i ON i.id=r.image_id WHERE i.hidden=1").fetchone():
+                schedule_rematch(db)
+            db.execute("UPDATE schema_version SET version=9 WHERE version<9")
+        # Recover files written by a restore interrupted before its transaction
+        # committed, including tasks cancelled during process recovery.
+        for row in db.execute("SELECT * FROM images WHERE hidden=1").fetchall():
+            if (DATA / "images" / row["filename"]).exists() or next((DATA / "originals").glob(row["sha256"] + ".*"), None):
+                queue_image_cleanup(db, row)
         for column in ("image_sha256", "thumbnail_sha256"):
             db.execute(f"CREATE INDEX IF NOT EXISTS image_{column} ON images({column})")
     backfill_media_hashes()
     with connect(True) as db:
-        db.execute("UPDATE schema_version SET version=8 WHERE version<8")
+        db.execute("UPDATE schema_version SET version=9 WHERE version<9")
 
 
 def file_hash(path):
@@ -137,7 +161,7 @@ def backfill_media_hashes(batch_size=100):
     while True:
         with connect(True) as db:
             rows = db.execute(
-                "SELECT * FROM images WHERE id>? AND (image_sha256 IS NULL OR thumbnail_sha256 IS NULL OR original_filename IS NULL) ORDER BY id LIMIT ?",
+                "SELECT * FROM images WHERE hidden=0 AND id>? AND (image_sha256 IS NULL OR thumbnail_sha256 IS NULL OR original_filename IS NULL) ORDER BY id LIMIT ?",
                 (last_id, batch_size),
             ).fetchall()
             if not rows:
@@ -170,8 +194,8 @@ def cleanup_deleted_files():
     with connect(True) as db:
         for row in db.execute("SELECT * FROM pending_file_deletions").fetchall():
             if not db.execute(
-                "SELECT 1 FROM images WHERE sha256=? OR filename=?",
-                (row["sha256"], row["filename"]),
+                "SELECT 1 FROM images WHERE (sha256=? OR filename=?) AND (hidden=0 OR ? LIKE 'thumbs/%')",
+                (row["sha256"], row["filename"], row["path"]),
             ).fetchone():
                 path = DATA / row["path"]
                 if path.parent not in (DATA / "images", DATA / "thumbs", DATA / "originals"):
@@ -184,6 +208,15 @@ def cleanup_deleted_files():
         return db.execute("SELECT count(*) FROM pending_file_deletions").fetchone()[0]
 
 
+def queue_image_cleanup(db, image):
+    paths = [DATA / "images" / image["filename"]]
+    paths.extend((DATA / "originals").glob(image["sha256"] + ".*"))
+    db.executemany(
+        "INSERT OR IGNORE INTO pending_file_deletions(path,sha256,filename) VALUES(?,?,?)",
+        [(str(path.relative_to(DATA)), image["sha256"], image["filename"]) for path in paths],
+    )
+
+
 def unknown_sql(alias="faces"):
     return f"{alias}.person_id IS NULL AND {alias}.locked=0 AND {alias}.ignored=0"
 
@@ -194,7 +227,7 @@ def schedule_rematch(db):
         "UPDATE settings SET value=? WHERE key='reference_version'", (str(version),)
     )
     for row in db.execute(
-        f"SELECT DISTINCT image_id FROM faces WHERE {unknown_sql()} AND embedding IS NOT NULL"
+        f"SELECT DISTINCT image_id FROM faces WHERE {unknown_sql()} AND embedding IS NOT NULL AND EXISTS(SELECT 1 FROM images i WHERE i.id=faces.image_id AND i.hidden=0)"
     ).fetchall():
         active = db.execute(
             "SELECT id FROM tasks WHERE kind='rematch' AND image_id=? AND status IN ('queued','running')",

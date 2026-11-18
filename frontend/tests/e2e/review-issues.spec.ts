@@ -39,11 +39,11 @@ test("review reasons follow the current photo and disappear in specific filters"
   await page.getByRole("button", { name: "审核图片 5", exact: true }).click();
   await expect(issues).toHaveCount(0);
   await page.getByRole("button", { name: "审核图片 1", exact: true }).click();
-  for (const label of ["全部待审核", "全部图片", "已隐藏", "未知人物", "无人脸", "检测失败", "来源待补全", "等待检测"]) {
+  for (const label of ["全部待审核", "全部在库图片", "未知人物", "无人脸", "检测失败", "来源待补全", "等待检测"]) {
     await page.locator('[aria-label="审核状态"]').click();
     await page.locator(".n-base-select-option").filter({ hasText: new RegExp(`^${label}$`) }).click();
     await expect(page.getByRole("button", { name: "审核图片 1", exact: true })).toBeVisible();
-    if (["全部待审核", "全部图片", "已隐藏"].includes(label)) await expect(issues).toBeVisible();
+    if (["全部待审核", "全部在库图片"].includes(label)) await expect(issues).toBeVisible();
     else await expect(issues).toHaveCount(0);
   }
 });

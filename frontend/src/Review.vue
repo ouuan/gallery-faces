@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import LoadingOverlay from "./LoadingOverlay.vue";
+import TrashReview from "./TrashReview.vue";
 import { useReviewShortcuts } from "./review-shortcuts";
 import { useConfirm } from "./confirm";
 const confirm = useConfirm();
@@ -31,10 +32,10 @@ const targetImage = computed(() => {
   const id = typeof route.query.image === "string" ? Number(route.query.image) : NaN;
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 });
-const reviewStates = ["image", "review", "feedback", "unknown", "no_faces", "failed", "incomplete", "pending", "hidden", "all"];
+const reviewStates = ["image", "review", "feedback", "unknown", "no_faces", "failed", "incomplete", "pending", "trash", "all"];
 const state = computed({
   get: () => {
-    const value = route.query.state;
+    const value = route.query.state === "hidden" ? "trash" : route.query.state;
     if (typeof value === "string" && reviewStates.includes(value)) return value;
     return "review";
   },
@@ -163,11 +164,8 @@ useReviewShortcuts({
   arrowleft: { run: () => moveImage(current.value - 1), enabled: () => current.value > 0 },
   arrowright: { run: () => moveImage(current.value + 1), enabled: () => current.value < images.value.length - 1 },
   c: { run: confirmAll, enabled: () => !actionsDisabled.value && pendingFaces.value.length > 0 },
-  d: { run: () => deleteImages(actionIds.value), enabled: () => !actionsDisabled.value },
-}, () => !!active.value && !navigationDisabled.value && !sourceEdit.value && !newPersonFace.value && moreFace.value === null);
-const visibilityAction = computed(() =>
-  (selected.value.length ? state.value === "hidden" : active.value?.hidden) ? "show" : "hide",
-);
+  d: { run: () => deleteImages(actionIds.value), enabled: () => state.value !== "trash" && !actionsDisabled.value },
+}, () => state.value !== "trash" && !!active.value && !navigationDisabled.value && !sourceEdit.value && !newPersonFace.value && moreFace.value === null);
 const visibleFaces = computed(() =>
   active.value?.faces.filter((face: any) => !face.ignored) ?? [],
 );
@@ -213,7 +211,7 @@ let loadVersion = 0;
 const imageRequest = useLatestRequest();
 let loadedState: string | null = null;
 function syncQuery() {
-  if (loading.value || error.value || loadedState !== state.value) return;
+  if (state.value === "trash" || loading.value || error.value || loadedState !== state.value) return;
   const image = active.value ? String(active.value.id) : undefined;
   if (route.query.state === state.value && route.query.image === image) return;
   void router.replace({ query: { ...route.query, state: state.value, image } });
@@ -228,6 +226,11 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
+    if (requestedState === "trash") {
+      images.value = [];
+      loadedState = requestedState;
+      return;
+    }
     const result = requestedState === "image" && !requestedImage ? [] : await api(
       requestedState === "image"
         ? `/admin/images?state=all&image_id=${requestedImage}`
@@ -400,46 +403,39 @@ async function action(value: string) {
   }
 }
 async function deleteImages(ids: number[]) {
-  if (deleting.value || !ids.length) return;
+  if (deleting.value || !ids.length || state.value === "trash") return;
   const targets = [...ids];
-  if (
-    !await confirm(
-      `永久删除这 ${targets.length} 张图片（${targets.map((id) => "#" + id).join("、")}）？图库内的原图、缩略图、人脸记录及相关参考图会一并删除；人物、重复组中的其他图片和外部导入文件会保留。此操作不可撤销。${dirty.value ? "未保存的编辑也会丢弃。" : ""}`,
-    )
-  )
-    return;
   deleting.value = true;
-  let deleted = false;
+  let recycled = false;
   try {
+    const preview = await send("/admin/images/recycle-preview", { ids: targets });
+    if (!await confirm(
+      `将 ${preview.groups} 组共 ${preview.total} 张图片移入回收站？包含同组的所有重复版本，其中 ${preview.already_trashed} 张已在回收站。所选图片：${targets.map(id => "#" + id).join("、")}。原图和大图将立即清理，缩略图、来源和审核记录保留；恢复需要重新获取原文件。${dirty.value ? "未保存的编辑也会丢弃。" : ""}`,
+    )) return;
     const result = await send("/admin/images/actions", {
-      action: "delete",
-      ids: targets,
+      action: "delete", ids: targets, scope_token: preview.scope_token,
     });
-    deleted = true;
+    recycled = true;
     box.value = "";
     sourceEdit.value = null;
     newPersonFace.value = null;
     boxPerson.value = null;
     facePeople.value = {};
-    selected.value = selected.value.filter((id) => !targets.includes(id));
-    images.value = images.value.filter((image) => !targets.includes(image.id));
-    current.value = Math.min(
-      current.value,
-      Math.max(0, images.value.length - 1),
-    );
-    message.success(`已删除 ${result.deleted} 张图片`);
-    if (result.cleanup_pending)
-      message.warning("部分文件暂未清理，后台将自动重试");
+    const affected = new Set<number>(result.ids);
+    selected.value = selected.value.filter(id => !affected.has(id));
+    images.value = images.value.filter(image => !affected.has(image.id));
+    current.value = Math.min(current.value, Math.max(0, images.value.length - 1));
+    message.success(`已将 ${result.deleted} 张图片移入回收站`);
+    if (result.cleanup_pending) message.warning("部分文件暂未清理，后台将自动重试");
     await load();
     await store.load();
   } catch (e) {
-    message.error(
-      `${deleted ? "图片已删除，但列表刷新失败：" : ""}${(e as Error).message}`,
-    );
+    message.error(`${recycled ? "图片已移入回收站，但列表刷新失败：" : ""}${(e as Error).message}`);
   } finally {
     deleting.value = false;
   }
 }
+
 async function addBox() {
   if (savingBox.value || !active.value || !box.value) return;
   savingBox.value = true;
@@ -490,10 +486,10 @@ onMounted(load);
           { value: 'failed', label: '检测失败' },
           { value: 'incomplete', label: '来源待补全' },
           { value: 'pending', label: '等待检测' },
-          { value: 'hidden', label: '已隐藏' },
-          { value: 'all', label: '全部图片' },
+          { value: 'trash', label: '回收站' },
+          { value: 'all', label: '全部在库图片' },
         ]"
-      /><span>{{
+      /><span v-if="state !== 'trash'">{{
         selected.length
           ? `已选 ${selected.length} 张`
           : active
@@ -501,28 +497,27 @@ onMounted(load);
             : "暂无图片"
       }}</span>
     </div>
-    <div class="review-actions">
+    <div v-if="state !== 'trash'" class="review-actions">
       <n-button :disabled="actionsDisabled" @click="selected = selected.length === images.length ? [] : images.map(image => image.id)">
         {{ images.length && selected.length === images.length ? "取消全选" : "全选" }}
       </n-button>
       <n-button :disabled="actionsDisabled" @click="action('redetect')"
         >重新检测</n-button
       >
-      <n-button :disabled="actionsDisabled" @click="action(visibilityAction)">
-        {{ visibilityAction === "show" ? "恢复可见" : "隐藏" }}
-      </n-button>
       <n-button class="stable-loading-button"
         type="error"
         secondary
         :disabled="actionsDisabled"
         :loading="deleting"
-        :aria-label="selected.length ? '删除所选图片' : '删除当前图片'"
+        :aria-label="selected.length ? '将所选图片及重复组移入回收站' : '将当前重复组移入回收站'"
         aria-keyshortcuts="d"
         @click="deleteImages(actionIds)"
-        >{{ selected.length ? "删除所选图片" : "删除当前图片" }}<kbd class="shortcut-key" aria-hidden="true">D</kbd></n-button
+        >{{ selected.length ? "回收所选重复组" : "移入回收站" }}<kbd class="shortcut-key" aria-hidden="true">D</kbd></n-button
       >
     </div>
   </div>
+  <TrashReview v-if="state === 'trash'" />
+  <template v-else>
   <n-alert v-if="error" type="error"
     >{{ error }}<n-button @click="load">重试</n-button></n-alert
   >
@@ -833,6 +828,7 @@ onMounted(load);
       </template>
     </div></n-modal
   >
+  </template>
 </template>
 <style scoped>
 .review-toolbar {

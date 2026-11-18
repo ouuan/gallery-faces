@@ -451,6 +451,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Trash List */
+        get: operations["trash_list_api_v1_admin_trash_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/faces/{face_id}/person": {
         parameters: {
             query?: never;
@@ -530,6 +547,23 @@ export interface paths {
         put?: never;
         /** Add Face */
         post: operations["add_face_api_v1_admin_images__image_id__faces_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/images/recycle-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recycle Preview */
+        post: operations["recycle_preview_api_v1_admin_images_recycle_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -933,11 +967,27 @@ export interface components {
         };
         /** ImageAction */
         ImageAction: {
+            /** Ids */
+            ids: number[];
             /**
              * Action
+             * @description delete recycles complete duplicate groups; restore applies only to selected images. Legacy hide/show requests are rejected.
              * @enum {string}
              */
-            action: "hide" | "show" | "redetect" | "delete";
+            action: "hide" | "show" | "redetect" | "delete" | "restore";
+            /**
+             * Scope Token
+             * @description Required for delete: token returned by recycle-preview.
+             */
+            scope_token?: string | null;
+            /**
+             * Directory
+             * @description Optional mounted import directory to search for exact original files during restore.
+             */
+            directory?: string | null;
+        };
+        /** ImageSelection */
+        ImageSelection: {
             /** Ids */
             ids: number[];
         };
@@ -2112,6 +2162,38 @@ export interface operations {
             };
         };
     };
+    trash_list_api_v1_admin_trash_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     person_from_face_api_v1_admin_faces__face_id__person_post: {
         parameters: {
             query?: never;
@@ -2281,6 +2363,39 @@ export interface operations {
             };
         };
     };
+    recycle_preview_api_v1_admin_images_recycle_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     image_action_api_v1_admin_images_actions_post: {
         parameters: {
             query?: never;
@@ -2407,7 +2522,7 @@ export interface operations {
             query?: {
                 page?: number;
                 page_size?: number;
-                kind?: ("download" | "import" | "detect" | "rematch")[];
+                kind?: ("download" | "import" | "detect" | "rematch" | "restore")[];
                 status?: ("queued" | "running" | "done" | "failed" | "cancelled")[];
             };
             header?: never;

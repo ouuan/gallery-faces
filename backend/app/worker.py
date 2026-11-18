@@ -11,7 +11,7 @@ import tempfile
 from .security import download_url, cookie_bytes, save_cookie
 import time
 from pathlib import Path
-from .db import DATA, connect, init, settings, unknown_sql, cleanup_deleted_files
+from .db import DATA, connect, init, settings, unknown_sql, cleanup_deleted_files, ACTIVE_REFERENCE
 from .vision import (
     Vision,
     MODEL_VERSION,
@@ -36,7 +36,7 @@ def rematch(task):
             config = settings(db)
             version = int(config["reference_version"])
             refs = db.execute(
-                "SELECT person_id,embedding,model_version FROM reference_images WHERE model_version=?",
+                f"SELECT person_id,embedding,model_version FROM reference_images WHERE model_version=? AND {ACTIVE_REFERENCE}",
                 (MODEL_VERSION,),
             ).fetchall()
             faces = db.execute(
@@ -186,64 +186,87 @@ def import_task(task):
     return _import_task(task)
 
 
+def download_media(task, payload, attempt, restore_id=None):
+    payload = dict(payload)
+    platform, payload["url"] = download_url(payload["url"])
+    directory = attempt / "media"
+    directory.mkdir(parents=True, exist_ok=True)
+    command = [
+        sys.executable,
+        "-m",
+        "app.downloader",
+        "--write-metadata",
+        "--ignore-config",
+        "-D",
+        str(directory),
+        "-o",
+        "skip=false",
+        "--filter",
+        "extension not in ('mp4', 'webm', 'gif')",
+    ]
+    from .downloader import date_options
+    command += date_options(payload.get("start"), payload.get("end"))
+    cookie = DATA / "cookies" / f"{platform}.txt"
+    if cookie.exists():
+        snapshot = attempt / "cookies.txt"
+        save_cookie(snapshot, cookie_bytes(cookie.read_bytes(), platform))
+        command += ["--cookies", str(snapshot)]
+    command += [payload["url"]]
+    policy_report = attempt / "policy-error.txt"
+    # Never capture downloader output: it can contain cookies, signed URLs, or credentials.
+    # The separate report contains only a policy reason and network destination.
+    with subprocess.Popen(
+        command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        env={
+            **os.environ,
+            "DATA_DIR": str(DATA),
+            "GALLERY_FACES_POLICY_REPORT": str(policy_report),
+            "GALLERY_FACES_SKIPPED_REPORT": str(attempt / "skipped.jsonl"),
+            "GALLERY_FACES_RESTORE_IMAGE": str(restore_id) if restore_id is not None else "",
+        },
+    ) as process:
+        while process.poll() is None:
+            if cancelled(task["id"]):
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                raise DetectionCancelled()
+            time.sleep(0.5)
+        if process.returncode:
+            try:
+                policy_reason = policy_report.read_text(encoding="utf-8").strip()
+            except (OSError, UnicodeError):
+                policy_reason = ""
+            messages = {
+                20: "账号非公开或无法确认公开状态",
+                21: "下载被安全策略拒绝",
+            }
+            raise ValueError(
+                policy_reason or messages.get(
+                    process.returncode,
+                    "下载失败，请检查平台 cookies、链接和网络后重试",
+                )
+            )
+    return directory
+
+
 def _import_task(task, attempt=None):
     payload = json.loads(task["payload"])
+    counts = {"imported": 0, "skipped_existing": 0, "skipped_trashed": 0}
     if task["kind"] == "download":
-        platform, payload["url"] = download_url(payload["url"])
-        directory = attempt / "media"
-        directory.mkdir(parents=True, exist_ok=True)
-        command = [
-            sys.executable,
-            "-m",
-            "app.downloader",
-            "--write-metadata",
-            "--ignore-config",
-            "-D",
-            str(directory),
-            "-o",
-            "skip=false",
-            "--filter",
-            "extension not in ('mp4', 'webm', 'gif')",
-        ]
-        from .downloader import date_options
-        command += date_options(payload.get("start"), payload.get("end"))
-        cookie = DATA / "cookies" / f"{platform}.txt"
-        if cookie.exists():
-            snapshot = attempt / "cookies.txt"
-            save_cookie(snapshot, cookie_bytes(cookie.read_bytes(), platform))
-            command += ["--cookies", str(snapshot)]
-        command += [payload["url"]]
-        policy_report = attempt / "policy-error.txt"
-        # Never capture downloader output: it can contain cookies, signed URLs, or credentials.
-        # The separate report contains only a policy reason and network destination.
-        with subprocess.Popen(
-            command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            env={**os.environ, "GALLERY_FACES_POLICY_REPORT": str(policy_report)},
-        ) as process:
-            while process.poll() is None:
-                if cancelled(task["id"]):
-                    process.terminate()
-                    try:
-                        process.wait(timeout=10)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                    return
-                time.sleep(0.5)
-            if process.returncode:
-                try:
-                    policy_reason = policy_report.read_text(encoding="utf-8").strip()
-                except (OSError, UnicodeError):
-                    policy_reason = ""
-                messages = {
-                    20: "账号非公开或无法确认公开状态",
-                    21: "下载被安全策略拒绝",
-                }
-                raise ValueError(
-                    policy_reason or messages.get(
-                        process.returncode,
-                        "下载失败，请检查平台 cookies、链接和网络后重试",
-                    )
-                )
+        directory = download_media(task, payload, attempt)
+        report = attempt / "skipped.jsonl"
+        if report.is_file():
+            from .metadata import save_source, in_date_range
+            with connect(True) as db:
+                for line in report.read_text().splitlines():
+                    entry = json.loads(line)
+                    row = db.execute("SELECT * FROM images WHERE id=?", (entry["image_id"],)).fetchone()
+                    if row and in_date_range(entry["meta"], payload.get("start"), payload.get("end")):
+                        save_source(db, row["id"], entry["meta"])
+                        counts["skipped_trashed" if row["hidden"] else "skipped_existing"] += 1
     else:
         directory = safe_directory(payload["directory"])
     paths = sorted(
@@ -282,7 +305,7 @@ def _import_task(task, attempt=None):
                 raw["collected_account"] = (
                     urlparse(payload["url"]).path.strip("/").split("/")[0]
                 )
-            import_file(path, raw, payload.get("start"), payload.get("end"))
+            import_file(path, raw, payload.get("start"), payload.get("end"), counts=counts)
         except Exception as error:
             errors.append(f"{path.name}: {type(error).__name__}")
         with connect(True) as db:
@@ -295,18 +318,91 @@ def _import_task(task, attempt=None):
                     task["id"],
                 ),
             )
+    with connect(True) as db:
+        db.execute("UPDATE tasks SET result=? WHERE id=?", (json.dumps(counts), task["id"]))
     if errors:
         raise ValueError(
             f"{len(errors)} 张图片导入失败；成功项目已保留。" + "\n".join(errors)
         )
 
 
-def claim(kinds=("detect", "rematch", "import", "download")):
+def restore_task(task):
+    from . import importer
+    from .trash import restore_file
+    from .db import queue_image_cleanup
+    import shutil
+
+    with connect() as db:
+        row = db.execute("SELECT * FROM images WHERE id=?", (task["image_id"],)).fetchone()
+        locations = [r[0] for r in db.execute("SELECT path FROM import_locations WHERE image_id=? ORDER BY path", (task["image_id"],))]
+        urls = [r[0] for r in db.execute("SELECT DISTINCT p.url FROM sources s JOIN posts p ON p.id=s.post_id WHERE s.image_id=? AND p.url IS NOT NULL ORDER BY p.id", (task["image_id"],))]
+    if not row:
+        raise ValueError("图片记录不存在")
+    if not row["hidden"]:
+        with connect(True) as db:
+            db.execute("UPDATE tasks SET status='done',stage='已恢复',finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=?", (task["id"],))
+        return
+    with connect(True) as db:
+        db.execute("UPDATE tasks SET stage='查找原文件',total=1 WHERE id=?", (task["id"],))
+    try:
+        for path in (DATA / "originals").glob(row["sha256"] + ".*"):
+            if restore_file(task, path):
+                return
+        payload = json.loads(task["payload"])
+        directory = safe_directory(payload["directory"]) if payload.get("directory") is not None else None
+        candidates = ((importer.IMPORT / path).resolve() for path in locations)
+        if directory is not None:
+            from itertools import chain
+            candidates = chain(candidates, directory.rglob("*"))
+        with tempfile.TemporaryDirectory(dir=DATA / "downloads", prefix="restore-local-") as attempt:
+            for path in candidates:
+                if cancelled(task["id"]):
+                    raise DetectionCancelled()
+                if not path.resolve().is_relative_to(importer.IMPORT) or not path.is_file() or path.suffix.lower() not in EXTENSIONS:
+                    continue
+                snapshot = Path(attempt) / ("source" + path.suffix.lower())
+                try:
+                    shutil.copyfile(path, snapshot)
+                except OSError:
+                    continue
+                if restore_file(task, snapshot):
+                    with connect(True) as db:
+                        importer.record_location(db, row["id"], path)
+                    return
+                snapshot.unlink(missing_ok=True)
+        errors = []
+        for url in urls:
+            if cancelled(task["id"]):
+                raise DetectionCancelled()
+            with tempfile.TemporaryDirectory(dir=DATA / "downloads", prefix="restore-remote-") as attempt:
+                with connect(True) as db:
+                    db.execute("UPDATE tasks SET stage='重新获取原图' WHERE id=?", (task["id"],))
+                try:
+                    directory = download_media(task, {"url": url}, Path(attempt), restore_id=row["id"])
+                except ValueError as error:
+                    errors.append(str(error))
+                    continue
+                for path in directory.rglob("*"):
+                    if path.suffix.lower() in EXTENSIONS and path.is_file() and path.resolve().is_relative_to(directory.resolve()):
+                        if restore_file(task, path):
+                            return
+                errors.append("来源未返回与原 SHA-256 一致的图片，文件可能已变化或失效")
+        raise ValueError("无法恢复原文件；可选择挂载目录查找原文件后重试。" + ("；".join(dict.fromkeys(errors)) if errors else "没有可用的来源文件。"))
+    finally:
+        # Even an interrupted/failed asset write remains eligible for cleanup.
+        with connect(True) as db:
+            current = db.execute("SELECT * FROM images WHERE id=?", (task["image_id"],)).fetchone()
+            if current and current["hidden"]:
+                queue_image_cleanup(db, current)
+
+
+def claim(kinds=("detect", "rematch", "import", "download", "restore")):
     with connect(True) as db:
         placeholders = ",".join("?" for _ in kinds)
         task = db.execute(
             f"""
             SELECT t.* FROM tasks t WHERE t.status='queued' AND t.kind IN ({placeholders})
+            AND (t.kind NOT IN ('detect','rematch') OR EXISTS(SELECT 1 FROM images i WHERE i.id=t.image_id AND i.hidden=0))
             AND NOT EXISTS (SELECT 1 FROM tasks prior WHERE prior.image_id=t.image_id
                 AND prior.status IN ('queued','running') AND prior.id<t.id)
             AND NOT EXISTS (SELECT 1 FROM tasks running WHERE running.image_id=t.image_id AND running.status='running')
@@ -341,6 +437,9 @@ def execute(task):
             return True
         if task["kind"] == "detect":
             detect(task)
+        elif task["kind"] == "restore":
+            restore_task(task)
+            return True
         else:
             import_task(task)
         with connect(True) as db:
@@ -462,7 +561,7 @@ def run_worker(stop):
         while not stop.is_set():
             for executor, limit, kinds in (
                 (compute, concurrency, ("detect", "rematch")),
-                (io, 1, ("download", "import")),
+                (io, 1, ("download", "import", "restore")),
             ):
                 finished = {future for future in running[executor] if future.done()}
                 for future in finished:

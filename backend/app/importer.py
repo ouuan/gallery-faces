@@ -1,176 +1,81 @@
-import hashlib
 import shutil
-from datetime import datetime, timezone
-from urllib.parse import urlparse
 from PIL import Image, ImageOps
 from .db import DATA, IMPORT, connect, settings, file_hash
 from .vision import phash, similarity
+from .metadata import metadata, validate_url, source_image, save_source, in_date_range
 
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".avif"}
 
 
-def validate_url(value):
-    try:
-        parsed = urlparse(value)
-        port = parsed.port
-    except ValueError:
-        return False
-    if parsed.scheme != "https" or parsed.username or parsed.password or port:
-        return False
-    host = (parsed.hostname or "").lower()
-    return host in (
-        "instagram.com",
-        "www.instagram.com",
-        "x.com",
-        "www.x.com",
-        "twitter.com",
-        "www.twitter.com",
-    ) and bool(parsed.path.strip("/"))
+def write_assets(path, digest, *, refresh=False):
+    """Caller holds the database write transaction, shared with file cleanup."""
+    original = DATA / "originals" / (digest + path.suffix.lower())
+    with Image.open(path) as im:
+        im.load()
+        im = ImageOps.exif_transpose(im)
+        width, height = im.size
+        filename = digest + ".jpg"
+        target = DATA / "images" / filename
+        if refresh or not target.exists():
+            im.convert("RGB").save(target, quality=97)
+        if refresh or not (DATA / "thumbs" / filename).exists():
+            im.thumbnail((640, 640))
+            im.convert("RGB").save(DATA / "thumbs" / filename, quality=85)
+    if not original.exists() or (refresh and path.resolve() != original.resolve()):
+        shutil.copyfile(path, original)
+    return filename, width, height, original.name
 
 
-def metadata(raw, filename):
-    platform = raw.get("category", raw.get("platform", ""))
-    platform = "x" if platform in ("twitter", "x") else platform
-    if platform not in ("instagram", "x"):
-        raise ValueError("无法识别 metadata 平台")
-    user = raw.get("author") or raw.get("owner") or raw.get("user") or {}
-    author = (
-        (
-            (user.get("username") or user.get("name"))
-            if platform == "instagram"
-            else user.get("screen_name") or user.get("name")
-        )
-        if isinstance(user, dict)
-        else user
-    )
-    author = (author or raw.get("username")) if raw.get("author") or raw.get("owner") else (raw.get("username") or author)
-    author_name = raw.get("author_name")
-    if isinstance(user, dict):
-        author_name = author_name or (
-            user.get("full_name") or user.get("fullname")
-            if platform == "instagram"
-            else user.get("nick") or (user.get("name") if user.get("screen_name") else None)
-        )
-    if platform == "instagram":
-        author_name = author_name or raw.get("fullname") or raw.get("full_name")
-    author_name = author_name.strip() if isinstance(author_name, str) else None
-    key = str(
-        raw.get("tweet_id")
-        or raw.get("post_id")
-        or raw.get("post_shortcode")
-        or raw.get("shortcode")
-        or raw.get("id")
-        or ""
-    )
-    date = raw.get("date") or raw.get("published_at") or raw.get("timestamp")
-    if isinstance(date, (float, int)):
-        date = datetime.fromtimestamp(date, timezone.utc)
-    elif date:
-        date = datetime.fromisoformat(str(date).replace("Z", "+00:00"))
-    if date:
-        date = (
-            date.replace(tzinfo=date.tzinfo or timezone.utc)
-            .astimezone(timezone.utc)
-            .strftime("%Y-%m-%dT%H:%M:%SZ")
-        )
-    url = raw.get("post_url") or raw.get("url")
-    if not url or not validate_url(url):
-        url = (
-            f"https://x.com/{author}/status/{key}"
-            if platform == "x" and author and key
-            else f"https://www.instagram.com/p/{raw.get('post_shortcode') or raw.get('shortcode')}/"
-            if raw.get("post_shortcode") or raw.get("shortcode")
-            else None
-        )
-    text_fields = [raw.get("post_text"), raw.get("content") if platform == "x" else raw.get("description")]
-    if platform == "x":
-        details = raw.get("details") or {}
-        text_fields.extend([
-            details.get("full_text") if isinstance(details, dict) else None,
-            raw.get("full_text"), raw.get("text"),
-        ])
-    text = next((value for value in text_fields if isinstance(value, str) and value.strip()), None)
-    return dict(
-        platform=platform,
-        key=key or "incomplete:" + filename,
-        author=author,
-        author_name=author_name or None,
-        date=date,
-        url=url,
-        text=text if isinstance(text, str) else None,
-        media=str(raw.get("num") or raw.get("media_id") or filename),
-        collected=raw.get("collected_account")
-        or (
-            (raw.get("user") or {}).get("name")
-            if isinstance(raw.get("user"), dict)
-            else None
-        ),
-    )
+def record_location(db, image_id, path):
+    resolved = path.resolve()
+    if resolved.is_relative_to(IMPORT):
+        db.execute("INSERT OR IGNORE INTO import_locations VALUES(?,?)", (image_id, str(resolved.relative_to(IMPORT))))
 
 
-def import_file(path, raw, start=None, end=None):
+def import_file(path, raw, start=None, end=None, *, counts=None):
     meta = metadata(raw, path.name)
-    if (start or end) and not meta["date"]:
+    if not in_date_range(meta, start, end):
         return None
-    if meta["date"] and (
-        (start and meta["date"] < start) or (end and meta["date"] >= end)
-    ):
-        return None
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
     with connect(True) as db:
-        original = DATA / "originals" / (digest + path.suffix.lower())
-        if not original.exists():
-            shutil.copyfile(path, original)
-        with Image.open(path) as im:
-            im.load()
-            im = ImageOps.exif_transpose(im)
-            width, height = im.size
-            filename = digest + ".jpg"
-            target = DATA / "images" / filename
-            if not target.exists():
-                im.convert("RGB").save(target, quality=97)
-            if not (DATA / "thumbs" / filename).exists():
-                im.thumbnail((640, 640))
-                im.convert("RGB").save(DATA / "thumbs" / filename, quality=85)
-        hash_value = phash(target)
-        image = db.execute("SELECT id FROM images WHERE sha256=?", (digest,)).fetchone()
+        known = source_image(db, meta)
+        if known and known["hidden"]:
+            save_source(db, known["id"], meta)
+            record_location(db, known["id"], path)
+            if counts is not None:
+                counts["skipped_trashed" if known["hidden"] else "skipped_existing"] += 1
+            return known["id"]
+        digest = file_hash(path)
+        if known and known["sha256"] != digest:
+            raise ValueError("该来源的文件已变化，不能覆盖已收录的审核记录")
+        image = db.execute("SELECT * FROM images WHERE sha256=?", (digest,)).fetchone()
+        if image and image["hidden"]:
+            save_source(db, image["id"], meta)
+            record_location(db, image["id"], path)
+            if counts is not None:
+                counts["skipped_trashed"] += 1
+            return image["id"]
+        filename, width, height, original_name = write_assets(path, digest)
+        target = DATA / "images" / filename
         if image:
-            image_id = image[0]
-            db.execute("UPDATE images SET file_size=? WHERE id=?", (path.stat().st_size, image_id))
+            image_id = image["id"]
         else:
             group = db.execute("INSERT INTO duplicate_groups DEFAULT VALUES").lastrowid
             image_id = db.execute(
                 "INSERT INTO images(sha256,filename,width,height,phash,group_id,file_size) VALUES(?,?,?,?,?,?,?)",
-                (digest, filename, width, height, hash_value, group, path.stat().st_size),
+                (digest, filename, width, height, phash(target), group, path.stat().st_size),
             ).lastrowid
             from .db import schedule_detection
             schedule_detection(db, image_id)
         db.execute(
-            "UPDATE images SET image_sha256=?,thumbnail_sha256=?,original_filename=? WHERE id=?",
-            (file_hash(target), file_hash(DATA / "thumbs" / filename), original.name, image_id),
+            "UPDATE images SET image_sha256=?,thumbnail_sha256=?,original_filename=?,file_size=? WHERE id=?",
+            (file_hash(target), file_hash(DATA / "thumbs" / filename), original_name, path.stat().st_size, image_id),
         )
-        db.execute(
-            "INSERT INTO posts(platform,post_key,author,author_name,published_at,url,post_text,collected_account) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(platform,post_key) DO UPDATE SET author=COALESCE(excluded.author,posts.author), author_name=CASE WHEN lower(excluded.author)<>lower(posts.author) THEN excluded.author_name ELSE COALESCE(excluded.author_name,posts.author_name) END, published_at=COALESCE(excluded.published_at,posts.published_at),url=COALESCE(excluded.url,posts.url),post_text=COALESCE(NULLIF(excluded.post_text,''),posts.post_text)",
-            (
-                meta["platform"],
-                meta["key"],
-                meta["author"],
-                meta["author_name"],
-                meta["date"],
-                meta["url"],
-                meta["text"],
-                meta["collected"],
-            ),
-        )
-        post_id = db.execute(
-            "SELECT id FROM posts WHERE platform=? AND post_key=?",
-            (meta["platform"], meta["key"]),
-        ).fetchone()[0]
-        db.execute(
-            "INSERT OR IGNORE INTO sources(image_id,post_id,media_key) VALUES(?,?,?)",
-            (image_id, post_id, meta["media"]),
-        )
-    deduplicate(image_id)
+        save_source(db, image_id, meta)
+        record_location(db, image_id, path)
+        if counts is not None:
+            counts["skipped_existing" if image else "imported"] += 1
+    if not image:
+        deduplicate(image_id)
     return image_id
 
 
@@ -180,9 +85,11 @@ def deduplicate(image_id):
             db.execute("SELECT * FROM images WHERE id=?", (image_id,)).fetchone()
         )
         others = [
-            dict(r) for r in db.execute("SELECT * FROM images WHERE id<>?", (image_id,))
+            dict(r) for r in db.execute("SELECT * FROM images WHERE hidden=0 AND phash IS NOT NULL AND id<>?", (image_id,))
         ]
         config = settings(db)
+    if current["hidden"] or not current["phash"]:
+        return
     for other in others:
         distance = (int(current["phash"], 16) ^ int(other["phash"], 16)).bit_count()
         if distance > 10:
@@ -191,6 +98,8 @@ def deduplicate(image_id):
             (current["width"] / current["height"]) / (other["width"] / other["height"])
             - 1
         )
+        if not (DATA / "images" / other["filename"]).is_file():
+            continue
         score = similarity(
             DATA / "images" / current["filename"], DATA / "images" / other["filename"]
         )
@@ -217,6 +126,8 @@ def deduplicate(image_id):
                 ]
                 for g in groups
             ]
+            if any(m["hidden"] or not m["phash"] or not (DATA / "images" / m["filename"]).is_file() for group in members for m in group):
+                auto = False
             if auto and groups[0] != groups[1]:
                 for left in members[0]:
                     for right in members[1]:

@@ -1,54 +1,48 @@
 import { test, expect } from "@playwright/test";
 
-test("image actions use the current image unless images are checked", async ({ page }) => {
-  const calls: { action: string; ids: number[] }[] = [];
-  const images = [1, 2, 3].map((id) => ({ id, width: 800, height: 600, faces: [], sources: [], hidden: 0 }));
-  await page.route("**/api/v1/**", async (route) => {
+test("recycling expands the current image to its whole group and confirms the scope", async ({ page }) => {
+  const calls: { action: string; ids: number[]; scope_token?: string }[] = [];
+  let images = [1, 2, 3].map(id => ({ id, group_id: id === 2 ? 1 : id, width: 800, height: 600, faces: [], sources: [], hidden: 0 }));
+  await page.route("**/api/v1/**", async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.includes("/media/")) return route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#8799aa"/></svg>' });
+    if (path.endsWith("/images/recycle-preview")) {
+      const { ids } = route.request().postDataJSON();
+      const groups = new Set(images.filter(image => ids.includes(image.id)).map(image => image.group_id));
+      const members = images.filter(image => groups.has(image.group_id)).map(image => image.id);
+      return route.fulfill({ json: { groups: groups.size, total: members.length, ids: members, already_trashed: 0, scope_token: "scope-1" } });
+    }
     if (path.endsWith("/images/actions")) {
       const body = route.request().postDataJSON();
       calls.push(body);
-      for (const image of images.filter((image) => body.ids.includes(image.id))) {
-        if (body.action === "hide") image.hidden = 1;
-        if (body.action === "show") image.hidden = 0;
+      if (body.action === "delete") {
+        expect(body.scope_token).toBe("scope-1");
+        images = images.filter(image => image.group_id !== 1);
+        return route.fulfill({ json: { ok: true, deleted: 2, ids: [1, 2], cleanup_pending: 0 } });
       }
       return route.fulfill({ json: { ok: true } });
     }
     if (path.endsWith("/images")) return route.fulfill({ json: images });
+    if (path.endsWith("/feedback")) return route.fulfill({ json: { items: [], next_cursor: null } });
     if (path.endsWith("/session")) return route.fulfill({ json: { admin: true } });
-    if (path.endsWith("/settings") || path.endsWith("/site")) return route.fulfill({ json: {} });
+    if (/\/(settings|site)$/.test(path)) return route.fulfill({ json: {} });
     return route.fulfill({ json: [] });
   });
   await page.goto("/admin/review");
   await page.getByRole("button", { name: "审核图片 2", exact: true }).click();
-  await expect(page.getByText("当前图片 #2", { exact: true })).toBeVisible();
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.locator(".review-toolbar").screenshot({ path: `/tmp/gallery-faces/image-actions-${width}.png` });
   }
-  await page.addLocatorHandler(page.getByRole("dialog").filter({ hasText: "确认操作" }), async dialog => { await dialog.getByRole("button", { name: "取消", exact: true }).click(); }, { times: 1 });
-  await page.getByRole("button", { name: "重新检测", exact: true }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const recycle = page.getByRole("button", { name: "将当前重复组移入回收站", exact: true });
+  await recycle.click();
+  await expect(page.getByRole("dialog")).toContainText("1 组共 2 张图片");
+  await expect(page.getByRole("dialog")).toContainText("包含同组的所有重复版本");
+  await page.getByRole("dialog").getByRole("button", { name: "取消", exact: true }).click();
   expect(calls).toEqual([]);
-  await page.addLocatorHandler(page.getByRole("dialog").filter({ hasText: "确认操作" }), async dialog => { await dialog.getByRole("button", { name: "确认", exact: true }).click(); });
-  await page.getByRole("button", { name: "重新检测", exact: true }).click();
-  await expect(page.getByRole("button", { name: "重新检测", exact: true })).toBeEnabled();
-  await page.getByRole("button", { name: "隐藏", exact: true }).click();
-  await expect(page.getByRole("button", { name: "恢复可见", exact: true })).toBeEnabled();
-  await page.getByRole("button", { name: "恢复可见", exact: true }).click();
-  await expect(page.getByRole("button", { name: "隐藏", exact: true })).toBeEnabled();
-  for (const action of ["重新检测", "隐藏"]) {
-    await page.getByRole("checkbox", { name: "选择图片 1", exact: true }).click();
-    await page.getByRole("checkbox", { name: "选择图片 3", exact: true }).click();
-    await expect(page.getByText("已选 2 张", { exact: true })).toBeVisible();
-    await expect(page.getByText(/批量修正/)).toHaveCount(0);
-    await page.getByRole("button", { name: action, exact: true }).click();
-    await expect(page.getByText("当前图片 #2", { exact: true })).toBeVisible();
-  }
-  expect(calls).toEqual([
-    { action: "redetect", ids: [2] }, { action: "hide", ids: [2] },
-    { action: "show", ids: [2] }, { action: "redetect", ids: [1, 3] },
-    { action: "hide", ids: [1, 3] },
-  ]);
+  await recycle.click();
+  await page.getByRole("dialog").getByRole("button", { name: "确认", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "图片 #3", exact: true })).toBeVisible();
+  expect(calls).toEqual([{ action: "delete", ids: [2], scope_token: "scope-1" }]);
+  await expect(page.getByRole("button", { name: "审核图片 1", exact: true })).toHaveCount(0);
 });

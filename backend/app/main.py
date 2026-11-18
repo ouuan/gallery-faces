@@ -30,7 +30,8 @@ from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, unknown
 from .security import download_url, cookie_bytes, save_cookie
 from .importer import validate_url, safe_directory
 from .vision import MODEL_VERSION, Vision, candidates, models_ready, validate_embedding
-from .db import schedule_detection
+from .db import schedule_detection, ACTIVE_REFERENCE
+from .trash import require_active, require_active_face
 
 
 @asynccontextmanager
@@ -236,6 +237,7 @@ def write_person(db, body, person_id=None):
         ).fetchone()
         if not face or not face["embedding"]:
             fail("所选人脸已变更或没有有效特征，请刷新后重新选择", 409)
+        require_active_face(db, face_id)
         require_embedding(face["embedding"], face["model_version"])
         if db.execute(
             "SELECT 1 FROM reference_images WHERE person_id=? AND face_id=?",
@@ -319,10 +321,10 @@ def people():
                 )
             ]
             person["reference_count"] = db.execute(
-                "SELECT count(*) FROM reference_images WHERE person_id=?", (row["id"],)
+                f"SELECT count(*) FROM reference_images WHERE person_id=? AND {ACTIVE_REFERENCE}", (row["id"],)
             ).fetchone()[0]
             avatar = db.execute(
-                "SELECT id FROM reference_images WHERE person_id=? ORDER BY id LIMIT 1",
+                f"SELECT id FROM reference_images WHERE person_id=? AND {ACTIVE_REFERENCE} ORDER BY id LIMIT 1",
                 (row["id"],),
             ).fetchone()
             person["avatar_reference_id"] = avatar[0] if avatar else None
@@ -391,7 +393,7 @@ def confirmed_faces(person_id: int, _: None = Depends(admin)):
         return [
             dict(row)
             for row in db.execute(
-                "SELECT f.id,f.image_id, (f.embedding IS NOT NULL AND length(f.embedding)>0) AS has_embedding, EXISTS(SELECT 1 FROM reference_images r WHERE r.person_id=f.person_id AND r.face_id=f.id) AS is_reference FROM faces f WHERE f.person_id=? AND f.locked=1 AND f.ignored=0 ORDER BY f.id DESC",
+                "SELECT f.id,f.image_id, (f.embedding IS NOT NULL AND length(f.embedding)>0) AS has_embedding, EXISTS(SELECT 1 FROM reference_images r WHERE r.person_id=f.person_id AND r.face_id=f.id) AS is_reference FROM faces f WHERE EXISTS(SELECT 1 FROM images i WHERE i.id=f.image_id AND i.hidden=0) AND f.person_id=? AND f.locked=1 AND f.ignored=0 ORDER BY f.id DESC",
                 (person_id,),
             )
         ]
@@ -400,6 +402,7 @@ def confirmed_faces(person_id: int, _: None = Depends(admin)):
 @app.post("/api/v1/admin/people/{person_id}/references")
 def reference_add(person_id: int, body: ReferenceInput, _: None = Depends(admin)):
     with connect(True) as db:
+        require_active_face(db, body.face_id)
         face = db.execute(
             "SELECT * FROM faces WHERE id=? AND ignored=0", (body.face_id,)
         ).fetchone()
@@ -502,7 +505,7 @@ def references(person_id: int, _: None = Depends(admin)):
         return [
             dict(r)
             for r in db.execute(
-                "SELECT id,face_id,image_id,filename FROM reference_images WHERE person_id=?",
+                f"SELECT id,face_id,image_id,filename FROM reference_images WHERE person_id=? AND {ACTIVE_REFERENCE}",
                 (person_id,),
             )
         ]
@@ -512,7 +515,7 @@ def references(person_id: int, _: None = Depends(admin)):
 def face_crop(face_id: int, _: None = Depends(admin)):
     with connect() as db:
         face = db.execute(
-            "SELECT f.box,i.filename FROM faces f JOIN images i ON i.id=f.image_id WHERE f.id=?",
+            "SELECT f.box,i.filename FROM faces f JOIN images i ON i.id=f.image_id WHERE f.id=? AND i.hidden=0",
             (face_id,),
         ).fetchone()
     if not face:
@@ -538,7 +541,7 @@ def cropped_image(path, box):
 @app.get("/api/v1/admin/references/{reference_id}/crop")
 def reference_crop(reference_id: int, _: None = Depends(admin)):
     with connect() as db:
-        reference = db.execute("SELECT * FROM reference_images WHERE id=?", (reference_id,)).fetchone()
+        reference = db.execute(f"SELECT * FROM reference_images WHERE id=? AND {ACTIVE_REFERENCE}", (reference_id,)).fetchone()
     if not reference:
         fail("参考图不存在", 404)
     if reference["face_id"]:
@@ -1059,11 +1062,39 @@ def feedback_delete(feedback_id: int, _: None = Depends(admin)):
 def admin_media(image_id: int, thumbnail: bool = False, _: None = Depends(admin)):
     with connect() as db:
         row = db.execute(
-            "SELECT filename FROM images WHERE id=?", (image_id,)
+            "SELECT filename,hidden FROM images WHERE id=?", (image_id,)
         ).fetchone()
     if not row:
         fail("图片不存在", 404)
-    return FileResponse(DATA / ("thumbs" if thumbnail else "images") / row[0])
+    path = DATA / ("thumbs" if thumbnail else "images") / row["filename"]
+    if (row["hidden"] and not thumbnail) or not path.is_file():
+        fail("原图已移入回收站或文件不存在", 404)
+    return FileResponse(path)
+
+
+def review_image(db, row):
+    item = dict(row)
+    item["pending_feedback_count"] = db.execute("SELECT count(*) FROM feedback WHERE image_id=? AND status='pending'", (row["id"],)).fetchone()[0]
+    item["faces"] = [
+        {
+            **dict(f),
+            "box": json.loads(f["box"]),
+            "candidates": json.loads(f["candidates"]),
+        }
+        for f in db.execute(
+            "SELECT id,image_id,box,person_id,locked,ignored,candidates,revision, (embedding IS NOT NULL AND length(embedding)>0) AS has_embedding FROM faces WHERE image_id=? "
+            "ORDER BY json_extract(box,'$[0]') + json_extract(box,'$[2]') / 2.0,id",
+            (row["id"],),
+        )
+    ]
+    item["sources"] = [
+        dict(s)
+        for s in db.execute(
+            "SELECT p.* FROM posts p JOIN sources s ON s.post_id=p.id WHERE s.image_id=?",
+            (row["id"],),
+        )
+    ]
+    return item
 
 
 @app.get("/api/v1/admin/images")
@@ -1085,6 +1116,8 @@ def admin_images(
         }.get(state)
         if not condition:
             fail("状态无效")
+        if state != "hidden":
+            condition = f"i.hidden=0 AND ({condition})"
         result = []
         params = []
         if image_id is not None:
@@ -1094,29 +1127,25 @@ def admin_images(
             "SELECT i.* FROM images i WHERE " + condition + " ORDER BY id LIMIT 500",
             params,
         ):
-            item = dict(row)
-            item["pending_feedback_count"] = db.execute("SELECT count(*) FROM feedback WHERE image_id=? AND status='pending'", (row["id"],)).fetchone()[0]
-            item["faces"] = [
-                {
-                    **dict(f),
-                    "box": json.loads(f["box"]),
-                    "candidates": json.loads(f["candidates"]),
-                }
-                for f in db.execute(
-                    "SELECT id,image_id,box,person_id,locked,ignored,candidates,revision, (embedding IS NOT NULL AND length(embedding)>0) AS has_embedding FROM faces WHERE image_id=? "
-                    "ORDER BY json_extract(box,'$[0]') + json_extract(box,'$[2]') / 2.0,id",
-                    (row["id"],),
-                )
-            ]
-            item["sources"] = [
-                dict(s)
-                for s in db.execute(
-                    "SELECT p.* FROM posts p JOIN sources s ON s.post_id=p.id WHERE s.image_id=?",
-                    (row["id"],),
-                )
-            ]
-            result.append(item)
+            result.append(review_image(db, row))
         return result
+
+
+@app.get("/api/v1/admin/trash")
+def trash_list(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=100), _: None = Depends(admin)):
+    with connect() as db:
+        db.execute("BEGIN")
+        total = db.execute("SELECT count(*) FROM images WHERE hidden=1").fetchone()[0]
+        page = min(page, max(1, (total + page_size - 1) // page_size))
+        rows = db.execute("SELECT * FROM images WHERE hidden=1 ORDER BY trashed_at DESC,id DESC LIMIT ? OFFSET ?", (page_size, (page - 1) * page_size)).fetchall()
+        items = []
+        for row in rows:
+            item = review_image(db, row)
+            task = db.execute("SELECT id,status,error,stage FROM tasks WHERE image_id=? AND kind='restore' ORDER BY status IN ('queued','running') DESC,id DESC LIMIT 1", (row["id"],)).fetchone()
+            item["restore_task"] = dict(task) if task else None
+            item["cleanup_pending"] = bool(db.execute("SELECT 1 FROM pending_file_deletions WHERE sha256=?", (row["sha256"],)).fetchone())
+            items.append(item)
+        return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
 class FaceEdit(BaseModel):
@@ -1139,6 +1168,7 @@ def person_from_face(
     if not name:
         fail("姓名不能为空")
     with connect(True) as db:
+        require_active_face(db, face_id)
         face = db.execute("SELECT * FROM faces WHERE id=?", (face_id,)).fetchone()
         if not face:
             fail("人脸不存在", 404)
@@ -1167,6 +1197,7 @@ def person_from_face(
 
 
 def write_face_edit(db, face_id: int, body: FaceEdit):
+    require_active_face(db, face_id)
     old = db.execute(
         "SELECT id,person_id,ignored,locked,revision FROM faces WHERE id=?",
         (face_id,),
@@ -1247,6 +1278,7 @@ def face_edit(face_id: int, body: FaceEdit, _: None = Depends(admin)):
 @app.post("/api/v1/admin/faces/{face_id}/undo")
 def undo(face_id: int, _: None = Depends(admin)):
     with connect(True) as db:
+        require_active_face(db, face_id)
         history = db.execute(
             "SELECT * FROM review_history WHERE face_id=? ORDER BY id DESC LIMIT 1",
             (face_id,),
@@ -1287,6 +1319,7 @@ def add_face(image_id: int, body: BoxInput, _: None = Depends(admin)):
     ):
         fail("人脸框超出图片范围")
     with connect(True) as db:
+        require_active(db, image_id)
         if (
             body.person_id is not None
             and not db.execute(
@@ -1304,65 +1337,41 @@ def add_face(image_id: int, body: BoxInput, _: None = Depends(admin)):
     return {"ok": True}
 
 
-class ImageAction(BaseModel):
-    action: Literal["hide", "show", "redetect", "delete"]
+class ImageSelection(BaseModel):
     ids: list[int] = Field(min_length=1, max_length=500)
+
+
+class ImageAction(ImageSelection):
+    action: Literal["hide", "show", "redetect", "delete", "restore"] = Field(description="delete recycles complete duplicate groups; restore applies only to selected images. Legacy hide/show requests are rejected.")
+    scope_token: str | None = Field(default=None, description="Required for delete: token returned by recycle-preview.")
+    directory: str | None = Field(default=None, description="Optional mounted import directory to search for exact original files during restore.")
+
+
+@app.post("/api/v1/admin/images/recycle-preview")
+def recycle_preview(body: ImageSelection, _: None = Depends(admin)):
+    from .trash import preview
+    with connect() as db:
+        db.execute("BEGIN")
+        return preview(db, body.ids)
 
 
 @app.post("/api/v1/admin/images/actions")
 def image_action(body: ImageAction, _: None = Depends(admin)):
+    from .trash import recycle, enqueue_restore
+    if body.action in ("hide", "show"):
+        fail("隐藏和显示已合并为回收站，请刷新页面后操作", 409)
     if body.action == "delete":
-        return delete_images(body.ids)
+        return recycle(body.ids, body.scope_token)
+    if body.action == "restore":
+        try:
+            return enqueue_restore(body.ids, body.directory)
+        except ValueError as error:
+            fail(str(error))
     with connect(True) as db:
-        for i in set(body.ids):
-            if not db.execute("SELECT 1 FROM images WHERE id=?", (i,)).fetchone():
-                fail("图片不存在", 404)
-            if body.action == "redetect":
-                schedule_detection(db, i, "highres")
-            else:
-                db.execute(
-                    "UPDATE images SET hidden=? WHERE id=?", (body.action == "hide", i)
-                )
+        for image_id in set(body.ids):
+            require_active(db, image_id)
+            schedule_detection(db, image_id, "highres")
     return {"ok": True}
-
-
-def delete_images(ids):
-    ids = sorted(set(ids))
-    marks = ",".join("?" for _ in ids)
-    with connect(True) as db:
-        images = db.execute(f"SELECT * FROM images WHERE id IN ({marks})", ids).fetchall()
-        if len(images) != len(ids):
-            fail("部分图片已不存在，请刷新后重新选择", 404)
-        post_ids = [row[0] for row in db.execute(f"SELECT DISTINCT post_id FROM sources WHERE image_id IN ({marks})", ids)]
-        if db.execute(
-            f"SELECT 1 FROM tasks WHERE status='running' AND (image_id IN ({marks}) OR kind IN ('download','import'))",
-            ids,
-        ).fetchone():
-            fail("图片处理或导入任务正在运行，请等待完成或取消任务后重试", 409)
-        for image in images:
-            paths = [DATA / folder / image["filename"] for folder in ("images", "thumbs")]
-            paths.extend((DATA / "originals").glob(image["sha256"] + ".*"))
-            db.executemany(
-                "INSERT OR IGNORE INTO pending_file_deletions(path,sha256,filename) VALUES(?,?,?)",
-                [(str(path.relative_to(DATA)), image["sha256"], image["filename"]) for path in paths],
-            )
-        face_ids = f"SELECT id FROM faces WHERE image_id IN ({marks})"
-        removed_refs = db.execute(
-            f"DELETE FROM reference_images WHERE image_id IN ({marks}) OR face_id IN ({face_ids})",
-            ids + ids,
-        ).rowcount
-        db.execute(f"DELETE FROM review_history WHERE face_id IN ({face_ids})", ids)
-        db.execute(f"DELETE FROM faces WHERE image_id IN ({marks})", ids)
-        db.execute(f"DELETE FROM sources WHERE image_id IN ({marks})", ids)
-        db.execute(f"DELETE FROM tasks WHERE image_id IN ({marks})", ids)
-        db.execute(f"DELETE FROM duplicate_decisions WHERE a IN ({marks}) OR b IN ({marks})", ids + ids)
-        db.execute(f"DELETE FROM images WHERE id IN ({marks})", ids)
-        db.executemany("DELETE FROM posts WHERE id=? AND NOT EXISTS(SELECT 1 FROM sources WHERE post_id=posts.id)", [(post_id,) for post_id in post_ids])
-        db.executemany("DELETE FROM duplicate_groups WHERE id=? AND NOT EXISTS(SELECT 1 FROM images WHERE group_id=duplicate_groups.id)", [(image["group_id"],) for image in images])
-        if removed_refs:
-            schedule_rematch(db)
-    pending = cleanup_deleted_files()
-    return {"ok": True, "deleted": len(ids), "removed_references": removed_refs, "cleanup_pending": pending}
 
 
 class PostEdit(BaseModel):
@@ -1477,7 +1486,7 @@ def import_create(body: ImportInput, _: None = Depends(admin)):
 def tasks(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    kind: list[Literal["download", "import", "detect", "rematch"]] = Query(default=[]),
+    kind: list[Literal["download", "import", "detect", "rematch", "restore"]] = Query(default=[]),
     status: list[Literal["queued", "running", "done", "failed", "cancelled"]] = Query(default=[]),
     _: None = Depends(admin),
 ):
@@ -1516,14 +1525,18 @@ def task_action(
                 (task_id,),
             )
         elif row["status"] in ("failed", "cancelled"):
+            if row["kind"] in ("detect", "rematch"):
+                require_active(db, row["image_id"])
+            if row["kind"] == "restore" and not db.execute("SELECT 1 FROM images WHERE id=? AND hidden=1", (row["image_id"],)).fetchone():
+                fail("图片已恢复，无需重试", 409)
             if (
-                row["kind"] == "rematch"
+                row["kind"] in ("rematch", "restore")
                 and db.execute(
-                    "SELECT 1 FROM tasks WHERE kind='rematch' AND image_id=? AND status IN ('queued','running')",
-                    (row["image_id"],),
+                    "SELECT 1 FROM tasks WHERE kind=? AND image_id=? AND status IN ('queued','running')",
+                    (row["kind"], row["image_id"]),
                 ).fetchone()
             ):
-                fail("已有活动重匹配任务", 409)
+                fail("该图片已有同类活动任务", 409)
             db.execute(
                 "UPDATE tasks SET status='queued',finished_at=NULL,stage='等待重试',error=NULL,cancel_requested=0,done=0,total=0,speed=0 WHERE id=?",
                 (task_id,),
@@ -1603,7 +1616,7 @@ def duplicates(
     _: None = Depends(admin),
 ):
     with connect() as db:
-        conditions = "(decision<>'pending' OR score IS NULL OR score>=?)"
+        conditions = "(decision<>'pending' OR score IS NULL OR score>=?) AND EXISTS(SELECT 1 FROM images WHERE id=a AND hidden=0) AND EXISTS(SELECT 1 FROM images WHERE id=b AND hidden=0)"
         params = [float(settings(db)["review_ssim_threshold"])]
         if decision:
             conditions += f" AND decision IN ({','.join('?' for _ in decision)})"
@@ -1649,6 +1662,8 @@ def duplicate_action(body: DuplicateInput, _: None = Depends(admin)):
     if body.a == body.b:
         fail("请选择两张不同图片")
     with connect(True) as db:
+        require_active(db, body.a)
+        require_active(db, body.b)
         a = db.execute("SELECT group_id FROM images WHERE id=?", (body.a,)).fetchone()
         b = db.execute("SELECT group_id FROM images WHERE id=?", (body.b,)).fetchone()
         if not a or not b:

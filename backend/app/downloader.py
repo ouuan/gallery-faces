@@ -112,6 +112,34 @@ def install_policy():
     return state
 
 
+def install_library_filter(report_path=None, restore_id=None):
+    """Runs after gallery-dl's date/media filters, before any media request."""
+    import json
+    from gallery_dl.job import DownloadJob
+    from .db import connect
+    from .metadata import metadata, source_image
+
+    original = DownloadJob.handle_url
+
+    def handle_url(self, url, raw):
+        meta = metadata({**raw, "category": self.extractor.category}, "")
+        with connect() as db:
+            known = source_image(db, meta)
+        if restore_id is not None:
+            if not known or known["id"] != restore_id:
+                return
+        elif known:
+            if report_path:
+                # Store only normalized source fields, never signed media URLs,
+                # downloader objects, cookies, or transport headers.
+                with open(report_path, "a", encoding="utf-8") as report:
+                    report.write(json.dumps({"image_id": known["id"], "meta": meta}) + "\n")
+            return
+        return original(self, url, raw)
+
+    DownloadJob.handle_url = handle_url
+
+
 def main():
     import os
     import sys
@@ -121,6 +149,8 @@ def main():
     platform, _ = download_url(sys.argv[-1])
     network = install(platform, os.environ.get('GALLERY_FACES_POLICY_REPORT'))
     state = install_policy()
+    restore_id = os.environ.get("GALLERY_FACES_RESTORE_IMAGE")
+    install_library_filter(os.environ.get("GALLERY_FACES_SKIPPED_REPORT"), int(restore_id) if restore_id else None)
     options = ["cookies-update=false", "netrc=false",
                "retweets=false", "quoted=false", "cards=false", "twitpic=false",
                "articles=false", "videos=false", "audio=false", "previews=false"]

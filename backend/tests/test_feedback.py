@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from app import db, main
-from test_workflows import client, image
+from test_workflows import recycle, client, image
 
 
 def seed():
@@ -72,15 +72,15 @@ def test_groups_visibility_pagination_delete(client):
         conn.execute('UPDATE images SET hidden=0 WHERE id=?', (other,))
     client.post('/api/v1/admin/duplicates', json={'a': target, 'b': other, 'action': 'separate'})
     assert client.get(f'/api/v1/gallery/{group}').json()['pending_feedback_count'] == 1
-    client.post('/api/v1/admin/images/actions', json={'ids': [target], 'action': 'hide'})
+    recycle(client, [target])
     assert client.get(f'/api/v1/gallery/{group}').status_code == 404
     assert submit(client, target).status_code == 404
     assert client.get(f'/api/v1/admin/images/{target}/feedback').json()['items'] == [first]
-    assert target in [r['id'] for r in client.get('/api/v1/admin/images?state=feedback').json()]
+    assert target not in [r['id'] for r in client.get('/api/v1/admin/images?state=feedback').json()]
     assert client.get('/api/v1/admin/images').json()[0]['id'] == other
-    assert client.post('/api/v1/admin/images/actions', json={'ids': [target], 'action': 'delete'}).status_code == 200
+    assert recycle(client, [target]).status_code == 200
     with db.connect() as conn:
-        assert conn.execute('SELECT count(*) FROM feedback WHERE image_id=?', (target,)).fetchone()[0] == 0
+        assert conn.execute('SELECT count(*) FROM feedback WHERE image_id=?', (target,)).fetchone()[0] == 1
         assert conn.execute('SELECT count(*) FROM feedback_submissions').fetchone()[0] == 2
 
 
