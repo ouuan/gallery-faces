@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 
+test.use({ reducedMotion: "reduce" });
+
 test("each face selects and saves its own person independently", async ({ page }) => {
   page.on("pageerror", (error) => { throw error; });
   const saved: { face: number; person_id: number | null; locked: boolean; ignored: boolean }[] = [];
@@ -55,15 +57,19 @@ test("each face selects and saves its own person independently", async ({ page }
   await second.locator("label").filter({ has: page.getByRole("radio", { name: /人物乙/ }) }).click();
   await expect(page.getByAltText("候选人物参考图")).toHaveCount(0);
   await expect(first.locator("input:checked")).toHaveCount(0);
+  await expect(page.locator(".people-cascader-menu")).toHaveCount(0);
   for (const width of [390, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     for (const theme of ["light", "dark"] as const) {
-      await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+      await page.emulateMedia({ colorScheme: theme });
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       const candidates = first.getByRole("radiogroup");
       expect(await candidates.evaluate(el => el.scrollWidth > el.clientWidth)).toBeTruthy();
       expect(await candidates.locator("label").evaluateAll(els => new Set(els.map(el => el.getBoundingClientRect().top)).size)).toBe(1);
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+      await expect.poll(
+        () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+        { message: `Page should not overflow horizontally at ${width}px in ${theme} theme` },
+      ).toBeLessThanOrEqual(0);
       await first.screenshot({ path: `/tmp/gallery-faces/face-person-${width}-${theme}.png` });
     }
   }
