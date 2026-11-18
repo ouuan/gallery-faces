@@ -1963,12 +1963,43 @@
       "get": {
         "summary": "Duplicates",
         "operationId": "duplicates_api_v1_admin_duplicates_get",
+        "parameters": [
+          {
+            "name": "decision",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "pending",
+                  "auto",
+                  "merge",
+                  "separate"
+                ],
+                "type": "string"
+              },
+              "default": [],
+              "title": "Decision"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -1978,14 +2009,14 @@
         "summary": "Duplicate Action",
         "operationId": "duplicate_action_api_v1_admin_duplicates_post",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/DuplicateInput"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -2800,6 +2831,13 @@
             "maximum": 1.0,
             "minimum": 0.0,
             "title": "Ssim Threshold"
+          },
+          "review_ssim_threshold": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Review Ssim Threshold",
+            "default": 0.5
           },
           "timezone": {
             "type": "string",

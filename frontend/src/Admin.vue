@@ -7,6 +7,7 @@ import {
   NSelect,
   NAlert,
   NInputNumber,
+  NSlider,
   useMessage,
 } from "naive-ui";
 import { Download, Users, ScanFace, Copy, Settings, LogOut } from "@lucide/vue";
@@ -39,8 +40,18 @@ const route = useRoute(),
   start = ref(""),
   end = ref(""),
   settings = ref<any>(null),
-  savingSettings = ref(false),
-  duplicates = ref<any[]>([]);
+  savingSettings = ref(false);
+function updateDuplicateThresholds(values: number[]) {
+  const [lower, upper] = [...values].sort((a, b) => a - b);
+  settings.value.review_ssim_threshold = lower;
+  settings.value.ssim_threshold = upper;
+}
+const vThresholdLabels = {
+  mounted(el: HTMLElement) {
+    el.querySelectorAll('[role="slider"]').forEach((handle, index) =>
+      handle.setAttribute("aria-label", index === 0 ? "待审核 SSIM 下限" : "自动合并 SSIM 下限"));
+  },
+};
 const section = computed(() => String(route.params.section || "import"));
 const taskKinds = ref<string[]>([]);
 const taskStatuses = ref<string[]>([]);
@@ -114,11 +125,6 @@ async function refresh() {
     ]);
   } else if (section.value === "settings") {
     settings.value = await api("/admin/settings");
-  } else if (section.value === "duplicates") {
-    await Promise.all([
-      store.load(),
-      api("/admin/duplicates").then(value => duplicates.value = value),
-    ]);
   } else {
     await store.load();
   }
@@ -431,7 +437,7 @@ onUnmounted(() => {
         </nav></template
       ><People v-else-if="section === 'people'" /><Review
         v-else-if="section === 'review'"
-      /><DuplicateReview v-else-if="section === 'duplicates'" v-model:rows="duplicates"
+      /><DuplicateReview v-else-if="section === 'duplicates'"
       /><template v-else-if="section === 'settings' && settings"
         ><form class="settings-form" @submit.prevent="saveSettings">
           <h2>站点信息</h2>
@@ -493,14 +499,14 @@ onUnmounted(() => {
               :min="0"
               :max="1"
               :step="0.01" /></label
-          ><label class="field-label"
-            >最低 SSIM<n-input-number
-              :value="Number(settings.ssim_threshold)"
-              @update:value="settings.ssim_threshold = $event"
-              :min="0"
-              :max="1"
-              :step="0.01" /></label
-          ><label class="field-label"
+          >
+          <div class="field-label">SSIM 阈值</div>
+          <div class="hint">待审核下限：{{ Number(settings.review_ssim_threshold ?? 0.5).toFixed(2) }} · 自动合并下限：{{ Number(settings.ssim_threshold).toFixed(2) }}</div>
+          <n-slider range :min="0" :max="1" :step="0.01" :disabled="savingSettings"
+            :value="[Number(settings.review_ssim_threshold ?? 0.5), Number(settings.ssim_threshold)]"
+            @update:value="updateDuplicateThresholds" v-threshold-labels />
+          <p class="hint">低于待审核下限的候选不显示，调低后可重新显示。达到自动合并下限还须通过 pHash、长宽比和跨组检查；修改阈值不会撤销已有合并或人工决定。</p>
+          <label class="field-label"
             >站点时区<n-input v-model:value="settings.timezone" /></label
           ><n-button
             type="primary"

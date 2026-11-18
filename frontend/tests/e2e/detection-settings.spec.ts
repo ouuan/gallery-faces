@@ -4,7 +4,7 @@ test("detection threshold can be saved and restored", async ({ page }) => {
   let settings = {
     site_title: "Gallery Faces", detection_threshold: "0.5",
     threshold: "0.5", margin: "0.1", phash_distance: "4",
-    aspect_tolerance: "0.01", ssim_threshold: "0.98",
+    aspect_tolerance: "0.01", ssim_threshold: "0.98", review_ssim_threshold: "0.5",
     timezone: "Asia/Shanghai", cookies: {}, models_ready: true,
   };
   await page.route("**/api/v1/**", async (route) => {
@@ -24,6 +24,10 @@ test("detection threshold can be saved and restored", async ({ page }) => {
   await page.goto("/admin/settings");
   const input = page.getByRole("textbox", { name: "人脸检测阈值" });
   await expect(input).toHaveValue("0.5");
+  const lower = page.getByRole("slider", { name: "待审核 SSIM 下限" });
+  const upper = page.getByRole("slider", { name: "自动合并 SSIM 下限" });
+  await lower.focus(); await page.keyboard.press("ArrowRight");
+  await upper.focus(); await page.keyboard.press("ArrowLeft");
   await input.fill("");
   await input.blur();
   await expect(page.getByRole("button", { name: "保存设置" })).toBeDisabled();
@@ -31,7 +35,10 @@ test("detection threshold can be saved and restored", async ({ page }) => {
   await input.blur();
   await page.getByRole("button", { name: "保存设置" }).click();
   await expect.poll(() => Number(settings.detection_threshold)).toBe(0.3);
+  expect(Number(settings.review_ssim_threshold)).toBe(0.51);
+  expect(Number(settings.ssim_threshold)).toBe(0.97);
   await page.reload();
+  await expect(lower).toHaveAttribute("aria-valuenow", "0.51");
   await expect(input).toHaveValue("0.3");
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 1000 });

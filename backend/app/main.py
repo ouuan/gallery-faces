@@ -1529,6 +1529,7 @@ class SettingsInput(BaseModel):
     phash_distance: int = Field(ge=0, le=64)
     aspect_tolerance: float = Field(ge=0, le=1)
     ssim_threshold: float = Field(ge=0, le=1)
+    review_ssim_threshold: float = Field(default=0.5, ge=0, le=1)
     timezone: str
 
 
@@ -1544,17 +1545,29 @@ def settings_update(body: SettingsInput, _: None = Depends(admin)):
     except Exception:
         fail("时区无效")
     with connect(True) as db:
+        effective = {**settings(db), **values}
+        if float(effective["review_ssim_threshold"]) > float(effective["ssim_threshold"]):
+            fail("待审核下限不能高于自动合并下限", 422)
         for key, value in values.items():
             db.execute("UPDATE settings SET value=? WHERE key=?", (str(value), key))
     return {"ok": True}
 
 
 @app.get("/api/v1/admin/duplicates")
-def duplicates(_: None = Depends(admin)):
+def duplicates(
+    decision: list[Literal["pending", "auto", "merge", "separate"]] = Query(default=[]),
+    _: None = Depends(admin),
+):
     with connect() as db:
+        conditions = "(decision<>'pending' OR score IS NULL OR score>=?)"
+        params = [float(settings(db)["review_ssim_threshold"])]
+        if decision:
+            conditions += f" AND decision IN ({','.join('?' for _ in decision)})"
+            params.extend(decision)
         result = []
         for row in db.execute(
-            "SELECT * FROM duplicate_decisions ORDER BY decision='pending' DESC,a,b LIMIT 500"
+            "SELECT * FROM duplicate_decisions WHERE " + conditions
+            + " ORDER BY decision='pending' DESC,a,b LIMIT 500", params
         ):
             item = dict(row)
             item["images"] = []

@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test';
 
-test('duplicate review fits the viewport and preserves the selected pair', async ({ page }) => {
+test('duplicate review fits the viewport and advances to the next pair', async ({ page }) => {
   const image = (id: number, width: number, height: number) => ({
     id, width, height, group_id: id,
     people: [{ name: '很长的人物名称'.repeat(30) }],
-    sources: Array.from({ length: 30 }, (_, i) => ({ id: i, platform: 'x', author: 'source', published_at: '2026-01-01', url: `https://x.com/source/status/${i}` })),
+    sources: Array.from({ length: 30 }, (_, i) => ({ id: i, platform: 'x', author: 'source', author_name: '发布者姓名', published_at: '2026-01-01', url: `https://x.com/source/status/${i}` })),
   });
   let rows = [
     { a: 1, b: 2, decision: 'pending', score: 0.95, images: [image(1, 600, 3000), image(2, 3000, 600)] },
@@ -25,7 +25,7 @@ test('duplicate review fits the viewport and preserves the selected pair', async
         rows = [original[1], { ...original[0], decision: 'merge' }];
         return route.fulfill({ json: { ok: true } });
       }
-      return route.fulfill({ json: empty ? [] : rows });
+      return route.fulfill({ json: empty ? [] : rows.filter(row => { const states = new URL(route.request().url()).searchParams.getAll('decision'); return !states.length || states.includes(row.decision); }) });
     }
     if (path.endsWith('/tasks')) return route.fulfill({ json: { items: [], total: 0, page: 1 } });
     if (/\/(session|settings|site)$/.test(path)) return route.fulfill({ json: {} });
@@ -33,6 +33,7 @@ test('duplicate review fits the viewport and preserves the selected pair', async
   });
   await page.goto('/admin/duplicates');
   await expect(page.locator('.duplicate-image img')).toHaveCount(2);
+  await expect(page.locator('.duplicate-publishers').first().getByText('X · 发布者姓名', { exact: true })).toHaveCount(1);
   for (const size of [{ width: 1440, height: 900 }, { width: 1280, height: 720 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
     await page.setViewportSize(size);
     await expect(page.locator('.duplicate-image img').first()).toBeVisible();
@@ -70,11 +71,81 @@ test('duplicate review fits the viewport and preserves the selected pair', async
   await expect(page.getByText('测试提交失败')).toBeVisible();
   await expect(page.locator('.duplicate-heading')).toContainText('#1 与 #2');
   fail = false; await page.getByRole('button', { name: '合并为一组' }).click();
-  await expect(page.locator('.duplicate-navigation')).toContainText('第 2 / 2 组');
-  await expect(page.locator('.duplicate-heading')).toContainText('#1 与 #2');
+  await expect(page.locator('.duplicate-navigation')).toContainText('第 1 / 1 组');
+  await expect(page.locator('.duplicate-heading')).toContainText('#3 与 #4');
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.screenshot({ path: '/tmp/gallery-faces/duplicates-dark.png' });
   empty = true; await page.reload();
-  await expect(page.getByText('暂无重复图片候选')).toBeVisible();
+  await expect(page.getByText('当前状态下暂无重复图片候选')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
+});
+
+for (const scenario of [
+  { name: 'middle', start: 1, all: false, remaining: [1, 5], expected: 5 },
+  { name: 'last', start: 2, all: false, remaining: [1, 3], expected: 3 },
+  { name: 'reordered history', start: 0, all: true, remaining: [5, 1, 3], expected: 3 },
+  { name: 'missing successors', start: 0, all: false, remaining: [], expected: null },
+]) test(`duplicate progression handles ${scenario.name} and refresh retry`, async ({ page }) => {
+  const makeRow = (a: number) => ({ a, b: a + 1, decision: 'pending', score: .9,
+    images: [a, a + 1].map(id => ({ id, width: 800, height: 600, group_id: id, people: [], sources: [] })) });
+  let rows = [1, 3, 5].map(makeRow), posts = 0, failRefresh = false;
+  await page.route('**/api/v1/**', async route => {
+    const url = new URL(route.request().url()), path = url.pathname;
+    if (path.includes('/media/')) return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"/>' });
+    if (path.endsWith('/duplicates')) {
+      if (route.request().method() === 'POST') {
+        posts++;
+        expect(route.request().postDataJSON()).toEqual({ a: 1 + scenario.start * 2, b: 2 + scenario.start * 2, action: 'separate' });
+        rows = scenario.remaining.map(makeRow);
+        failRefresh = true;
+        return route.fulfill({ json: { ok: true } });
+      }
+      if (failRefresh) return route.fulfill({ status: 503, json: { detail: '刷新失败测试' } });
+      return route.fulfill({ json: rows });
+    }
+    if (/\/(session|site)$/.test(path)) return route.fulfill({ json: {} });
+    return route.fulfill({ json: [] });
+  });
+  await page.goto('/admin/duplicates');
+  const heading = page.locator('.duplicate-heading');
+  await expect(heading).toContainText('#1 与 #2');
+  if (scenario.all) {
+    const response = page.waitForResponse(r => r.url().includes('/duplicates?') && !r.url().includes('decision='));
+    await page.locator('.duplicate-filter').getByRole('button', { name: 'close' }).click();
+    await response;
+  }
+  for (let i = 0; i < scenario.start; i++) await page.getByRole('button', { name: '下一组' }).click();
+  await page.getByRole('button', { name: '不是重复', exact: true }).click();
+  await expect(page.getByText(/已保存，列表刷新失败/)).toBeVisible();
+  await expect(page.getByRole('button', { name: '不是重复', exact: true })).toBeDisabled();
+  failRefresh = false;
+  await page.getByRole('button', { name: '重试加载' }).click();
+  if (scenario.expected) await expect(heading).toContainText(`#${scenario.expected} 与 #${scenario.expected + 1}`);
+  else await expect(page.getByText('当前状态下暂无重复图片候选')).toBeVisible();
+  expect(posts).toBe(1);
+});
+
+test('duplicate status changes ignore stale responses', async ({ page }) => {
+  let release: (() => void) | undefined;
+  let initialDone: (() => void) | undefined;
+  const done = new Promise<void>(resolve => { initialDone = resolve; });
+  const row = (a: number) => ({ a, b: a + 1, decision: 'pending', score: .9, images: [] });
+  await page.route('**/api/v1/**', async route => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/duplicates')) {
+      if (url.searchParams.has('decision')) {
+        await new Promise<void>(resolve => { release = resolve; });
+        await route.fulfill({ json: [row(1)] }); initialDone!(); return;
+      }
+      return route.fulfill({ json: [row(3)] });
+    }
+    return route.fulfill({ json: /\/(session|site)$/.test(url.pathname) ? {} : [] });
+  });
+  await page.goto('/admin/duplicates');
+  await expect.poll(() => !!release).toBe(true);
+  await page.locator('.duplicate-filter').getByRole('button', { name: 'close' }).click();
+  await expect(page.locator('.duplicate-heading')).toContainText('#3 与 #4');
+  release!(); await done;
+  await expect(page.getByText('正在加载候选…')).toHaveCount(0);
+  await expect(page.locator('.duplicate-heading')).toContainText('#3 与 #4');
 });

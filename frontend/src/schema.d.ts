@@ -1026,6 +1026,11 @@ export interface components {
             aspect_tolerance: number;
             /** Ssim Threshold */
             ssim_threshold: number;
+            /**
+             * Review Ssim Threshold
+             * @default 0.5
+             */
+            review_ssim_threshold: number;
             /** Timezone */
             timezone: string;
         };
@@ -2492,7 +2497,9 @@ export interface operations {
     };
     duplicates_api_v1_admin_duplicates_get: {
         parameters: {
-            query?: never;
+            query?: {
+                decision?: ("pending" | "auto" | "merge" | "separate")[];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2506,6 +2513,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -1379,3 +1379,64 @@ def test_detail_sources_dimensions(client):
         {"image_id": second, "width": 200, "height": 100},
     ]
     assert detail["sources"][1]["images"] == [{"image_id": second, "width": 200, "height": 100}]
+
+
+def test_duplicate_thresholds_and_status_filters(client):
+    endpoint = '/api/v1/admin/settings'
+    config = client.get(endpoint).json()
+    assert float(config['review_ssim_threshold']) == 0.5
+    with db.connect(True) as conn:
+        ids = [image(conn) for _ in range(7)]
+        for i, (decision, score) in enumerate([('pending', .49), ('pending', .5), ('pending', None), ('auto', .4), ('merge', .3), ('separate', None)]):
+            conn.execute('INSERT INTO duplicate_decisions VALUES(?,?,?,?)', (ids[0], ids[i+1], decision, score))
+    url = '/api/v1/admin/duplicates'
+    pending = client.get(url, params={'decision': 'pending'}).json()
+    assert [r['score'] for r in pending] == [.5, None]
+    assert len(client.get(url).json()) == 5
+    assert len(client.get(url + '?decision=auto&decision=merge').json()) == 2
+    assert client.get(url, params={'decision': 'invalid'}).status_code == 422
+    config['review_ssim_threshold'] = .4
+    assert client.put(endpoint, json=config).status_code == 200
+    assert len(client.get(url, params={'decision': 'pending'}).json()) == 3
+    for lower in (-.01, 1.01, None, 'invalid', .99):
+        assert client.put(endpoint, json={**config, 'review_ssim_threshold': lower}).status_code == 422
+    assert float(client.get(endpoint).json()['review_ssim_threshold']) == .4
+    config.pop('review_ssim_threshold')
+    assert client.put(endpoint, json=config).status_code == 200
+    db.init()
+    assert float(client.get(endpoint).json()['review_ssim_threshold']) == .4
+    pair = pending[0]
+    assert client.post(url, json={'a': pair['a'], 'b': pair['b'], 'action': 'merge'}).status_code == 200
+    assert len(client.get(url, params={'decision': 'pending'}).json()) == 2
+    assert len(client.get(url, params={'decision': 'merge'}).json()) == 2
+    with db.connect(True) as conn:
+        conn.execute("DELETE FROM settings WHERE key='review_ssim_threshold'")
+        conn.execute("UPDATE settings SET value='0.3' WHERE key='ssim_threshold'")
+    db.init()
+    assert float(client.get(endpoint).json()['review_ssim_threshold']) == .3
+    config = client.get(endpoint).json()
+    assert client.put(endpoint, json=config).status_code == 200
+
+
+@pytest.mark.parametrize('score,phash,width,decision,visible', [
+    (.49, '0', 100, 'pending', False),
+    (.5, '0', 100, 'pending', True),
+    (.98, '0', 100, 'auto', True),
+    (.99, '1f', 100, 'pending', True),
+    (.99, '0', 200, 'pending', True),
+])
+def test_duplicate_threshold_classification(client, monkeypatch, score, phash, width, decision, visible):
+    with db.connect(True) as conn:
+        a, b = image(conn), image(conn)
+        conn.execute("UPDATE images SET phash='0' WHERE id=?", (a,))
+        conn.execute('UPDATE images SET phash=?,width=? WHERE id=?', (phash, width, b))
+    monkeypatch.setattr(importer, 'similarity', lambda *_: score)
+    importer.deduplicate(b)
+    with db.connect() as conn:
+        assert conn.execute('SELECT decision FROM duplicate_decisions').fetchone()[0] == decision
+    assert bool(client.get('/api/v1/admin/duplicates').json()) == visible
+    client.post('/api/v1/admin/duplicates', json={'a': a, 'b': b, 'action': 'separate'})
+    importer.deduplicate(b)
+    with db.connect() as conn:
+        assert conn.execute('SELECT decision FROM duplicate_decisions').fetchone()[0] == 'separate'
+        assert conn.execute('SELECT count(DISTINCT group_id) FROM images').fetchone()[0] == 2

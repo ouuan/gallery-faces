@@ -65,7 +65,7 @@ test("review keyboard navigation, confirmation, deletion and input ownership", a
   expect(deleted).toEqual([[2], [1, 3]]);
 });
 
-test("duplicate shortcuts preserve pairs and pause for details and requests", async ({ page }) => {
+test("duplicate shortcuts advance pairs and pause for details and requests", async ({ page }) => {
   page.on("pageerror", error => { throw error; });
   const image = (id: number) => ({ id, width: 800, height: 600, group_id: id, people: [], sources: [] });
   let rows = [1, 3].map(a => ({ a, b: a + 1, decision: "pending", score: 0.9, images: [image(a), image(a + 1)] }));
@@ -76,7 +76,7 @@ test("duplicate shortcuts preserve pairs and pause for details and requests", as
     if (path.endsWith("/duplicates")) {
       if (route.request().method() === "POST") {
         const body = route.request().postDataJSON(); calls.push(body);
-        await new Promise<void>(resolve => { release = resolve; }); rows = [...rows].reverse();
+        await new Promise<void>(resolve => { release = resolve; }); rows = rows.filter(row => row.a !== body.a);
         return route.fulfill({ json: { ok: true } });
       }
       return route.fulfill({ json: rows });
@@ -96,10 +96,10 @@ test("duplicate shortcuts preserve pairs and pause for details and requests", as
   for (const key of ["ArrowLeft", "m", "x"]) await page.keyboard.press(key);
   expect(calls).toEqual([{ a: 3, b: 4, action: "merge" }]); release!();
   await expect(page.getByRole("button", { name: "合并为一组" })).toBeEnabled();
-  await expect(heading).toContainText("#3 与 #4");
+  await expect(heading).toContainText("#1 与 #2");
   await page.keyboard.press("x"); await expect.poll(() => calls.length).toBe(2); release!();
-  await expect(page.getByRole("button", { name: "合并为一组" })).toBeEnabled();
-  expect(calls[1]).toEqual({ a: 3, b: 4, action: "separate" });
+  await expect(page.getByText("当前状态下暂无重复图片候选")).toBeVisible();
+  expect(calls[1]).toEqual({ a: 1, b: 2, action: "separate" });
   await page.getByRole("link", { name: "识别审核", exact: true }).click();
   await expect(page.getByText("没有需要处理的照片")).toBeVisible();
   await page.keyboard.press("m"); await page.keyboard.press("x"); expect(calls).toHaveLength(2);
