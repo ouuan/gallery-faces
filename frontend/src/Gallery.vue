@@ -230,7 +230,7 @@ onUnmounted(() => {
           :aria-label="`查看 ${photo.people.map((p) => p.name).join('、') || '未知人物'} 的照片`"
         >
           <img
-            :src="`/api/v1/media/${photo.image_id}?thumbnail=true`"
+            :src="photo.thumbnail_url"
             :width="photo.width"
             :height="photo.height"
             alt=""
@@ -306,7 +306,7 @@ onUnmounted(() => {
           <a
             v-if="detail"
             class="icon-link"
-            :href="`/api/v1/media/${detail.image_id}?download=true`"
+            :href="detail.download_url"
             aria-label="下载原图"
           ><Download /></a>
         </div>
@@ -318,7 +318,7 @@ onUnmounted(() => {
       <div v-else-if="detail" class="detail-body">
         <div class="detail-image">
           <img
-            :src="`/api/v1/media/${detail.image_id}`"
+            :src="detail.image_url"
             :style="{
               width: zoom === 1 ? 'auto' : `${zoom * 100}%`,
               maxWidth: zoom === 1 ? '100%' : 'none',

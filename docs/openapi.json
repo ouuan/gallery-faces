@@ -766,7 +766,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GalleryPage"
+                }
               }
             }
           },
@@ -819,9 +821,138 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/GalleryPhoto"
+                }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/by-hash/{variant}/{digest}": {
+      "get": {
+        "summary": "Hash Media",
+        "operationId": "hash_media_api_v1_media_by_hash__variant___digest__get",
+        "parameters": [
+          {
+            "name": "variant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "image",
+                "thumbnail",
+                "original"
+              ],
+              "type": "string",
+              "title": "Variant"
+            }
+          },
+          {
+            "name": "digest",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Digest"
+            }
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Download"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Partial file content"
+          },
+          "304": {
+            "description": "Not modified; visibility and file availability checked"
+          },
+          "404": {
+            "description": "No public, available file for this hash"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "head": {
+        "summary": "Hash Media",
+        "operationId": "hash_media_api_v1_media_by_hash__variant___digest__head",
+        "parameters": [
+          {
+            "name": "variant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "image",
+                "thumbnail",
+                "original"
+              ],
+              "type": "string",
+              "title": "Variant"
+            }
+          },
+          {
+            "name": "digest",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Digest"
+            }
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Download"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -1859,43 +1990,6 @@
           }
         }
       }
-    },
-    "/{path}": {
-      "get": {
-        "summary": "Spa",
-        "operationId": "spa__path__get",
-        "parameters": [
-          {
-            "name": "path",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Path"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components": {
@@ -2151,6 +2245,98 @@
           "status"
         ],
         "title": "FeedbackStatus"
+      },
+      "GalleryPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GalleryPhoto"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "GalleryPage"
+      },
+      "GalleryPhoto": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "title": "Image Id"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          },
+          "thumbnail_url": {
+            "type": "string",
+            "title": "Thumbnail Url"
+          },
+          "download_url": {
+            "type": "string",
+            "title": "Download Url"
+          },
+          "people": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "People"
+          },
+          "source_count": {
+            "type": "integer",
+            "title": "Source Count"
+          },
+          "matched_source": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Matched Source"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "id",
+          "image_id",
+          "width",
+          "height",
+          "image_url",
+          "thumbnail_url",
+          "download_url",
+          "people",
+          "source_count",
+          "matched_source"
+        ],
+        "title": "GalleryPhoto"
       },
       "GroupInput": {
         "properties": {

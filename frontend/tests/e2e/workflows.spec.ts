@@ -84,6 +84,9 @@ test("photo layouts, source text, keyboard close and error recovery", async ({
   const photos = [1, 2, 3, 4, 5, 6].map((id) => ({
     id,
     image_id: id,
+    image_url: `/api/v1/media/by-hash/image/${id}`,
+    thumbnail_url: `/api/v1/media/by-hash/thumbnail/${id}`,
+    download_url: `/api/v1/media/by-hash/original/${id}`,
     width: id % 2 ? 800 : 600,
     height: id % 2 ? 600 : 800,
     people: [{ id: 1, name: "测试人物" }],
@@ -214,7 +217,7 @@ test("site title saves, persists publicly and fits mobile headers", async ({
     await input.fill(`  ${title}  `);
     await save.click();
     await expect(page.locator(".brand")).toHaveText(title);
-    await expect(page).toHaveTitle(`${title} · 照片库`);
+    await expect(page).toHaveTitle(`${title} · 设置`);
     await page.reload();
     await expect(input).toHaveValue(title);
     // Older clients saving other settings must preserve a configured title.
@@ -284,6 +287,9 @@ test("publisher names, cross-platform selector and single-source links", async (
   const photo = {
     id: 1,
     image_id: 1,
+    image_url: "/api/v1/media/by-hash/image/1",
+    thumbnail_url: "/api/v1/media/by-hash/thumbnail/1",
+    download_url: "/api/v1/media/by-hash/original/1",
     width: 800,
     height: 600,
     people: [],

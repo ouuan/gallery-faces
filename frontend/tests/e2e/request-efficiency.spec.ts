@@ -41,7 +41,7 @@ test("sections load only required resources and review refresh retains feedback"
 test("all sources render once and legacy source changes do not reload details", async ({ page }) => {
   let details = 0;
   const source = { id: 1, platform: "x", author: "fixture", published_at: "2026-01-01T01:02:00Z", url: "https://x.com/fixture/status/1", images: [{ image_id: 1, width: 800, height: 600 }, { image_id: 2, width: 800, height: 600 }] };
-  const photo = { id: 1, image_id: 1, width: 800, height: 600, people: [], source_count: 2, matched_source: source, sources: [source, { ...source, id: 2, images: [{ image_id: 3, width: 1200, height: 900 }] }] };
+  const photo = { id: 1, image_id: 1, image_url: "/api/v1/media/by-hash/image/1", thumbnail_url: "/api/v1/media/by-hash/thumbnail/1", download_url: "/api/v1/media/by-hash/original/1", width: 800, height: 600, people: [], source_count: 2, matched_source: source, sources: [source, { ...source, id: 2, images: [{ image_id: 3, width: 1200, height: 900 }] }] };
   await page.route("**/api/v1/**", async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/gallery/1")) { details++; return route.fulfill({ json: photo }); }

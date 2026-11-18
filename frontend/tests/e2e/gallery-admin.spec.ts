@@ -4,7 +4,7 @@ test("photo management link requires a session and opens the displayed image", a
   let admin = false;
   const source = { id: 1, post_id: 1, platform: "x", author: "fixture", published_at: "2026-01-01", url: "https://x.com/fixture/status/1" };
   // The public group ID differs from the image ID.
-  const photo = { id: 7, image_id: 501, width: 800, height: 600, people: [], source_count: 1, matched_source: source, sources: [source] };
+  const photo = { id: 7, image_id: 501, image_url: "/api/v1/media/by-hash/image/abc", thumbnail_url: "/api/v1/media/by-hash/thumbnail/def", download_url: "/api/v1/media/by-hash/original/ghi", width: 800, height: 600, people: [], source_count: 1, matched_source: source, sources: [source] };
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -23,6 +23,9 @@ test("photo management link requires a session and opens the displayed image", a
   await page.goto("/?photo=7");
   await expect(page.getByRole("dialog", { name: "照片详情" })).toBeVisible();
   await expect(page.getByRole("link", { name: "管理此图片" })).toHaveCount(0);
+  await expect(page.locator('.photo-card img')).toHaveAttribute('src', photo.thumbnail_url);
+  await expect(page.locator('.detail-image img')).toHaveAttribute('src', photo.image_url);
+  await expect(page.getByRole('link', { name: '下载原图' })).toHaveAttribute('href', photo.download_url);
   admin = true;
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });

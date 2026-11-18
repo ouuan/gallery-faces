@@ -4,7 +4,7 @@ test('anonymous feedback, pagination, throttling and moderation', async ({ page 
   let admin = false, throttle = false, failList = true;
   const feedback: any[] = [];
   const source = { id: 1, platform: 'x', author: 'fixture', published_at: '2026-01-01', url: 'https://x.com/fixture/status/1' };
-  const photo = { id: 7, image_id: 501, width: 800, height: 600, people: [], source_count: 1, matched_source: source, sources: [source] };
+  const photo = { id: 7, image_id: 501, image_url: "/api/v1/media/by-hash/image/abc", thumbnail_url: "/api/v1/media/by-hash/thumbnail/def", download_url: "/api/v1/media/by-hash/original/ghi", width: 800, height: 600, people: [], source_count: 1, matched_source: source, sources: [source] };
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()), path = url.pathname, method = route.request().method();
     if (path.endsWith('/session')) return route.fulfill({ status: admin ? 200 : 401, json: { admin } });
@@ -111,7 +111,7 @@ test('a delayed submission cannot replace another image or its draft', async ({ 
   const gate = new Promise<void>(resolve => { release = resolve; });
   let posted = false;
   const source = { id: 1, post_id: 1, platform: 'x', author: 'fixture', published_at: '2026-01-01', url: 'https://x.com/fixture/status/1' };
-  const photos = [1, 2].map(id => ({ id, image_id: id + 10, width: 800, height: 600, people: [], source_count: 1, matched_source: source, sources: [source] }));
+  const photos = [1, 2].map(id => ({ id, image_id: id + 10, image_url: `/api/v1/media/by-hash/image/${id}`, thumbnail_url: `/api/v1/media/by-hash/thumbnail/${id}`, download_url: `/api/v1/media/by-hash/original/${id}`, width: 800, height: 600, people: [], source_count: 1, matched_source: source, sources: [source] }));
   await page.route('**/api/v1/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/feedback')) {

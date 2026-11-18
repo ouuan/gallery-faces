@@ -6,6 +6,7 @@ import hmac
 import json
 import os
 import secrets
+import re
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -22,7 +23,7 @@ from fastapi import (
     File,
     Query,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, unknown_sql, cleanup_deleted_files
@@ -43,6 +44,13 @@ async def lifespan(app):
 app = FastAPI(title="Gallery Faces", version="1.0.0", lifespan=lifespan)
 from .request_guard import RequestGuard
 app.add_middleware(RequestGuard)
+
+
+@app.exception_handler(Exception)
+async def uncaught_error(request: Request, error: Exception):
+    return PlainTextResponse("Internal Server Error", status_code=500, headers={
+        "Cache-Control": "no-store", "Cloudflare-CDN-Cache-Control": "no-store",
+    })
 
 
 def fail(message, code=400):
@@ -71,8 +79,16 @@ async def security_headers(request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Frame-Options"] = "DENY"
-    if request.url.path.startswith("/api/"):
+    if response.status_code >= 400:
         response.headers["Cache-Control"] = "no-store"
+        response.headers["Cloudflare-CDN-Cache-Control"] = "no-store"
+    elif request.url.path.startswith("/assets/"):
+        response.headers["Cache-Control"] = IMMUTABLE
+    elif request.url.path.startswith("/api/"):
+        if not request.url.path.startswith("/api/v1/media/by-hash/"):
+            response.headers["Cache-Control"] = "no-store"
+        else:
+            response.headers.setdefault("Cache-Control", "no-store")
     return response
 
 
@@ -708,6 +724,7 @@ def summary(db, row):
     return dict(
         id=row["group_id"],
         image_id=image["id"],
+        **media_urls(image),
         width=image["width"],
         height=image["height"],
         people=labels,
@@ -716,7 +733,26 @@ def summary(db, row):
     )
 
 
-@app.get("/api/v1/gallery")
+class GalleryPhoto(BaseModel):
+    model_config = {"extra": "allow"}
+    id: int
+    image_id: int
+    width: int
+    height: int
+    image_url: str
+    thumbnail_url: str
+    download_url: str
+    people: list[dict]
+    source_count: int
+    matched_source: dict
+
+
+class GalleryPage(BaseModel):
+    items: list[GalleryPhoto]
+    next_cursor: str | None
+
+
+@app.get("/api/v1/gallery", response_model=GalleryPage)
 def gallery(
     people: str = "",
     match: Literal["any", "all"] = "any",
@@ -766,7 +802,7 @@ def gallery(
         return {"items": [summary(db, r) for r in page], "next_cursor": next_cursor}
 
 
-@app.get("/api/v1/gallery/{group_id}")
+@app.get("/api/v1/gallery/{group_id}", response_model=GalleryPhoto)
 def detail(group_id: int, matched_post: int | None = None):
     with connect() as db:
         members = visible_members(db, group_id)
@@ -805,7 +841,7 @@ def detail(group_id: int, matched_post: int | None = None):
             sources=sources,
             earliest_source=sources[0],
             matched_source=matched,
-            members=[dict(m) for m in members],
+            members=[dict(m, **media_urls(m)) for m in members],
             pending_feedback_count=db.execute(
                 f"SELECT count(*) FROM feedback WHERE image_id IN ({marks}) AND status='pending'", ids
             ).fetchone()[0],
@@ -813,11 +849,71 @@ def detail(group_id: int, matched_post: int | None = None):
         return result
 
 
+IMMUTABLE = "public, max-age=31536000, immutable"
+PUBLIC_IMAGE = "hidden=0 AND detection='done' AND EXISTS(SELECT 1 FROM sources s JOIN posts p ON p.id=s.post_id WHERE s.image_id=images.id AND p.author IS NOT NULL AND p.published_at IS NOT NULL AND p.url IS NOT NULL)"
+
+
+def media_urls(row):
+    legacy = f"/api/v1/media/{row['id']}"
+    def url(variant, column, folder, fallback):
+        if row[column] and (DATA / folder / row["filename"]).is_file():
+            return f"/api/v1/media/by-hash/{variant}/{row[column]}"
+        return fallback
+    image_url = url("image", "image_sha256", "images", legacy)
+    thumbnail_url = url("thumbnail", "thumbnail_sha256", "thumbs", legacy + "?thumbnail=true")
+    original = row["original_filename"]
+    download_url = (
+        f"/api/v1/media/by-hash/original/{row['sha256']}"
+        if original and (DATA / "originals" / original).is_file()
+        else image_url + "?download=true"
+    )
+    return dict(image_url=image_url, thumbnail_url=thumbnail_url, download_url=download_url)
+
+
+def conditional_file(request, path, *, headers, filename=None):
+    response = FileResponse(path, filename=filename, headers=headers, stat_result=path.stat())
+    # If-None-Match takes precedence, including when it does not match.
+    if "if-none-match" in request.headers:
+        tags = request.headers["if-none-match"].split(",")
+        unchanged = any(tag.strip() == "*" or tag.strip().removeprefix("W/") == response.headers["etag"] for tag in tags)
+    else:
+        unchanged = StaticFiles().is_not_modified(response.headers, request.headers)
+    if unchanged:
+        return Response(status_code=304, headers={key: value for key, value in response.headers.items() if key in ("etag", "last-modified", "cache-control", "cloudflare-cdn-cache-control", "content-disposition")})
+    return response
+
+
+@app.head("/api/v1/media/by-hash/{variant}/{digest}", response_class=FileResponse)
+@app.get(
+    "/api/v1/media/by-hash/{variant}/{digest}", response_class=FileResponse,
+    responses={
+        200: {"content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}},
+        206: {"description": "Partial file content"},
+        304: {"description": "Not modified; visibility and file availability checked"},
+        404: {"description": "No public, available file for this hash"},
+    },
+)
+def hash_media(request: Request, variant: Literal["image", "thumbnail", "original"], digest: str, download: bool = False):
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        fail("图片不存在", 404)
+    column, folder = {"image": ("image_sha256", "images"), "thumbnail": ("thumbnail_sha256", "thumbs"), "original": ("sha256", "originals")}[variant]
+    with connect() as db:
+        rows = db.execute(f"SELECT * FROM images WHERE {column}=? AND {PUBLIC_IMAGE} ORDER BY id", (digest,))
+        for row in rows:
+            name = row["original_filename"] if variant == "original" else row["filename"]
+            if not name:
+                continue
+            path = DATA / folder / name
+            if path.is_file():
+                return conditional_file(request, path, headers={"Cache-Control": IMMUTABLE, "ETag": f'"{digest}"'}, filename=name if download or variant == "original" else None)
+    fail("图片不存在", 404)
+
+
 @app.get("/api/v1/media/{image_id}")
 def media(image_id: int, thumbnail: bool = False, download: bool = False):
     with connect() as db:
         row = db.execute(
-            "SELECT * FROM images WHERE id=? AND hidden=0 AND detection='done' AND EXISTS(SELECT 1 FROM sources s JOIN posts p ON p.id=s.post_id WHERE s.image_id=images.id AND p.author IS NOT NULL AND p.published_at IS NOT NULL AND p.url IS NOT NULL)",
+            f"SELECT * FROM images WHERE id=? AND {PUBLIC_IMAGE}",
             (image_id,),
         ).fetchone()
         if not row:
@@ -826,8 +922,11 @@ def media(image_id: int, thumbnail: bool = False, download: bool = False):
         original = next((DATA / "originals").glob(row["sha256"] + ".*"), None)
         if original:
             return FileResponse(original, filename=original.name)
+    path = DATA / ("thumbs" if thumbnail else "images") / row["filename"]
+    if not path.is_file():
+        fail("图片不存在", 404)
     return FileResponse(
-        DATA / ("thumbs" if thumbnail else "images") / row["filename"],
+        path,
         filename=row["filename"] if download else None,
     )
 
@@ -1516,11 +1615,12 @@ static = Path(os.environ.get("FRONTEND_DIR", "../frontend/dist"))
 if static.is_dir():
     app.mount("/assets", StaticFiles(directory=static / "assets"), name="assets")
 
-    @app.get("/{path:path}")
-    def spa(path: str):
+    @app.head("/{path:path}", include_in_schema=False)
+    @app.get("/{path:path}", include_in_schema=False)
+    def spa(request: Request, path: str):
         if path.startswith("api/"):
             fail("接口不存在", 404)
-        return FileResponse(static / "index.html")
+        return conditional_file(request, static / "index.html", headers={"Cache-Control": "no-cache", "Cloudflare-CDN-Cache-Control": "no-store"})
 
 
 def require_embedding(embedding, version):

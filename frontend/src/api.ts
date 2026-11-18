@@ -71,6 +71,9 @@ export function publisherLabel(source: Source, people: Person[]) {
 }
 export type DetailSource = Source & { images: { image_id: number; width: number; height: number }[] };
 export type Photo = {
+  image_url: string;
+  thumbnail_url: string;
+  download_url: string;
   id: number;
   image_id: number;
   width: number;

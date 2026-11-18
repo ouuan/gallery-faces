@@ -313,6 +313,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/media/by-hash/{variant}/{digest}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Hash Media */
+        get: operations["hash_media_api_v1_media_by_hash__variant___digest__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /** Hash Media */
+        head: operations["hash_media_api_v1_media_by_hash__variant___digest__head"];
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/media/{image_id}": {
         parameters: {
             query?: never;
@@ -674,23 +692,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/{path}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Spa */
-        get: operations["spa__path__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -788,6 +789,42 @@ export interface components {
              * @enum {string}
              */
             status: "pending" | "resolved";
+        };
+        /** GalleryPage */
+        GalleryPage: {
+            /** Items */
+            items: components["schemas"]["GalleryPhoto"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** GalleryPhoto */
+        GalleryPhoto: {
+            /** Id */
+            id: number;
+            /** Image Id */
+            image_id: number;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** Image Url */
+            image_url: string;
+            /** Thumbnail Url */
+            thumbnail_url: string;
+            /** Download Url */
+            download_url: string;
+            /** People */
+            people: {
+                [key: string]: unknown;
+            }[];
+            /** Source Count */
+            source_count: number;
+            /** Matched Source */
+            matched_source: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
         };
         /** GroupInput */
         GroupInput: {
@@ -1580,7 +1617,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["GalleryPage"];
                 };
             };
             /** @description Validation Error */
@@ -1613,8 +1650,95 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["GalleryPhoto"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hash_media_api_v1_media_by_hash__variant___digest__get: {
+        parameters: {
+            query?: {
+                download?: boolean;
+            };
+            header?: never;
+            path: {
+                variant: "image" | "thumbnail" | "original";
+                digest: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Partial file content */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not modified; visibility and file availability checked */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No public, available file for this hash */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hash_media_api_v1_media_by_hash__variant___digest__head: {
+        parameters: {
+            query?: {
+                download?: boolean;
+            };
+            header?: never;
+            path: {
+                variant: "image" | "thumbnail" | "original";
+                digest: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -2390,37 +2514,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-        };
-    };
-    spa__path__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                path: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

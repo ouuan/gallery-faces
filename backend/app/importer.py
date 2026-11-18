@@ -3,7 +3,7 @@ import shutil
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 from PIL import Image, ImageOps
-from .db import DATA, IMPORT, connect, settings
+from .db import DATA, IMPORT, connect, settings, file_hash
 from .vision import phash, similarity
 
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".avif"}
@@ -129,6 +129,7 @@ def import_file(path, raw, start=None, end=None):
             target = DATA / "images" / filename
             if not target.exists():
                 im.convert("RGB").save(target, quality=97)
+            if not (DATA / "thumbs" / filename).exists():
                 im.thumbnail((640, 640))
                 im.convert("RGB").save(DATA / "thumbs" / filename, quality=85)
         hash_value = phash(target)
@@ -144,6 +145,10 @@ def import_file(path, raw, start=None, end=None):
             ).lastrowid
             from .db import schedule_detection
             schedule_detection(db, image_id)
+        db.execute(
+            "UPDATE images SET image_sha256=?,thumbnail_sha256=?,original_filename=? WHERE id=?",
+            (file_hash(target), file_hash(DATA / "thumbs" / filename), original.name, image_id),
+        )
         db.execute(
             "INSERT INTO posts(platform,post_key,author,author_name,published_at,url,post_text,collected_account) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(platform,post_key) DO UPDATE SET author=COALESCE(excluded.author,posts.author), author_name=CASE WHEN lower(excluded.author)<>lower(posts.author) THEN excluded.author_name ELSE COALESCE(excluded.author_name,posts.author_name) END, published_at=COALESCE(excluded.published_at,posts.published_at),url=COALESCE(excluded.url,posts.url),post_text=COALESCE(NULLIF(excluded.post_text,''),posts.post_text)",
             (

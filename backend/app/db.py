@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 import secrets
@@ -108,7 +109,50 @@ def init():
                 if not size:
                     logging.getLogger(__name__).warning("Original unavailable for image %s", image["id"])
                 db.execute("UPDATE images SET file_size=? WHERE id=?", (size, image["id"]))
-        db.execute("UPDATE schema_version SET version=6 WHERE version<6")
+        columns = {row[1] for row in db.execute("PRAGMA table_info(images)")}
+        for column in ("image_sha256", "thumbnail_sha256", "original_filename"):
+            if column not in columns:
+                db.execute(f"ALTER TABLE images ADD COLUMN {column} TEXT")
+        for column in ("image_sha256", "thumbnail_sha256"):
+            db.execute(f"CREATE INDEX IF NOT EXISTS image_{column} ON images({column})")
+    backfill_media_hashes()
+    with connect(True) as db:
+        db.execute("UPDATE schema_version SET version=7 WHERE version<7")
+
+
+def file_hash(path):
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def backfill_media_hashes(batch_size=100):
+    # Commit each batch; completed fields survive interrupted upgrades. Missing
+    # files remain NULL and can be retried after storage has been repaired.
+    last_id = 0
+    while True:
+        with connect(True) as db:
+            rows = db.execute(
+                "SELECT * FROM images WHERE id>? AND (image_sha256 IS NULL OR thumbnail_sha256 IS NULL OR original_filename IS NULL) ORDER BY id LIMIT ?",
+                (last_id, batch_size),
+            ).fetchall()
+            if not rows:
+                break
+            for row in rows:
+                for column, folder in (("image_sha256", "images"), ("thumbnail_sha256", "thumbs")):
+                    if row[column] is None:
+                        try:
+                            digest = file_hash(DATA / folder / row["filename"])
+                        except OSError:
+                            logging.getLogger(__name__).warning("%s unavailable for image %s", folder, row["id"])
+                        else:
+                            db.execute(f"UPDATE images SET {column}=? WHERE id=?", (digest, row["id"]))
+                if row["original_filename"] is None:
+                    original = next((p for p in sorted((DATA / "originals").glob(row["sha256"] + ".*")) if p.is_file()), None)
+                    if original:
+                        db.execute("UPDATE images SET original_filename=? WHERE id=?", (original.name, row["id"]))
+                    else:
+                        logging.getLogger(__name__).warning("Original unavailable for image %s", row["id"])
+            last_id = rows[-1]["id"]
 
 
 def settings(db):
