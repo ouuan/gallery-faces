@@ -126,6 +126,176 @@ def test_rematch_tracks_face_progress_and_speed(client, monkeypatch, face_count)
         assert task["speed"] == (0.5 if face_count else 0)
 
 
+@pytest.mark.parametrize("scores,expected_match", [
+    ((0.0, 1.0), True),
+    ((-1.0, 0.3), False),
+    ((0.75, 0.8), False),
+    (None, False),
+])
+def test_redetect_refreshes_candidates_and_reconsiders_unlocked_labels(
+    client, monkeypatch, scores, expected_match
+):
+    embedding = np.array([1, 0] + [0] * 510, dtype="float32").tobytes()
+    with db.connect(True) as conn:
+        target = image(conn, faces=False)
+        a = conn.execute("INSERT INTO people(name) VALUES('A')").lastrowid
+        b = conn.execute("INSERT INTO people(name) VALUES('B')").lastrowid
+        if scores:
+            for person, score in zip((a, b), scores):
+                feature = np.array([score, np.sqrt(1 - score ** 2)] + [0] * 510, dtype="float32").tobytes()
+                conn.execute("INSERT INTO reference_images(person_id,embedding,model_version) VALUES(?,?,?)",
+                             (person, feature, worker.MODEL_VERSION))
+        old_candidates = json.dumps([{"person_id": a, "score": 0.123}])
+        states = [(a, 0, 0, embedding), (a, 1, 0, embedding),
+                  (None, 1, 0, embedding), (None, 1, 1, embedding),
+                  (a, 1, 0, None), (None, 0, 0, None)]
+        ids = []
+        for index, (person, locked, ignored, feature) in enumerate(states):
+            ids.append(conn.execute(
+                "INSERT INTO faces(image_id,box,embedding,model_version,person_id,locked,ignored,candidates) VALUES(?,?,?,?,?,?,?,?)",
+                (target, json.dumps([index * 12, 0, 10, 10]), feature, worker.MODEL_VERSION,
+                 person, locked, ignored, old_candidates if feature else '[]'),
+            ).lastrowid)
+    assert client.post('/api/v1/admin/images/actions', json={'action': 'redetect', 'ids': [target]}).status_code == 200
+    # A reference change can queue a rematch behind detection. Its queue position
+    # and unrelated payload must survive promotion to a complete refresh.
+    with db.connect(True) as conn:
+        queued = conn.execute("INSERT INTO tasks(kind,image_id,payload) VALUES('rematch',?,?)",
+                              (target, '{"existing":true}')).lastrowid
+    monkeypatch.setattr(worker, "Vision", lambda: SimpleNamespace(
+        detect=lambda *args, **kwargs: [([0, 0, 10, 10], embedding),
+                                       ([60, 0, 10, 10], embedding),
+                                       ([80, 0, 10, 10], embedding)]))
+    assert worker.step()
+    with db.connect() as conn:
+        queued_task = conn.execute("SELECT * FROM tasks WHERE kind='rematch'").fetchone()
+        assert queued_task['id'] == queued
+        assert json.loads(queued_task['payload']) == {'existing': True, 'refresh_all': True}
+    assert worker.step()
+    faces = client.get(f'/api/v1/admin/images?state=all&image_id={target}').json()[0]['faces']
+    by_id = {face['id']: face for face in faces}
+    assert len(faces) == 7
+    for index, face_id in enumerate(ids[:3]):
+        face = by_id[face_id]
+        assert face['person_id'] == ((b if expected_match else None) if index == 0 else states[index][0])
+        assert face['locked'] == states[index][1]
+        assert face['revision'] == 1
+        assert [c['person_id'] for c in face['candidates']] == ([b, a] if scores else [])
+        if scores:
+            assert [c['score'] for c in face['candidates']] == pytest.approx(list(reversed(scores)))
+    for index in (3, 4, 5):
+        face = by_id[ids[index]]
+        assert (face['person_id'], face['locked'], face['ignored'], face['revision']) == (*states[index][:3], 0)
+        assert face['candidates'] == (json.loads(old_candidates) if index == 3 else [])
+        assert face['has_embedding'] == (index == 3)
+    new_face = next(face for face in faces if face['id'] not in ids)
+    assert new_face['person_id'] == (b if expected_match else None)
+    assert new_face['candidates'] == by_id[ids[0]]['candidates']
+    with db.connect() as conn:
+        task = conn.execute('SELECT * FROM tasks WHERE id=?', (queued,)).fetchone()
+        assert (task['status'], task['done'], task['total']) == ('done', 4, 4)
+
+
+@pytest.mark.parametrize('locked', [0, 1])
+@pytest.mark.parametrize('change', ['reference', 'delete'])
+def test_full_refresh_reference_races_without_unknown_faces(client, monkeypatch, locked, change):
+    with db.connect(True) as conn:
+        target = image(conn)
+        person = conn.execute("INSERT INTO people(name) VALUES('A')").lastrowid
+        conn.execute('UPDATE faces SET person_id=?,locked=?', (person, locked))
+        conn.execute('INSERT INTO reference_images(person_id,embedding,model_version) SELECT ?,embedding,model_version FROM faces', (person,))
+        conn.execute("INSERT INTO tasks(kind,image_id,payload) VALUES('rematch',?,?)", (target, '{"refresh_all":true}'))
+    original = worker.candidates
+    calls = []
+
+    def change_references(embedding, refs):
+        result = original(embedding, refs)
+        calls.append(1)
+        if len(calls) == 1:
+            if change == 'delete':
+                assert client.delete(f'/api/v1/admin/people/{person}').status_code == 200
+            else:
+                with db.connect(True) as conn:
+                    conn.execute('DELETE FROM reference_images')
+                    db.schedule_rematch(conn)
+        return result
+
+    monkeypatch.setattr(worker, 'candidates', change_references)
+    worker.step()
+    assert len(calls) == 2
+    with db.connect() as conn:
+        face = conn.execute('SELECT * FROM faces').fetchone()
+        assert json.loads(face['candidates']) == []
+        assert face['person_id'] == (person if locked and change == 'reference' else None)
+        tasks = conn.execute('SELECT * FROM tasks').fetchall()
+        assert len(tasks) == 1
+        assert (tasks[0]['status'], tasks[0]['processed_version']) == ('done', 1)
+
+
+@pytest.mark.parametrize('action', ['confirm', 'ignore', 'cancel'])
+def test_full_refresh_protects_concurrent_decisions_and_cancellation(client, monkeypatch, action):
+    with db.connect(True) as conn:
+        target = image(conn)
+        person = conn.execute("INSERT INTO people(name) VALUES('A')").lastrowid
+        conn.execute('UPDATE faces SET person_id=?', (person,))
+        face_id = conn.execute('SELECT id FROM faces').fetchone()[0]
+        task_id = conn.execute("INSERT INTO tasks(kind,image_id,payload) VALUES('rematch',?,?)", (target, '{"refresh_all":true}')).lastrowid
+
+    def concurrent_change(*args):
+        if action == 'cancel':
+            assert client.post(f'/api/v1/admin/tasks/{task_id}/cancel').status_code == 200
+        else:
+            assert client.put(f'/api/v1/admin/faces/{face_id}', json={
+                'revision': 0, 'person_id': person, 'ignored': action == 'ignore',
+            }).status_code == 200
+        return [{'person_id': person, 'score': 1}]
+
+    monkeypatch.setattr(worker, 'candidates', concurrent_change)
+    worker.step()
+    with db.connect() as conn:
+        face = conn.execute('SELECT * FROM faces').fetchone()
+        assert json.loads(face['candidates']) == []
+        assert face['revision'] == (0 if action == 'cancel' else 1)
+        assert face['person_id'] == (None if action == 'ignore' else person)
+        assert face['locked'] == (action != 'cancel')
+        assert face['ignored'] == (action == 'ignore')
+        assert conn.execute('SELECT status FROM tasks').fetchone()[0] == ('cancelled' if action == 'cancel' else 'done')
+
+
+@pytest.mark.parametrize('status', ['failed', 'running'])
+def test_full_refresh_survives_retry_and_recovery(client, status):
+    with db.connect(True) as conn:
+        target = image(conn)
+        person = conn.execute("INSERT INTO people(name) VALUES('A')").lastrowid
+        conn.execute('UPDATE faces SET person_id=?', (person,))
+        task_id = conn.execute("INSERT INTO tasks(kind,image_id,payload,status) VALUES('rematch',?,?,?)",
+                               (target, '{"refresh_all":true}', status)).lastrowid
+    if status == 'failed':
+        assert client.post(f'/api/v1/admin/tasks/{task_id}/retry').status_code == 200
+    else:
+        worker.recover_tasks()
+    worker.step()
+    with db.connect() as conn:
+        assert conn.execute('SELECT person_id FROM faces').fetchone()[0] is None
+        assert conn.execute('SELECT status FROM tasks').fetchone()[0] == 'done'
+
+
+def test_reference_changes_only_rematch_unknown_faces(client):
+    with db.connect(True) as conn:
+        person = conn.execute("INSERT INTO people(name) VALUES('A')").lastrowid
+        for assigned, locked in [(person, 0), (person, 1), (None, 1), (None, 0)]:
+            target = image(conn)
+            conn.execute('UPDATE faces SET person_id=?,locked=? WHERE image_id=?', (assigned, locked, target))
+        conn.execute('INSERT INTO reference_images(person_id,embedding,model_version) SELECT ?,embedding,model_version FROM faces LIMIT 1', (person,))
+        db.schedule_rematch(conn)
+        assert conn.execute('SELECT count(*) FROM tasks').fetchone()[0] == 1
+    worker.step()
+    with db.connect() as conn:
+        faces = conn.execute('SELECT * FROM faces ORDER BY id').fetchall()
+        assert [face['revision'] for face in faces] == [0, 0, 0, 1]
+        assert faces[-1]['person_id'] == person
+
+
 def test_task_pagination(client):
     empty = client.get("/api/v1/admin/tasks").json()
     assert empty == {"items": [], "total": 0, "page": 1, "page_size": 20}

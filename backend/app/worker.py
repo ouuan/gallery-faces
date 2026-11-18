@@ -25,6 +25,11 @@ from .importer import EXTENSIONS, import_file, safe_directory
 
 def rematch(task):
     started = time.monotonic()
+    refresh_all = json.loads(task.get("payload", "{}")).get("refresh_all", False)
+    scope = "faces.ignored=0" if refresh_all else unknown_sql()
+    eligible = f"{scope} AND embedding IS NOT NULL"
+    if refresh_all:
+        eligible += " AND length(embedding)>0"
     while True:
         with connect(True) as db:
             config = settings(db)
@@ -34,7 +39,7 @@ def rematch(task):
                 (MODEL_VERSION,),
             ).fetchall()
             faces = db.execute(
-                f"SELECT * FROM faces WHERE image_id=? AND {unknown_sql()} AND embedding IS NOT NULL",
+                f"SELECT * FROM faces WHERE image_id=? AND {eligible}",
                 (task["image_id"],),
             ).fetchall()
             db.execute(
@@ -72,7 +77,7 @@ def rematch(task):
                 if int(settings(db)["reference_version"]) != version:
                     continue
                 db.execute(
-                    f"UPDATE faces SET candidates=?,person_id=?,revision=revision+1 WHERE id=? AND revision=? AND {unknown_sql()}",
+                    f"UPDATE faces SET candidates=?,person_id=CASE WHEN locked=0 THEN ? ELSE person_id END,revision=revision+1 WHERE id=? AND revision=? AND {eligible}",
                     (json.dumps(result), person, face["id"], face["revision"]),
                 )
         with connect(True) as db:
@@ -81,15 +86,15 @@ def rematch(task):
             ).fetchone()[0]:
                 raise DetectionCancelled()
             latest = int(settings(db)["reference_version"])
-            unknown = db.execute(
-                f"SELECT 1 FROM faces WHERE image_id=? AND {unknown_sql()} AND embedding IS NOT NULL",
+            remaining = db.execute(
+                f"SELECT 1 FROM faces WHERE image_id=? AND {eligible}",
                 (task["image_id"],),
             ).fetchone()
             db.execute(
                 "UPDATE tasks SET processed_version=?,done=total WHERE id=?",
                 (version, task["id"]),
             )
-            if latest <= version or not unknown:
+            if latest <= version or not remaining:
                 db.execute(
                     "UPDATE tasks SET status='done',stage='已完成' WHERE id=?",
                     (task["id"],),
@@ -100,6 +105,7 @@ def rematch(task):
 
 def detect(task):
     started = time.monotonic()
+    mode = json.loads(task["payload"]).get("mode", "auto")
     with connect() as db:
         row = db.execute(
             "SELECT * FROM images WHERE id=?", (task["image_id"],)
@@ -107,7 +113,7 @@ def detect(task):
         detection_threshold = float(settings(db)["detection_threshold"])
     faces = Vision().detect(
         DATA / "images" / row["filename"],
-        mode=json.loads(task["payload"]).get("mode", "auto"),
+        mode=mode,
         cancel=lambda: cancelled(task["id"]),
         threshold=detection_threshold,
     )
@@ -116,9 +122,9 @@ def detect(task):
             "SELECT cancel_requested FROM tasks WHERE id=?", (task["id"],)
         ).fetchone()[0]:
             raise DetectionCancelled()
-        # Retain all human decisions and accepted labels on explicit redetection.
+        # Preserve manual boxes and labeled faces; rematching may revise unlocked labels.
         db.execute(
-            "DELETE FROM faces WHERE image_id=? AND locked=0 AND person_id IS NULL AND ignored=0",
+            "DELETE FROM faces WHERE image_id=? AND locked=0 AND person_id IS NULL AND ignored=0 AND embedding IS NOT NULL AND length(embedding)>0",
             (row["id"],),
         )
         preserved = db.execute(
@@ -148,6 +154,13 @@ def detect(task):
             "INSERT OR IGNORE INTO tasks(kind,image_id,target_version) VALUES('rematch',?,?)",
             (row["id"], version),
         )
+        if mode == "highres":
+            # Detection and matching are serialized per image. Upgrade any queued
+            # rematch in place so deduplication cannot lose the full refresh request.
+            db.execute(
+                "UPDATE tasks SET payload=json_set(payload,'$.refresh_all',json('true')),target_version=? WHERE kind='rematch' AND image_id=? AND status='queued'",
+                (version, row["id"]),
+            )
         db.execute(
             "UPDATE tasks SET done=1,total=1,speed=? WHERE id=?",
             (1 / max(time.monotonic() - started, 0.01), task["id"]),
