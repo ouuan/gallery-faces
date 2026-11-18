@@ -221,6 +221,13 @@ function syncQuery() {
 }
 watch(() => active.value?.id, syncQuery);
 async function load() {
+  await loadImages(false);
+}
+async function loadCurrent() {
+  await loadImages(true);
+}
+async function loadImages(currentOnly: boolean) {
+  let refreshedImage = currentOnly ? active.value : null;
   const signal = imageRequest.start();
   const version = ++loadVersion;
   const requestedState = state.value;
@@ -236,14 +243,27 @@ async function load() {
       loadedState = requestedState;
       return;
     }
-    const result = requestedState === "image" && !requestedImage ? [] : await api(
+    let result = requestedState === "image" && !requestedImage ? [] : await api(
       requestedState === "image"
         ? `/admin/images?state=all&image_id=${requestedImage}`
-        : "/admin/images?state=" + requestedState,
+        : "/admin/images?state=" + requestedState + (refreshedImage ? `&image_id=${refreshedImage.id}` : ""),
       { signal },
     );
     if (version !== loadVersion) return;
-    images.value = result;
+    // Refill the server-capped queue before publishing an empty intermediate state.
+    // Keeping one request lifecycle also avoids a route sync starting another load.
+    if (refreshedImage && !result.length && images.value.length === 1 && requestedState !== "image") {
+      result = await api("/admin/images?state=" + requestedState, { signal });
+      if (version !== loadVersion) return;
+      refreshedImage = null;
+    }
+    if (refreshedImage) {
+      const index = images.value.indexOf(refreshedImage);
+      const { id, group_id } = refreshedImage;
+      const replacement = result.find((image: any) => group_id != null
+        ? image.group_id === group_id : image.id === id);
+      if (index >= 0) images.value.splice(index, 1, ...(replacement ? [replacement] : []));
+    } else images.value = result;
     selected.value = [];
     const groupIndex = previousGroup == null ? -1 : images.value.findIndex(image => image.group_id === previousGroup);
     const index = groupIndex >= 0 ? groupIndex : images.value.findIndex(image =>
@@ -351,7 +371,7 @@ async function edit(face: any, remove = false) {
   try {
     await saveFace(face, remove);
     message.success(remove ? "人脸已删除" : "判断已保存");
-    await load();
+    await loadCurrent();
   } catch (e) {
     message.error((e as Error).message);
   } finally {
@@ -385,7 +405,7 @@ async function confirmAll() {
       message.error(`已确认 ${result.saved.length} 个人脸，${failures.length} 个失败。${failures.join("；")}`, { duration: 8000 });
     else {
       message.success(`已确认 ${result.saved.length} 个人脸`);
-      await load();
+      await loadCurrent();
     }
   } catch (e) {
     message.error((e as Error).message);
@@ -456,7 +476,7 @@ async function addBox() {
     });
     box.value = "";
     message.success("人脸框已保存");
-    await load();
+    await loadCurrent();
   } catch (e) {
     message.error((e as Error).message);
   } finally {
@@ -633,7 +653,7 @@ onMounted(load);
           </div>
         </section>
         <div class="review-details loading-region">
-          <FeedbackPanel :key="`${active.id}:${feedbackRefreshVersion}`" :image-id="active.id" :pending-count="active.pending_feedback_count" admin group @changed="load" />
+          <FeedbackPanel :key="`${active.id}:${feedbackRefreshVersion}`" :image-id="active.id" :pending-count="active.pending_feedback_count" admin group @changed="loadCurrent" />
           <section class="review-faces" aria-labelledby="review-faces-title">
             <div class="review-heading">
               <h3 id="review-faces-title">
