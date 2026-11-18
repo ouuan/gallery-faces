@@ -53,7 +53,7 @@ for (const failOnce of [false, true]) {
     }
     await all.click();
     await expect(all).toBeDisabled();
-    await expect(page.getByRole('button', { name: '下一张', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '下一组', exact: true })).toBeDisabled();
     await expect(page.locator('.face-review').first().getByRole('button', { name: '确认', exact: true })).toBeDisabled();
     await expect(page.getByRole('radio').first()).toBeDisabled();
     release!();

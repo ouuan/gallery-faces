@@ -13,7 +13,7 @@ import { useLatestRequest } from "./use-latest-request";
 import type { components } from "./schema";
 type Feedback = components["schemas"]["FeedbackOutput"];
 type Page = components["schemas"]["FeedbackPage"];
-const props = defineProps<{ imageId: number; admin?: boolean; pendingCount?: number }>();
+const props = defineProps<{ imageId: number; admin?: boolean; group?: boolean; pendingCount?: number }>();
 const emit = defineEmits<{ changed: [] }>();
 const message = useMessage();
 const confirm = useConfirm();
@@ -34,7 +34,10 @@ async function load(more = false) {
   loading.value = true;
   error.value = "";
   try {
-    const result = await api<Page>(endpoint.value + (more && cursor.value ? `?before_id=${cursor.value}` : ""), { signal });
+    const params = new URLSearchParams();
+    if (props.group) params.set("scope", "group");
+    if (more && cursor.value) params.set("before_id", String(cursor.value));
+    const result = await api<Page>(endpoint.value + (params.size ? `?${params}` : ""), { signal });
     if (current !== version) return;
     items.value = more ? [...items.value, ...result.items] : result.items;
     cursor.value = result.next_cursor;
@@ -73,18 +76,18 @@ async function moderate(item: Feedback, remove = false) {
   } catch (e) { if (mounted) submitError.value = (e as Error).message; }
   finally { if (mounted) busy.value = false; }
 }
-watch(endpoint, () => { items.value = []; cursor.value = null; void load(); }, { immediate: true });
+watch([endpoint, () => props.group], () => { items.value = []; cursor.value = null; void load(); }, { immediate: true });
 </script>
 <template>
   <LoadingOverlay v-if="admin && !items.length && !error && !submitError" :show="loading" label="正在加载反馈…" />
   <section v-if="!admin || error || submitError || items.length" class="feedback-panel loading-region" :aria-busy="loading" aria-label="图片反馈">
-    <h3>图片反馈<span v-if="!admin && pendingCount" class="muted">（已有 {{ pendingCount }} 条反馈）</span><span v-if="admin && pendingCount" class="muted">（{{ pendingCount }} 条待处理）</span></h3>
+    <h3>{{ group ? "组内反馈" : "图片反馈" }}<span v-if="!admin && pendingCount" class="muted">（已有 {{ pendingCount }} 条反馈）</span><span v-if="admin && pendingCount" class="muted">（{{ pendingCount }} 条待处理）</span></h3>
     <template v-if="admin">
       <n-alert v-if="error" type="error">{{ error }} <n-button :disabled="loading" @click="load()">重试</n-button></n-alert>
       <LoadingOverlay :show="loading" label="正在加载反馈…" />
       <ul class="feedback-list">
         <li v-for="item in items" :key="item.id">
-          <div class="feedback-meta"><n-tag size="small" :type="item.status === 'pending' ? 'warning' : 'default'">{{ item.status === 'pending' ? '待处理' : '已处理' }}</n-tag><time :datetime="item.created_at">{{ dateLabel(item.created_at) }}</time></div>
+          <div class="feedback-meta"><n-tag size="small" :type="item.status === 'pending' ? 'warning' : 'default'">{{ item.status === 'pending' ? '待处理' : '已处理' }}</n-tag><span v-if="group">图片 #{{ item.image_id }}</span><time :datetime="item.created_at">{{ dateLabel(item.created_at) }}</time></div>
           <p class="feedback-content">{{ item.content }}</p>
           <div class="feedback-actions">
             <n-button :disabled="busy || loading" @click="moderate(item)">{{ item.status === 'pending' ? '标记已处理' : '恢复待处理' }}</n-button>

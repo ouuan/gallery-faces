@@ -1111,6 +1111,57 @@ export interface components {
             /** Face Id */
             face_id: number;
         };
+        /** ReviewImage */
+        ReviewImage: {
+            /**
+             * Id
+             * @description Current review representative image ID; original image ID for hidden entries.
+             */
+            id: number;
+            /** Group Id */
+            group_id: number;
+            /**
+             * Member Count
+             * @description Number of active images in this duplicate group.
+             * @default 1
+             */
+            member_count: number;
+            /**
+             * Member Ids
+             * @description All active member IDs, without the list's 500-group limit.
+             */
+            member_ids?: number[];
+            /**
+             * Incomplete Image Ids
+             * @description Active members without any complete source.
+             */
+            incomplete_image_ids?: number[];
+            /** Faces */
+            faces: {
+                [key: string]: unknown;
+            }[];
+            /** Sources */
+            sources: components["schemas"]["ReviewSource"][];
+            /**
+             * Pending Feedback Count
+             * @description Pending feedback across active group members; single-image count for hidden entries.
+             */
+            pending_feedback_count: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReviewSource */
+        ReviewSource: {
+            /** Id */
+            id: number;
+            /**
+             * Image Ids
+             * @description Active group members associated with this post; empty for legacy single-image reads.
+             */
+            image_ids?: number[];
+        } & {
+            [key: string]: unknown;
+        };
         /** SettingsInput */
         SettingsInput: {
             /**
@@ -2002,6 +2053,7 @@ export interface operations {
             query?: {
                 before_id?: number | null;
                 limit?: number;
+                scope?: "image" | "group";
             };
             header?: never;
             path: {
@@ -2148,7 +2200,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ReviewImage"][];
                 };
             };
             /** @description Validation Error */

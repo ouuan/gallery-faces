@@ -1165,6 +1165,20 @@
               "default": 20,
               "title": "Limit"
             }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "image",
+                "group"
+              ],
+              "type": "string",
+              "default": "image",
+              "title": "Scope"
+            }
           }
         ],
         "responses": {
@@ -1359,7 +1373,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReviewImage"
+                  },
+                  "title": "Response Admin Images Api V1 Admin Images Get"
+                }
               }
             }
           },
@@ -3068,6 +3088,93 @@
           "face_id"
         ],
         "title": "ReferenceInput"
+      },
+      "ReviewImage": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id",
+            "description": "Current review representative image ID; original image ID for hidden entries."
+          },
+          "group_id": {
+            "type": "integer",
+            "title": "Group Id"
+          },
+          "member_count": {
+            "type": "integer",
+            "title": "Member Count",
+            "description": "Number of active images in this duplicate group.",
+            "default": 1
+          },
+          "member_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Member Ids",
+            "description": "All active member IDs, without the list's 500-group limit."
+          },
+          "incomplete_image_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Incomplete Image Ids",
+            "description": "Active members without any complete source."
+          },
+          "faces": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Faces"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewSource"
+            },
+            "type": "array",
+            "title": "Sources"
+          },
+          "pending_feedback_count": {
+            "type": "integer",
+            "title": "Pending Feedback Count",
+            "description": "Pending feedback across active group members; single-image count for hidden entries."
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "id",
+          "group_id",
+          "faces",
+          "sources",
+          "pending_feedback_count"
+        ],
+        "title": "ReviewImage"
+      },
+      "ReviewSource": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "image_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Image Ids",
+            "description": "Active group members associated with this post; empty for legacy single-image reads."
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "ReviewSource"
       },
       "SettingsInput": {
         "properties": {

@@ -25,25 +25,25 @@ test("restores category and image and updates navigation without refetching", as
   });
   await page.goto("/admin/review?state=unknown&image=22&extra=keep");
   await expect(page.locator('[aria-label="审核状态"]')).toContainText("未知人物");
-  await expect(page.getByRole("heading", { name: "图片 #22", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "下一张", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "代表图 #22 · 共 1 个版本", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "下一组", exact: true }).click();
   await expect(page).toHaveURL(/state=unknown&image=33&extra=keep/);
-  await page.getByRole("button", { name: "上一张", exact: true }).click();
+  await page.getByRole("button", { name: "上一组", exact: true }).click();
   await expect(page).toHaveURL(/image=22/);
-  await page.getByRole("button", { name: "审核图片 11", exact: true }).click();
+  await page.getByRole("button", { name: "审核重复组（代表图 11，共 1 个版本）", exact: true }).click();
   await expect(page).toHaveURL(/image=11/);
   expect(requests).toBe(1);
   await page.reload();
-  await expect(page.getByRole("heading", { name: "图片 #11", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "代表图 #11 · 共 1 个版本", exact: true })).toBeVisible();
   await expect(page.locator('[aria-label="审核状态"]')).toContainText("未知人物");
 });
 
 test("opens explicit single-image links and records category changes and empty lists", async ({ page }) => {
   await page.goto("/admin/review?state=image&image=22");
-  await expect(page.locator('[aria-label="审核状态"]')).toContainText("当前图片");
+  await expect(page.locator('[aria-label="审核状态"]')).toContainText("当前重复组");
   await expect(page).toHaveURL(/state=image/);
-  await expect(page.getByRole("button", { name: /^审核图片 / })).toHaveCount(1);
-  for (const [label, state] of [["全部在库图片", "all"], ["检测失败", "failed"]]) {
+  await expect(page.getByRole("button", { name: /^审核重复组/ })).toHaveCount(1);
+  for (const [label, state] of [["全部在库重复组", "all"], ["检测失败", "failed"]]) {
     await page.locator('[aria-label="审核状态"]').click();
     await page.locator(".n-base-select-option").filter({ hasText: new RegExp(`^${label}$`) }).click();
     await expect(page).toHaveURL(new RegExp(`state=${state}`));
@@ -58,7 +58,7 @@ test("opens explicit single-image links and records category changes and empty l
 test("falls back for invalid categories and missing images", async ({ page }) => {
   for (const query of ["state=unknown&image=999", "state=invalid&image=bad", "state=all&image=-1", "image=999"]) {
     await page.goto(`/admin/review?${query}`);
-    await expect(page.getByRole("heading", { name: "图片 #11", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "代表图 #11 · 共 1 个版本", exact: true })).toBeVisible();
     await expect(page).toHaveURL(/image=11/);
     expect(new URL(page.url()).searchParams.get("state")).toBe(query.includes("unknown") ? "unknown" : query.includes("state=all") ? "all" : "review");
   }

@@ -22,14 +22,16 @@ test("recycling expands the current image to its whole group and confirms the sc
       }
       return route.fulfill({ json: { ok: true } });
     }
-    if (path.endsWith("/images")) return route.fulfill({ json: images });
+    if (path.endsWith("/images")) return route.fulfill({ json: images.filter(image => image.id !== 1).map(image => ({
+      ...image, member_count: image.id === 2 ? 2 : 1, member_ids: image.id === 2 ? [1, 2] : [3],
+    })) });
     if (path.endsWith("/feedback")) return route.fulfill({ json: { items: [], next_cursor: null } });
     if (path.endsWith("/session")) return route.fulfill({ json: { admin: true } });
     if (/\/(settings|site)$/.test(path)) return route.fulfill({ json: {} });
     return route.fulfill({ json: [] });
   });
   await page.goto("/admin/review");
-  await page.getByRole("button", { name: "审核图片 2", exact: true }).click();
+  await page.getByRole("button", { name: "审核重复组（代表图 2，共 2 个版本）", exact: true }).click();
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.locator(".review-toolbar").screenshot({ path: `/tmp/gallery-faces/image-actions-${width}.png` });
@@ -42,7 +44,7 @@ test("recycling expands the current image to its whole group and confirms the sc
   expect(calls).toEqual([]);
   await recycle.click();
   await page.getByRole("dialog").getByRole("button", { name: "确认", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "图片 #3", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "代表图 #3 · 共 1 个版本", exact: true })).toBeVisible();
   expect(calls).toEqual([{ action: "delete", ids: [2], scope_token: "scope-1" }]);
-  await expect(page.getByRole("button", { name: "审核图片 1", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "审核重复组（代表图 1，共 1 个版本）", exact: true })).toHaveCount(0);
 });

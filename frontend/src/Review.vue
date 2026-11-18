@@ -67,6 +67,7 @@ const newPersonFace = ref<any>(null),
   creatingPerson = ref(false),
   createError = ref("");
 const moreFace = ref<number | null>(null);
+const feedbackRefreshVersion = ref(0);
 const personDirty = computed(
   () =>
     !!(
@@ -177,8 +178,10 @@ const reviewIssues = computed(() => {
   const issues: string[] = [];
   if (image.detection === "pending") issues.push("等待检测");
   if (image.detection === "failed") issues.push("检测失败");
-  if (
-    !image.sources.some(
+  if (image.incomplete_image_ids?.length)
+    issues.push(`来源待补全（图片 ${image.incomplete_image_ids.map((id: number) => "#" + id).join("、")}）`);
+  else if (
+    image.incomplete_image_ids === undefined && !image.sources.some(
       (source: any) =>
         source.author != null &&
         source.published_at != null &&
@@ -222,6 +225,8 @@ async function load() {
   const version = ++loadVersion;
   const requestedState = state.value;
   const requestedImage = targetImage.value;
+  const previousGroup = loadedState === requestedState && requestedImage === active.value?.id
+    ? active.value?.group_id : null;
   selected.value = [];
   loading.value = true;
   error.value = "";
@@ -240,7 +245,9 @@ async function load() {
     if (version !== loadVersion) return;
     images.value = result;
     selected.value = [];
-    const index = images.value.findIndex((image) => image.id === requestedImage);
+    const groupIndex = previousGroup == null ? -1 : images.value.findIndex(image => image.group_id === previousGroup);
+    const index = groupIndex >= 0 ? groupIndex : images.value.findIndex(image =>
+      image.id === requestedImage || image.member_ids?.includes(requestedImage));
     current.value = index >= 0 ? index : Math.min(
       loadedState === requestedState ? current.value : 0,
       Math.max(0, images.value.length - 1),
@@ -260,7 +267,8 @@ watch([state, targetImage], () => {
       (state.value === "image" && targetImage.value !== (active.value?.id ?? null))) {
     void load();
   } else {
-    const index = images.value.findIndex((image) => image.id === targetImage.value);
+    const index = images.value.findIndex(image =>
+      image.id === targetImage.value || image.member_ids?.includes(targetImage.value));
     current.value = index >= 0 ? index : 0;
     syncQuery();
   }
@@ -375,8 +383,10 @@ async function confirmAll() {
       `人脸 #${failure.id}：${failure.detail}`);
     if (failures.length)
       message.error(`已确认 ${result.saved.length} 个人脸，${failures.length} 个失败。${failures.join("；")}`, { duration: 8000 });
-    else message.success(`已确认 ${result.saved.length} 个人脸`);
-    await load();
+    else {
+      message.success(`已确认 ${result.saved.length} 个人脸`);
+      await load();
+    }
   } catch (e) {
     message.error((e as Error).message);
   } finally {
@@ -388,7 +398,7 @@ async function action(value: string) {
   const ids = [...actionIds.value];
   if (
     !await confirm(
-      `对${selected.value.length ? "所选" : "当前"} ${ids.length} 张图片（${ids.map((id) => "#" + id).join("、")}）执行“${value === "hide" ? "隐藏" : value === "show" ? "恢复可见" : "重新检测"}”？`,
+      `重新检测${selected.value.length ? "所选" : "当前"} ${ids.length} 组的代表图（${ids.map((id) => "#" + id).join("、")}）？`,
     )
   )
     return;
@@ -468,6 +478,18 @@ async function saveSource() {
     message.error((e as Error).message);
   }
 }
+async function refresh() {
+  if ((dirty.value || Object.keys(facePeople.value).length) && !await confirm("有未保存的修改，确定刷新并放弃吗？")) return;
+  const previousImageId = active.value?.id;
+  box.value = "";
+  boxPerson.value = null;
+  sourceEdit.value = null;
+  newPersonFace.value = null;
+  facePeople.value = {};
+  await load();
+  // A different representative already remounts the panel through its image ID.
+  if (active.value?.id === previousImageId) feedbackRefreshVersion.value++;
+}
 onMounted(load);
 </script>
 <template>
@@ -478,7 +500,7 @@ onMounted(load);
         :disabled="savingBox || savingFaces || acting || deleting"
         v-model:value="state"
         :options="[
-          ...(state === 'image' ? [{ value: 'image', label: '当前图片' }] : []),
+          ...(state === 'image' ? [{ value: 'image', label: '当前重复组' }] : []),
           { value: 'review', label: '全部待审核' },
           { value: 'feedback', label: '用户反馈' },
           { value: 'unknown', label: '未知人物' },
@@ -487,17 +509,18 @@ onMounted(load);
           { value: 'incomplete', label: '来源待补全' },
           { value: 'pending', label: '等待检测' },
           { value: 'trash', label: '回收站' },
-          { value: 'all', label: '全部在库图片' },
+          { value: 'all', label: '全部在库重复组' },
         ]"
       /><span v-if="state !== 'trash'">{{
         selected.length
-          ? `已选 ${selected.length} 张`
+          ? `已选 ${selected.length} 组`
           : active
-            ? `当前图片 #${active.id}`
+            ? `代表图 #${active.id}`
             : "暂无图片"
       }}</span>
     </div>
     <div v-if="state !== 'trash'" class="review-actions">
+      <n-button :disabled="navigationDisabled" @click="refresh">刷新</n-button>
       <n-button :disabled="actionsDisabled" @click="selected = selected.length === images.length ? [] : images.map(image => image.id)">
         {{ images.length && selected.length === images.length ? "取消全选" : "全选" }}
       </n-button>
@@ -531,12 +554,12 @@ onMounted(load);
     <div class="review-strip">
       <div
         v-for="(image, i) in images"
-        :key="image.id"
+        :key="image.group_id ?? image.id"
         :class="{ active: i === current }"
       >
         <n-checkbox
           :checked="selected.includes(image.id)"
-          :aria-label="`选择图片 ${image.id}`"
+          :aria-label="`选择重复组（代表图 ${image.id}）`"
           @update:checked="
             $event
               ? selected.push(image.id)
@@ -545,7 +568,7 @@ onMounted(load);
         /><button
           @click="moveImage(i)"
           :disabled="navigationDisabled"
-          :aria-label="`审核图片 ${image.id}`"
+          :aria-label="`审核重复组（代表图 ${image.id}，共 ${image.member_count ?? 1} 个版本）`"
           :aria-current="i === current ? 'true' : undefined"
         >
           <img :src="`/api/v1/admin/media/${image.id}?thumbnail=true`" loading="lazy" width="72" height="48" alt="" />#{{ image.id }}
@@ -554,16 +577,16 @@ onMounted(load);
     </div>
     <div v-if="active" class="review-main">
       <div class="review-heading">
-        <h3>图片 #{{ active.id }}</h3>
+        <h3>代表图 #{{ active.id }} <span class="muted">· 共 {{ active.member_count ?? 1 }} 个版本</span></h3>
         <div class="review-navigation">
-          <span class="muted">{{ current + 1 }} / {{ images.length }}</span>
-          <n-button :disabled="navigationDisabled || current === 0" @click="moveImage(current - 1)" aria-label="上一张" aria-keyshortcuts="ArrowLeft"
-            >上一张<kbd class="shortcut-key" aria-hidden="true">←</kbd></n-button
+          <span class="muted">{{ current + 1 }} / {{ images.length }} 组</span>
+          <n-button :disabled="navigationDisabled || current === 0" @click="moveImage(current - 1)" aria-label="上一组" aria-keyshortcuts="ArrowLeft"
+            >上一组<kbd class="shortcut-key" aria-hidden="true">←</kbd></n-button
           >
           <n-button
             :disabled="navigationDisabled || current >= images.length - 1"
-            @click="moveImage(current + 1)" aria-label="下一张" aria-keyshortcuts="ArrowRight"
-            >下一张<kbd class="shortcut-key" aria-hidden="true">→</kbd></n-button
+            @click="moveImage(current + 1)" aria-label="下一组" aria-keyshortcuts="ArrowRight"
+            >下一组<kbd class="shortcut-key" aria-hidden="true">→</kbd></n-button
           >
         </div>
       </div>
@@ -610,7 +633,7 @@ onMounted(load);
           </div>
         </section>
         <div class="review-details loading-region">
-          <FeedbackPanel :key="active.id" :image-id="active.id" :pending-count="active.pending_feedback_count" admin @changed="load" />
+          <FeedbackPanel :key="`${active.id}:${feedbackRefreshVersion}`" :image-id="active.id" :pending-count="active.pending_feedback_count" admin group @changed="load" />
           <section class="review-faces" aria-labelledby="review-faces-title">
             <div class="review-heading">
               <h3 id="review-faces-title">
@@ -713,7 +736,10 @@ onMounted(load);
             class="review-sources"
             aria-labelledby="review-sources-title"
           >
-            <h3 id="review-sources-title">来源</h3>
+            <h3 id="review-sources-title">组内来源</h3>
+            <p v-if="active.incomplete_image_ids?.length" class="hint">
+              来源待补全：{{ active.incomplete_image_ids.map((id: number) => "#" + id).join("、") }}
+            </p>
             <div
               v-for="source in active.sources"
               :key="source.id"
@@ -722,7 +748,8 @@ onMounted(load);
               <span class="grow"
                 >{{ platformLabel(source.platform) }} ·
                 {{ store.publisherName(source) }} ·
-                {{ dateLabel(source.published_at) }}</span
+                {{ dateLabel(source.published_at) }}
+                <span v-if="source.image_ids?.length" class="hint source-members">图片 {{ source.image_ids.map((id: number) => "#" + id).join("、") }}</span></span
               ><n-button @click="sourceEdit = { ...source }"
                 >补全 / 编辑</n-button
               >
@@ -1017,6 +1044,10 @@ onMounted(load);
   flex-wrap: wrap;
   gap: 12px;
   padding: 16px 0;
+}
+.source-members {
+  display: block;
+  overflow-wrap: anywhere;
 }
 .review-sources .grow {
   flex-basis: 100%;

@@ -123,7 +123,7 @@ test("drag boxes scale to original pixels, retry, clamp, cancel and reset on ima
   await page.getByRole("button", { name: "取消补框", exact: true }).click();
   await expect(page.locator(".draft-box")).toHaveCount(0);
   await drag(page, [0.2, 0.2], [0.4, 0.4]);
-  await page.getByRole("button", { name: "下一张", exact: true }).click();
+  await page.getByRole("button", { name: "下一组", exact: true }).click();
   await expect(page.locator(".draft-box")).toHaveCount(0);
   await expect(save).toBeDisabled();
 });

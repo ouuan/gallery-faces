@@ -51,3 +51,11 @@ Real-model validation on local Linux/Python 3.14.10 retained a four-thread execu
 | 3 | 1174.5 | 162.9 | 0.032 |
 
 These measurements are workload- and allocator-dependent observations, not fixed memory limits or unit-test thresholds. The API process has its own model cache and is not included in these figures.
+
+## Duplicate-group review (2026-11-18)
+
+The full backend suite passes (287 tests), including 15 new representative-review cases. The 24 frontend unit tests, production build and 31 targeted Chromium workflow tests pass. Group-review captures were inspected at 390/1280 pixels in light and dark themes, with no horizontal overflow.
+
+Coverage includes selection before filtering and the 500-group limit, groups with 507 members, original-byte-size ties, member deep links, per-image result preservation, automatic merge after importing a larger copy, both split directions, selective restore, source/post deduplication, group feedback pagination and hidden-member exclusion. Public identity and no-face filters use the displayed representative, including fallback while a larger member is pending, failed or missing provenance. Stale representative mutations return 409; batch failures preserve successful edits and unsaved choices.
+
+A browser smoke test against the real API and an isolated temporary database verified a member link opening its representative, feedback attached to a smaller member appearing in the group, representative confirmation plus feedback resolution removing the group from review, and splitting the smaller member restoring its own unresolved review state. Temporary fixture images and databases are not committed.

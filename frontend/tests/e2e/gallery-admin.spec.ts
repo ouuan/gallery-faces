@@ -37,7 +37,7 @@ test("photo management link requires a session and opens the displayed image", a
   }
   await page.getByRole("link", { name: "管理此图片" }).click();
   await expect(page).toHaveURL(/\/admin\/review\?state=image&image=501$/);
-  await expect(page.getByRole("button", { name: "审核图片 501", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "审核重复组（代表图 501，共 1 个版本）", exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("button", { name: "审核图片 501", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "审核重复组（代表图 501，共 1 个版本）", exact: true })).toBeVisible();
 });

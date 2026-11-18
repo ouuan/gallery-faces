@@ -6,7 +6,7 @@ test('review lazily loads thumbnails and cancels the previous full image', async
   let feedbackStarted = false, feedbackCancelled = false;
   page.on('requestfailed', request => {
     if (request.url().endsWith('/admin/media/1')) originalCancelled = true;
-    if (request.url().endsWith('/admin/images/1/feedback')) feedbackCancelled = true;
+    if (new URL(request.url()).pathname.endsWith('/admin/images/1/feedback')) feedbackCancelled = true;
   });
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()), path = url.pathname;
@@ -30,7 +30,7 @@ test('review lazily loads thumbnails and cancels the previous full image', async
   await expect.poll(() => thumbnails.size).toBeGreaterThan(0);
   expect(thumbnails.size).toBeLessThan(200);
   expect(thumbnails.has(200)).toBe(false);
-  await page.getByRole('button', { name: '下一张', exact: true }).click();
+  await page.getByRole('button', { name: '下一组', exact: true }).click();
   await expect.poll(() => originalCancelled).toBe(true);
   await expect.poll(() => feedbackCancelled).toBe(true);
   await expect(page.locator('.face-box-editor img')).toBeVisible();

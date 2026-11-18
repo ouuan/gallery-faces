@@ -54,16 +54,16 @@ test("sections load only required resources and review refresh retains feedback"
   expect(counts["/groups"]).toBe(1);
   for (const path of ["/admin/settings", "/admin/tasks", "/admin/directories", "/admin/duplicates"])
     expect(counts[path] || 0).toBe(0);
-  await page.getByRole("checkbox", { name: "选择图片 1", exact: true }).check();
+  await page.getByRole("checkbox", { name: "选择重复组（代表图 1）", exact: true }).check();
   await page.getByRole("button", { name: "全选", exact: true }).click();
-  await expect(page.getByText("已选 2 张", { exact: true })).toBeVisible();
+  await expect(page.getByText("已选 2 组", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "取消全选", exact: true }).click();
-  await expect(page.getByRole("checkbox", { name: "选择图片 1", exact: true })).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "选择重复组（代表图 1）", exact: true })).not.toBeChecked();
   await page.getByRole("button", { name: "全选", exact: true }).click();
   await page.getByRole("button", { name: "重新检测", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "确认", exact: true }).click();
   await expect.poll(() => actions).toEqual([{ action: "redetect", ids: [1, 2] }]);
-  await expect(page.getByText("当前图片 #1", { exact: true })).toBeVisible();
+  await expect(page.getByText("代表图 #1", { exact: true })).toBeVisible();
   expect(counts["/admin/images/1/feedback"]).toBe(1);
 });
 

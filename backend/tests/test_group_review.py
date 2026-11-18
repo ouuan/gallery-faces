@@ -1,0 +1,227 @@
+"""Review records belong to physical images; presentation follows representatives."""
+import pytest
+from PIL import Image
+from app import db, importer
+from test_workflows import client, image, recycle
+from test_trash import photo, run_restore
+
+
+def seed():
+    with db.connect(True) as conn:
+        small = image(conn)
+        group = conn.execute('SELECT group_id FROM images WHERE id=?', (small,)).fetchone()[0]
+        large = image(conn, group=group)
+        conn.execute('UPDATE images SET file_size=100 WHERE id=?', (small,))
+        conn.execute('UPDATE images SET file_size=200 WHERE id=?', (large,))
+        alice = conn.execute("INSERT INTO people(name) VALUES('Alice')").lastrowid
+        bob = conn.execute("INSERT INTO people(name) VALUES('Bob')").lastrowid
+        conn.execute('UPDATE faces SET person_id=? WHERE image_id=?', (alice, small))
+        conn.execute('UPDATE faces SET person_id=? WHERE image_id=?', (bob, large))
+    return small, large, group, alice, bob
+
+
+def listing(client, state='review', **params):
+    result = client.get('/api/v1/admin/images', params={'state': state, **params})
+    assert result.status_code == 200, result.text
+    return result.json()
+
+
+def test_confirm_only_representative_and_resolve_member_links(client):
+    small, large, group, alice, bob = seed()
+    rows = listing(client)
+    assert len(rows) == 1
+    assert (rows[0]['id'], rows[0]['group_id'], rows[0]['member_count']) == (large, group, 2)
+    assert rows[0]['member_ids'] == [small, large]
+    assert listing(client, 'all', image_id=small)[0]['id'] == large
+    assert {face['image_id'] for face in rows[0]['faces']} == {large}
+    face = rows[0]['faces'][0]
+    assert client.put(f"/api/v1/admin/faces/{face['id']}", json={'revision': 0, 'person_id': bob}).status_code == 200
+    assert listing(client) == []
+    with db.connect() as conn:
+        assert conn.execute('SELECT person_id,locked,revision FROM faces WHERE image_id=?', (small,)).fetchone()[:] == (alice, 0, 0)
+        assert conn.execute('SELECT count(*) FROM review_history').fetchone()[0] == 1
+    assert client.post(f"/api/v1/admin/faces/{face['id']}/undo").status_code == 200
+    assert listing(client)[0]['id'] == large
+
+
+@pytest.mark.parametrize('state', ['unknown', 'no_faces', 'pending', 'failed'])
+def test_member_face_problems_do_not_change_representative(client, state):
+    small, large, _, _, _ = seed()
+    with db.connect(True) as conn:
+        conn.execute('UPDATE faces SET locked=1 WHERE image_id=?', (large,))
+        if state == 'unknown':
+            conn.execute('UPDATE faces SET person_id=NULL WHERE image_id=?', (small,))
+        elif state == 'no_faces':
+            conn.execute('DELETE FROM faces WHERE image_id=?', (small,))
+        else:
+            conn.execute('UPDATE images SET detection=? WHERE id=?', (state, small))
+    assert listing(client, state) == []
+    assert listing(client) == []
+
+
+def test_sources_feedback_grouped_without_changing_ownership(client):
+    small, large, group, _, _ = seed()
+    with db.connect(True) as conn:
+        conn.execute('UPDATE faces SET locked=1')
+        hidden = image(conn, group=group)
+        conn.execute('UPDATE images SET hidden=1,file_size=999 WHERE id=?', (hidden,))
+        post = conn.execute('SELECT post_id FROM sources WHERE image_id=?', (small,)).fetchone()[0]
+        conn.execute('INSERT INTO sources(image_id,post_id,media_key) VALUES(?,?,?)', (large, post, 'shared'))
+        conn.execute('UPDATE posts SET author=NULL WHERE id=?', (post,))
+        feedback = [conn.execute("INSERT INTO feedback(image_id,content) VALUES(?,?)", (i, str(i))).lastrowid for i in [small, large, hidden]]
+    item = listing(client)[0]
+    assert item['id'] == large and item['member_count'] == 2
+    assert item['incomplete_image_ids'] == [small]
+    assert item['pending_feedback_count'] == 2
+    assert next(s for s in item['sources'] if s['id'] == post)['image_ids'] == [small, large]
+    assert len(item['sources']) == 2
+    assert listing(client, 'incomplete')[0]['id'] == large
+    assert listing(client, 'feedback')[0]['id'] == large
+    endpoint = f'/api/v1/admin/images/{large}/feedback'
+    assert [f['id'] for f in client.get(endpoint).json()['items']] == [feedback[1]]
+    first = client.get(endpoint, params={'scope': 'group', 'limit': 1}).json()
+    second = client.get(endpoint, params={'scope': 'group', 'before_id': first['next_cursor'], 'limit': 1}).json()
+    assert [first['items'][0]['image_id'], second['items'][0]['image_id']] == [large, small]
+    assert second['next_cursor'] is None
+    for identifier in feedback[:2]:
+        assert client.put(f'/api/v1/admin/feedback/{identifier}', json={'status': 'resolved'}).status_code == 200
+    assert listing(client, 'feedback') == []
+    with db.connect(True) as conn:
+        conn.execute("UPDATE posts SET author='alice' WHERE id=?", (post,))
+    assert listing(client) == []
+    assert listing(client, 'hidden')[0]['id'] == hidden
+
+
+def test_public_labels_filters_and_no_faces_use_same_representative(client):
+    small, large, group, alice, bob = seed()
+    def gallery(**params):
+        return client.get('/api/v1/gallery', params=params).json()['items']
+    assert client.get(f'/api/v1/gallery/{group}').json()['people'] == [{'id': bob, 'name': 'Bob'}]
+    assert gallery(people=str(alice)) == []
+    assert gallery(people=str(bob))[0]['image_id'] == large
+    assert gallery(people=f'{alice},{bob}', match='all') == []
+    with db.connect(True) as conn:
+        conn.execute("UPDATE posts SET author='bob' WHERE id IN (SELECT post_id FROM sources WHERE image_id=?)", (large,))
+    assert gallery(publishers='x:alice')[0]['image_id'] == large
+    with db.connect(True) as conn:
+        conn.execute('UPDATE faces SET ignored=1 WHERE image_id=?', (large,))
+    assert gallery() == []
+    assert gallery(include_no_faces='true')[0]['people'] == []
+    assert listing(client, 'no_faces')[0]['id'] == large
+
+
+@pytest.mark.parametrize('unready', ['pending', 'failed', 'incomplete'])
+def test_public_falls_back_until_largest_is_eligible(client, unready):
+    small, large, group, alice, bob = seed()
+    with db.connect(True) as conn:
+        if unready == 'incomplete':
+            conn.execute('UPDATE posts SET author=NULL WHERE id IN (SELECT post_id FROM sources WHERE image_id=?)', (large,))
+        else:
+            conn.execute('UPDATE images SET detection=? WHERE id=?', (unready, large))
+    assert listing(client)[0]['id'] == large
+    assert listing(client, unready)[0]['id'] == large
+    detail = client.get(f'/api/v1/gallery/{group}').json()
+    assert detail['image_id'] == small and detail['people'][0]['id'] == alice
+    assert client.get('/api/v1/gallery', params={'people': bob}).json()['items'] == []
+    with db.connect(True) as conn:
+        conn.execute("UPDATE images SET detection='done' WHERE id=?", (large,))
+        conn.execute("UPDATE posts SET author='alice' WHERE id IN (SELECT post_id FROM sources WHERE image_id=?)", (large,))
+    assert client.get(f'/api/v1/gallery/{group}').json()['image_id'] == large
+
+
+@pytest.mark.parametrize('split_largest', [False, True])
+def test_merge_split_and_size_ties_keep_physical_results(client, split_largest):
+    small, large, group, alice, bob = seed()
+    with db.connect(True) as conn:
+        conn.execute('UPDATE faces SET locked=1')
+        conn.execute('UPDATE images SET file_size=200 WHERE id=?', (small,))
+    assert listing(client, 'all')[0]['id'] == small
+    with db.connect(True) as conn:
+        conn.execute('UPDATE images SET file_size=300 WHERE id=?', (large,))
+        before = [tuple(row) for row in conn.execute('SELECT * FROM faces ORDER BY id')]
+    assert listing(client, 'all')[0]['id'] == large
+    a, b = (small, large) if split_largest else (large, small)
+    assert client.post('/api/v1/admin/duplicates', json={'a': a, 'b': b, 'action': 'separate'}).status_code == 200
+    assert {row['id'] for row in listing(client, 'all')} == {small, large}
+    assert client.get(f'/api/v1/gallery/{group}').json()['people'][0]['id'] == (alice if split_largest else bob)
+    assert client.post('/api/v1/admin/duplicates', json={'a': a, 'b': b, 'action': 'merge'}).status_code == 200
+    assert listing(client) == []
+    assert listing(client, 'all')[0]['faces'][0]['person_id'] == bob
+    with db.connect() as conn:
+        assert [tuple(row) for row in conn.execute('SELECT * FROM faces ORDER BY id')] == before
+
+
+def test_replacement_rejects_stale_mutations_and_batch_preserves_failures(client):
+    small, large, _, _, bob = seed()
+    with db.connect() as conn:
+        faces = {row['image_id']: row['id'] for row in conn.execute('SELECT id,image_id FROM faces')}
+    stale = faces[small]
+    edits = [
+        ('put', f'/api/v1/admin/faces/{stale}', {'revision': 0, 'person_id': bob}),
+        ('post', f'/api/v1/admin/faces/{stale}/undo', {}),
+        ('post', f'/api/v1/admin/faces/{stale}/person', {'name': 'New', 'revision': 0, 'add_reference': False}),
+        ('post', f'/api/v1/admin/images/{small}/faces', {'box': [1, 1, 5, 5]}),
+        ('post', '/api/v1/admin/images/actions', {'action': 'redetect', 'ids': [large, small]}),
+    ]
+    for method, url, body in edits:
+        response = getattr(client, method)(url, json=body)
+        assert response.status_code == 409, response.text
+        assert '代表图' in response.json()['detail']
+    with db.connect() as conn:
+        assert conn.execute('SELECT count(*) FROM people').fetchone()[0] == 2
+        assert conn.execute('SELECT count(*) FROM review_history').fetchone()[0] == 0
+        assert conn.execute('SELECT count(*) FROM tasks').fetchone()[0] == 0
+    response = client.put('/api/v1/admin/faces', json={'faces': [
+        {'id': faces[i], 'revision': 0, 'person_id': bob} for i in [small, large]
+    ]}).json()
+    assert response['saved'] == [faces[large]]
+    assert response['failures'][0]['id'] == stale and response['failures'][0]['status'] == 409
+
+
+def test_large_group_not_truncated_before_group_limit(client):
+    _, large, group, _, _ = seed()
+    with db.connect(True) as conn:
+        for _ in range(505):
+            image(conn, group=group)
+        for _ in range(500):
+            image(conn)
+        conn.execute('UPDATE faces SET locked=1 WHERE image_id=?', (large,))
+    rows = listing(client, 'all')
+    assert len(rows) == 500
+    assert rows[0]['member_count'] == 507
+    assert len(rows[0]['sources']) == len(rows[0]['member_ids']) == 507
+    assert rows[0]['id'] == large
+    assert len(listing(client)) == 500
+
+
+def test_import_new_copy_and_selective_restore(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(importer, 'IMPORT', tmp_path)
+    deduplicate = importer.deduplicate
+    first, _, _ = photo(tmp_path, monkeypatch, '1', 'red')
+    with db.connect(True) as conn:
+        group = conn.execute('SELECT group_id FROM images WHERE id=?', (first,)).fetchone()[0]
+        conn.execute("INSERT INTO faces(image_id,box,locked) VALUES(?,'[0,0,10,10]',1)", (first,))
+    assert listing(client) == []
+    monkeypatch.setattr(importer, 'deduplicate', deduplicate)
+    monkeypatch.setattr(importer, 'phash', lambda _: '0')
+    monkeypatch.setattr(importer, 'similarity', lambda *_: 1)
+    with db.connect(True) as conn:
+        conn.execute("UPDATE images SET phash='0' WHERE id=?", (first,))
+    path = tmp_path / 'larger.png'
+    Image.new('RGB', (128, 96), 'red').save(path)
+    second = importer.import_file(path, {'category': 'twitter', 'tweet_id': '2', 'num': 1,
+        'author': {'name': 'alice'}, 'date': '2026-01-01T00:00:00Z'})
+    with db.connect() as conn:
+        assert conn.execute('SELECT group_id FROM images WHERE id=?', (second,)).fetchone()[0] == group
+    assert listing(client)[0]['id'] == second
+    assert recycle(client, [first]).json()['deleted'] == 2
+    assert listing(client, 'all') == []
+    assert run_restore(client, first)['status'] == 'done'
+    assert listing(client) == []
+    assert listing(client, 'all')[0]['id'] == first
+    assert run_restore(client, second)['status'] == 'done'
+    with db.connect() as conn:
+        expected = conn.execute('SELECT id FROM images WHERE hidden=0 ORDER BY file_size DESC,id LIMIT 1').fetchone()[0]
+        assert conn.execute('SELECT locked FROM faces WHERE image_id=?', (first,)).fetchone()[0] == 1
+    assert expected == second
+    assert listing(client, 'all')[0]['id'] == second

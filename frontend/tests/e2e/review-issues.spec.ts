@@ -31,19 +31,19 @@ test("review reasons follow the current photo and disappear in specific filters"
     await page.screenshot({ path: `/tmp/gallery-faces/review-issues-${width}.png` });
   }
   for (const [id, reason] of [[2, "未检测到人脸"], [3, "检测失败"], [4, "等待检测"]] as const) {
-    await page.getByRole("button", { name: `审核图片 ${id}`, exact: true }).click();
+    await page.getByRole("button", { name: `审核重复组（代表图 ${id}，共 1 个版本）`, exact: true }).click();
     await expect(issues).toContainText(reason);
     await expect(issues).not.toContainText("未知人物");
     if (id !== 2) await expect(issues).not.toContainText("未检测到人脸");
   }
-  await page.getByRole("button", { name: "审核图片 5", exact: true }).click();
+  await page.getByRole("button", { name: "审核重复组（代表图 5，共 1 个版本）", exact: true }).click();
   await expect(issues).toHaveCount(0);
-  await page.getByRole("button", { name: "审核图片 1", exact: true }).click();
-  for (const label of ["全部待审核", "全部在库图片", "未知人物", "无人脸", "检测失败", "来源待补全", "等待检测"]) {
+  await page.getByRole("button", { name: "审核重复组（代表图 1，共 1 个版本）", exact: true }).click();
+  for (const label of ["全部待审核", "全部在库重复组", "未知人物", "无人脸", "检测失败", "来源待补全", "等待检测"]) {
     await page.locator('[aria-label="审核状态"]').click();
     await page.locator(".n-base-select-option").filter({ hasText: new RegExp(`^${label}$`) }).click();
-    await expect(page.getByRole("button", { name: "审核图片 1", exact: true })).toBeVisible();
-    if (["全部待审核", "全部在库图片"].includes(label)) await expect(issues).toBeVisible();
+    await expect(page.getByRole("button", { name: "审核重复组（代表图 1，共 1 个版本）", exact: true })).toBeVisible();
+    if (["全部待审核", "全部在库重复组"].includes(label)) await expect(issues).toBeVisible();
     else await expect(issues).toHaveCount(0);
   }
 });

@@ -32,6 +32,7 @@ from .importer import validate_url, safe_directory
 from .vision import MODEL_VERSION, Vision, candidates, models_ready, validate_embedding
 from .db import schedule_detection, ACTIVE_REFERENCE
 from .trash import require_active, require_active_face
+from .representatives import complete_source_sql, representative_sql, require_representative, require_representative_face
 
 
 @asynccontextmanager
@@ -640,8 +641,7 @@ def date_bounds_preview(start: str = "", end: str = ""):
 def gallery_rows(
     db, people_ids, match, publishers, start, end, include_no_faces, sort, cursor, limit
 ):
-    # Use the same source row for publisher and date. Each all-person predicate
-    # is applied to a single visible member image, not the union of a group.
+    # Source filters share one post row; identity filters use the public representative.
     conditions = [
         "i.hidden=0",
         "i.detection='done'",
@@ -668,7 +668,7 @@ def gallery_rows(
                 publisher_conditions.append("(p.platform=? AND lower(p.author)=lower(?))")
                 args.extend((platform, author))
         conditions.append("(" + " OR ".join(publisher_conditions) + ")")
-    eligible = "m.group_id=i.group_id AND m.hidden=0 AND m.detection='done' AND EXISTS(SELECT 1 FROM sources ms JOIN posts mp ON mp.id=ms.post_id WHERE ms.image_id=m.id AND mp.author IS NOT NULL AND mp.published_at IS NOT NULL AND mp.url IS NOT NULL)"
+    eligible = f"m.id={representative_sql('i.group_id', public=True)}"
     if people_ids:
         marks = ",".join("?" for _ in people_ids)
         if match == "all":
@@ -726,7 +726,8 @@ def summary(db, row):
     members = visible_members(db, row["group_id"])
     ids = [m["id"] for m in members]
     marks = ",".join("?" for _ in ids)
-    image = members[0]
+    representative_id = db.execute(f"SELECT {representative_sql('?', public=True)}", (row["group_id"],)).fetchone()[0]
+    image = next(member for member in members if member["id"] == representative_id)
     labels = []
     seen = set()
     for face in db.execute(
@@ -798,6 +799,7 @@ def gallery(
     except (ValueError, OverflowError):
         fail("筛选条件无效")
     with connect() as db:
+        db.execute("BEGIN")
         lower, upper = date_bounds(start, end, settings(db)["timezone"])
         rows = gallery_rows(
             db,
@@ -825,6 +827,7 @@ def gallery(
 @app.get("/api/v1/gallery/{group_id}", response_model=GalleryPhoto)
 def detail(group_id: int, matched_post: int | None = None):
     with connect() as db:
+        db.execute("BEGIN")
         members = visible_members(db, group_id)
         if not members:
             fail("图片不存在", 404)
@@ -1032,11 +1035,17 @@ def feedback_create(image_id: int, body: FeedbackInput, request: Request):
 
 
 @app.get("/api/v1/admin/images/{image_id}/feedback", response_model=FeedbackPage)
-def feedback_admin(image_id: int, before_id: int | None = Query(None, ge=1), limit: int = Query(20, ge=1, le=100), _: None = Depends(admin)):
+def feedback_admin(image_id: int, before_id: int | None = Query(None, ge=1), limit: int = Query(20, ge=1, le=100), scope: Literal["image", "group"] = "image", _: None = Depends(admin)):
     with connect() as db:
-        if not db.execute("SELECT 1 FROM images WHERE id=?", (image_id,)).fetchone():
+        db.execute("BEGIN")
+        row = db.execute("SELECT group_id FROM images WHERE id=?", (image_id,)).fetchone()
+        if not row:
             fail("图片不存在", 404)
-        return feedback_page(db, [image_id], before_id, limit)
+        ids = [image_id]
+        if scope == "group":
+            require_active(db, image_id)
+            ids = [r[0] for r in db.execute("SELECT id FROM images WHERE group_id=? AND hidden=0", (row["group_id"],))]
+        return feedback_page(db, ids, before_id, limit)
 
 
 @app.put("/api/v1/admin/feedback/{feedback_id}", response_model=FeedbackOutput)
@@ -1072,7 +1081,7 @@ def admin_media(image_id: int, thumbnail: bool = False, _: None = Depends(admin)
     return FileResponse(path)
 
 
-def review_image(db, row):
+def review_image(db, row, *, grouped=False):
     item = dict(row)
     item["pending_feedback_count"] = db.execute("SELECT count(*) FROM feedback WHERE image_id=? AND status='pending'", (row["id"],)).fetchone()[0]
     item["faces"] = [
@@ -1094,18 +1103,60 @@ def review_image(db, row):
             (row["id"],),
         )
     ]
+    if grouped:
+        members = db.execute(
+            f"SELECT i.id, NOT {complete_source_sql('i')} AS incomplete FROM images i WHERE i.group_id=? AND i.hidden=0 ORDER BY i.id",
+            (row["group_id"],),
+        ).fetchall()
+        item["member_ids"] = [m["id"] for m in members]
+        item["member_count"] = len(members)
+        item["incomplete_image_ids"] = [m["id"] for m in members if m["incomplete"]]
+        sources = {}
+        for source in db.execute(
+            "SELECT DISTINCT p.*,i.id AS image_id FROM posts p JOIN sources s ON s.post_id=p.id "
+            "JOIN images i ON i.id=s.image_id WHERE i.group_id=? AND i.hidden=0 ORDER BY p.id,i.id",
+            (row["group_id"],),
+        ):
+            post = dict(source)
+            image_id = post.pop("image_id")
+            sources.setdefault(post["id"], dict(post, image_ids=[]))["image_ids"].append(image_id)
+        item["sources"] = list(sources.values())
+        item["pending_feedback_count"] = db.execute(
+            "SELECT count(*) FROM feedback f JOIN images i ON i.id=f.image_id "
+            "WHERE i.group_id=? AND i.hidden=0 AND f.status='pending'", (row["group_id"],),
+        ).fetchone()[0]
     return item
 
 
-@app.get("/api/v1/admin/images")
+class ReviewSource(BaseModel):
+    model_config = {"extra": "allow"}
+    id: int
+    image_ids: list[int] = Field(default_factory=list, description="Active group members associated with this post; empty for legacy single-image reads.")
+
+
+class ReviewImage(BaseModel):
+    model_config = {"extra": "allow"}
+    id: int = Field(description="Current review representative image ID; original image ID for hidden entries.")
+    group_id: int
+    member_count: int = Field(default=1, description="Number of active images in this duplicate group.")
+    member_ids: list[int] = Field(default_factory=list, description="All active member IDs, without the list's 500-group limit.")
+    incomplete_image_ids: list[int] = Field(default_factory=list, description="Active members without any complete source.")
+    faces: list[dict]
+    sources: list[ReviewSource]
+    pending_feedback_count: int = Field(description="Pending feedback across active group members; single-image count for hidden entries.")
+
+
+@app.get("/api/v1/admin/images", response_model=list[ReviewImage])
 def admin_images(
     state: str = "review", image_id: int | None = None, _: None = Depends(admin)
 ):
     with connect() as db:
-        incomplete = "NOT EXISTS(SELECT 1 FROM sources s JOIN posts p ON p.id=s.post_id WHERE s.image_id=i.id AND p.author IS NOT NULL AND p.published_at IS NOT NULL AND p.url IS NOT NULL)"
+        db.execute("BEGIN")
+        incomplete = f"EXISTS(SELECT 1 FROM images m WHERE m.group_id=i.group_id AND m.hidden=0 AND NOT {complete_source_sql('m')})"
+        feedback = "EXISTS(SELECT 1 FROM feedback f JOIN images m ON m.id=f.image_id WHERE m.group_id=i.group_id AND m.hidden=0 AND f.status='pending')"
         condition = {
-            "review": f"i.hidden=0 AND (i.detection IN ('pending','failed') OR {incomplete} OR NOT EXISTS(SELECT 1 FROM faces WHERE image_id=i.id) OR EXISTS(SELECT 1 FROM faces WHERE image_id=i.id AND locked=0 AND ignored=0) OR EXISTS(SELECT 1 FROM feedback WHERE image_id=i.id AND status='pending'))",
-            "feedback": "EXISTS(SELECT 1 FROM feedback WHERE image_id=i.id AND status='pending')",
+            "review": f"i.detection IN ('pending','failed') OR {incomplete} OR NOT EXISTS(SELECT 1 FROM faces WHERE image_id=i.id) OR EXISTS(SELECT 1 FROM faces WHERE image_id=i.id AND locked=0 AND ignored=0) OR {feedback}",
+            "feedback": feedback,
             "unknown": f"EXISTS(SELECT 1 FROM faces WHERE image_id=i.id AND {unknown_sql()})",
             "no_faces": "detection='done' AND NOT EXISTS(SELECT 1 FROM faces WHERE image_id=i.id AND ignored=0)",
             "failed": "detection='failed'",
@@ -1116,19 +1167,20 @@ def admin_images(
         }.get(state)
         if not condition:
             fail("状态无效")
-        if state != "hidden":
-            condition = f"i.hidden=0 AND ({condition})"
-        result = []
+        grouped = state != "hidden"
+        if grouped:
+            condition = f"i.id={representative_sql('i.group_id')} AND ({condition})"
         params = []
         if image_id is not None:
-            condition = f"({condition}) AND i.id=?"
+            if grouped:
+                condition = f"({condition}) AND i.group_id=(SELECT group_id FROM images WHERE id=? AND hidden=0)"
+            else:
+                condition = f"({condition}) AND i.id=?"
             params.append(image_id)
-        for row in db.execute(
-            "SELECT i.* FROM images i WHERE " + condition + " ORDER BY id LIMIT 500",
-            params,
-        ):
-            result.append(review_image(db, row))
-        return result
+        order = "i.group_id" if grouped else "i.id"
+        return [review_image(db, row, grouped=grouped) for row in db.execute(
+            "SELECT i.* FROM images i WHERE " + condition + f" ORDER BY {order} LIMIT 500", params,
+        )]
 
 
 @app.get("/api/v1/admin/trash")
@@ -1168,7 +1220,7 @@ def person_from_face(
     if not name:
         fail("姓名不能为空")
     with connect(True) as db:
-        require_active_face(db, face_id)
+        require_representative_face(db, face_id)
         face = db.execute("SELECT * FROM faces WHERE id=?", (face_id,)).fetchone()
         if not face:
             fail("人脸不存在", 404)
@@ -1197,7 +1249,7 @@ def person_from_face(
 
 
 def write_face_edit(db, face_id: int, body: FaceEdit):
-    require_active_face(db, face_id)
+    require_representative_face(db, face_id)
     old = db.execute(
         "SELECT id,person_id,ignored,locked,revision FROM faces WHERE id=?",
         (face_id,),
@@ -1278,7 +1330,7 @@ def face_edit(face_id: int, body: FaceEdit, _: None = Depends(admin)):
 @app.post("/api/v1/admin/faces/{face_id}/undo")
 def undo(face_id: int, _: None = Depends(admin)):
     with connect(True) as db:
-        require_active_face(db, face_id)
+        require_representative_face(db, face_id)
         history = db.execute(
             "SELECT * FROM review_history WHERE face_id=? ORDER BY id DESC LIMIT 1",
             (face_id,),
@@ -1319,7 +1371,7 @@ def add_face(image_id: int, body: BoxInput, _: None = Depends(admin)):
     ):
         fail("人脸框超出图片范围")
     with connect(True) as db:
-        require_active(db, image_id)
+        require_representative(db, image_id)
         if (
             body.person_id is not None
             and not db.execute(
@@ -1369,7 +1421,7 @@ def image_action(body: ImageAction, _: None = Depends(admin)):
             fail(str(error))
     with connect(True) as db:
         for image_id in set(body.ids):
-            require_active(db, image_id)
+            require_representative(db, image_id)
             schedule_detection(db, image_id, "highres")
     return {"ok": True}
 

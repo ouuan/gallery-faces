@@ -493,7 +493,7 @@ test("delete current or selected images with cancel and failure recovery", async
     page.getByRole("button", { name: "将当前重复组移入回收站", exact: true }),
   ).toBeEnabled();
   await expect(
-    page.getByRole("heading", { name: "图片 #1", exact: true }),
+    page.getByRole("heading", { name: "代表图 #1 · 共 1 个版本", exact: true }),
   ).toBeVisible();
   await page.addLocatorHandler(page.getByRole("dialog").filter({ hasText: "确认操作" }), async dialog => { await dialog.getByRole("button", { name: "取消", exact: true }).click(); }, { times: 1 });
   await page.getByRole("button", { name: "将当前重复组移入回收站", exact: true }).click();
@@ -505,17 +505,17 @@ test("delete current or selected images with cancel and failure recovery", async
     page.getByText("图片处理任务正在运行，请稍后重试"),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "图片 #1", exact: true }),
+    page.getByRole("heading", { name: "代表图 #1 · 共 1 个版本", exact: true }),
   ).toBeVisible();
   await page.addLocatorHandler(page.getByRole("dialog").filter({ hasText: "确认操作" }), async dialog => { await dialog.getByRole("button", { name: "确认", exact: true }).click(); }, { times: 1 });
   await page.getByRole("button", { name: "将当前重复组移入回收站", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "图片 #2", exact: true }),
+    page.getByRole("heading", { name: "代表图 #2 · 共 1 个版本", exact: true }),
   ).toBeVisible();
   expect(deleted).toEqual([[1]]);
-  await page.getByRole("checkbox", { name: "选择图片 2", exact: true }).click();
-  await page.getByRole("checkbox", { name: "选择图片 3", exact: true }).click();
-  await expect(page.getByText("已选 2 张", { exact: true })).toBeVisible();
+  await page.getByRole("checkbox", { name: "选择重复组（代表图 2）", exact: true }).click();
+  await page.getByRole("checkbox", { name: "选择重复组（代表图 3）", exact: true }).click();
+  await expect(page.getByText("已选 2 组", { exact: true })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({
     path: "/tmp/gallery-faces/delete-images-mobile.png",
