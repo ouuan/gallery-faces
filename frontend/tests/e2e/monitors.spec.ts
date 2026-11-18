@@ -62,3 +62,47 @@ test("monitor selection, partial batch results, resume and responsive themes", a
   await page.keyboard.press("Escape");
   await expect(dialog).not.toBeVisible();
 });
+
+
+test("create monitors from publisher groups and independent manual accounts with partial retry", async ({ page }) => {
+  const calls: any[] = [];
+  let fail = true;
+  await page.route("**/api/v1/**", async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/monitors") && route.request().method() === "POST") {
+      const body = route.request().postDataJSON(); calls.push(body);
+      return route.fulfill(body.username === "bob" && fail ? { status: 503, json: { detail: "稍后重试" } } : { json: { id: calls.length, task_id: calls.length } });
+    }
+    if (path.endsWith("/people")) return route.fulfill({ json: [
+      { id: 1, name: "人物甲", groups: [], accounts: [{ platform: "x", username: "Alice" }, { platform: "instagram", username: "alice" }] },
+      { id: 2, name: "人物乙", groups: [], accounts: [{ platform: "x", username: "alice" }] },
+    ] });
+    if (path.endsWith("/session")) return route.fulfill({ json: { admin: true } });
+    if (path.endsWith("/site")) return route.fulfill({ json: { site_title: "Gallery Faces" } });
+    return route.fulfill({ json: [] });
+  });
+  await page.goto("/admin/monitors");
+  const form = page.locator(".monitor-create");
+  await form.locator(".publisher-cascader .n-base-selection").click();
+  await page.locator(".people-cascader-menu .n-cascader-option").filter({ has: page.locator(".n-cascader-option__label", { hasText: /^未分组$/ }) }).locator(".n-checkbox").click();
+  await form.getByRole("heading", { name: "添加发布者" }).click();
+  await expect(form.getByLabel("账号 1 用户名")).toHaveValue("");
+  await form.getByLabel("账号 1 用户名").fill("@ALICE");
+  await form.getByRole("button", { name: "添加账号", exact: true }).click();
+  await form.getByLabel("账号 2 用户名").fill("bob");
+  await form.getByRole("checkbox").check();
+  await form.getByLabel("起始时间", { exact: true }).fill("2020-01-01 12:34:56");
+  await form.getByLabel("起始时间", { exact: true }).press("Enter");
+  await expect(form).toContainText("共 3 个账号");
+  await form.getByRole("button", { name: "添加监控", exact: true }).click();
+  await expect(form).toContainText("稍后重试");
+  expect(calls).toHaveLength(3);
+  expect(new Set(calls.map(call => call.start)).size).toBe(1);
+  expect(calls.every(call => call.interval_minutes === 60)).toBe(true);
+  await expect(form.getByLabel("账号 1 用户名")).toHaveValue("@ALICE");
+  fail = false;
+  await form.getByRole("button", { name: "添加监控", exact: true }).click();
+  await expect(form.getByLabel("账号 1 用户名")).toHaveValue("");
+  expect(calls).toHaveLength(4);
+  expect(calls[3].username).toBe("bob");
+});

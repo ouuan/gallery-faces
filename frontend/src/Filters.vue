@@ -11,8 +11,8 @@ import {
 } from "naive-ui";
 import { useLibrary } from "./store";
 import { hasFilters, type Filter } from "./filters";
-import { platformLabel } from "./api";
 import DateRangeHint from "./DateRangeHint.vue";
+import PublisherSelect from "./PublisherSelect.vue";
 import PeopleMultiSelect from "./PeopleMultiSelect.vue";
 const props = defineProps<{ modelValue: Filter; hideNoFaces?: boolean }>(),
   emit = defineEmits(["update:modelValue", "clear"]);
@@ -46,30 +46,6 @@ function selectPeople(values: string[]) {
 function set(key: keyof Filter, value: any) {
   emit("update:modelValue", { ...props.modelValue, [key]: value });
 }
-const publisherPeople = computed(() =>
-  store.people.filter(
-    (person) =>
-      person.accounts.length ||
-      props.modelValue.publishers.includes(`person:${person.id}`),
-  ),
-);
-const publisherExtraOptions = computed(() => {
-  const available = new Set(
-    publisherPeople.value.map((person) => `person:${person.id}`),
-  );
-  return props.modelValue.publishers
-    .filter((value) => !available.has(value))
-    .map((value) => {
-      const [platform, username] = value.split(":", 2);
-      return {
-        value,
-        label:
-          platform === "person"
-            ? "已删除人物"
-            : `${platformLabel(platform)} · @${username}`,
-      };
-    });
-});
 </script>
 <template>
   <div class="filters">
@@ -108,19 +84,7 @@ const publisherExtraOptions = computed(() => {
     </fieldset>
     <fieldset>
       <legend>发布者</legend>
-      <people-multi-select
-        class="publisher-cascader"
-        aria-label="发布者"
-        :people="publisherPeople"
-        :groups="store.groups"
-        :model-value="modelValue.publishers"
-        :extra-options="publisherExtraOptions"
-        placeholder="选择分组或搜索发布者"
-        @update:model-value="set('publishers', $event)"
-      >
-        <template #empty>暂无关联账号的人物，可输入用户名添加发布者</template>
-        <template #not-found>没有匹配的发布者</template>
-      </people-multi-select>
+      <PublisherSelect :model-value="modelValue.publishers" @update:model-value="set('publishers', $event)" />
       <p class="hint">匹配所选人物在所有平台的关联账号</p>
       <div class="publisher-entry">
         <n-select

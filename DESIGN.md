@@ -353,3 +353,7 @@ App 覆盖 Naive UI 的 primaryColor、primaryColorHover、primaryColorPressed �
 - Don't 添加装饰性渐变、营销文案或虚构照片库内容。
 - Don't 将主要触控目标的尺寸要求误写为所有小按钮均已满足。
 - Don't 将等高排列与瀑布流的完整图像展示规则套用到允许裁切的方形布局。
+
+## 文案约定
+
+简单文案末尾不要逗号

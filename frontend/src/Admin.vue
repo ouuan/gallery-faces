@@ -17,6 +17,8 @@ import { Download, Users, ScanFace, Copy, Settings, LogOut } from "@lucide/vue";
 import { api, send, dateLabel } from "./api";
 import { useLibrary } from "./store";
 import { usePageTitle } from "./page-title";
+import PublisherSelect from "./PublisherSelect.vue";
+import { usePublisherSelection, mergeImportUrls } from "./publisher-selection";
 import Monitors from "./Monitors.vue";
 import People from "./People.vue";
 import Review from "./Review.vue";
@@ -24,6 +26,9 @@ import DuplicateReview from "./DuplicateReview.vue";
 import DateRangeHint from "./DateRangeHint.vue";
 import CookieGuide from "./CookieGuide.vue";
 const store = useLibrary();
+const { selected: publishers, accounts: publisherAccounts } = usePublisherSelection();
+const importUrls = computed(() => mergeImportUrls(publisherAccounts.value, urls.value));
+const invalidImportRange = computed(() => !!start.value && !!end.value && Date.parse(start.value) >= Date.parse(end.value));
 const router = useRouter();
 const route = useRoute(),
   message = useMessage(),
@@ -127,6 +132,7 @@ async function refresh() {
     await Promise.all([
       api("/admin/directories").then(value => directories.value = value),
       loadTasks(),
+      store.load(),
     ]);
   } else if (section.value === "settings") {
     settings.value = await api("/admin/settings");
@@ -153,11 +159,12 @@ async function logout() {
   authenticated.value = false;
 }
 async function submitImport() {
+  if (busy.value || invalidImportRange.value || (!importUrls.value.length && directory.value === null)) return;
   busy.value = true;
   error.value = "";
   try {
     results.value = await send("/admin/import", {
-      urls: urls.value.split("\n"),
+      urls: importUrls.value,
       directory: directory.value,
       start: start.value,
       end: end.value,
@@ -291,6 +298,10 @@ onUnmounted(() => {
           添加帖子或账号链接，或导入已挂载的 gallery-dl 目录
         </p>
         <form class="import-form" @submit.prevent="submitImport">
+          <label class="field-label">发布者
+            <PublisherSelect v-model="publishers" :disabled="busy" />
+          </label>
+          <p class="hint">导入所选人物的全部关联账号，可同时补充链接</p>
           <label class="field-label"
             >链接，每行一个<n-input
               v-model:value="urls"
@@ -311,10 +322,11 @@ onUnmounted(() => {
               >结束时间（不含）<LocalDateTime aria-label="结束时间（不含）" v-model="end" :disabled="busy" /></label>
           </div>
           <DateRangeHint :start="start" :end="end" />
+          <n-alert v-if="invalidImportRange" type="error">结束时间必须晚于开始时间</n-alert>
           <n-button class="stable-loading-button"
             type="primary"
             attr-type="submit"
-            :disabled="!urls.trim() && directory === null"
+            :disabled="busy || invalidImportRange || (!importUrls.length && directory === null)"
             :loading="busy"
             >创建导入任务</n-button
           >

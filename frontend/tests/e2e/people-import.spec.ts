@@ -64,79 +64,44 @@ test("batch imports associated accounts and preserves input on failure", async (
     return route.fulfill({ json: [] });
   });
   await page.goto("/admin/people");
-  await expect(
-    page.getByRole("button", { name: "导入照片", exact: true }),
-  ).toHaveCount(0);
-  await page.getByRole("checkbox", { name: "选择人物 人物丙" }).check();
-  await page.getByRole("button", { name: "导入照片", exact: true }).click();
-  const dialog = page.getByRole("dialog");
-  await expect(
-    dialog.getByRole("button", { name: "创建导入任务" }),
-  ).toBeDisabled();
-  await dialog.getByRole("button", { name: "取消" }).click();
-  await page.getByRole("checkbox", { name: "全选", exact: true }).check();
-  await page.getByRole("button", { name: "导入照片", exact: true }).click();
-  await expect(dialog).toContainText("将跳过：人物丙");
-  await expect(dialog.locator(".account-list li")).toHaveCount(2);
-  await dialog.getByLabel("开始时间", { exact: true }).fill("2026-11-18 00:00:00");
-  await dialog.getByLabel("开始时间", { exact: true }).press("Enter");
-  await dialog.getByLabel("结束时间（不含）").fill("2026-11-17 00:00:00");
-  await dialog.getByLabel("结束时间（不含）").press("Enter");
-  await expect(
-    dialog.getByRole("button", { name: "创建导入任务" }),
-  ).toBeDisabled();
-  await dialog.getByLabel("结束时间（不含）").fill("2026-11-19 00:00:00");
-  await dialog.getByLabel("结束时间（不含）").press("Enter");
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await page.goto("/admin/import");
+  const picker = page.locator(".publisher-cascader");
+  await picker.locator(".n-base-selection").click();
+  await page.locator(".people-cascader-menu .n-cascader-option").filter({ has: page.locator(".n-cascader-option__label", { hasText: /^未分组$/ }) }).locator(".n-checkbox").click();
+  await page.getByRole("heading", { name: "导入任务", exact: true }).click();
+  const links = page.getByRole("textbox", { name: "链接，每行一个" });
+  await expect(links).toHaveValue("");
+  await links.fill("https://www.twitter.com/Alice/\nhttps://x.com/bob");
+  await page.getByLabel("开始时间", { exact: true }).fill("2026-11-18 00:00:00");
+  await page.getByLabel("开始时间", { exact: true }).press("Enter");
+  await page.getByLabel("结束时间（不含）").fill("2026-11-17 00:00:00");
+  await page.getByLabel("结束时间（不含）").press("Enter");
+  const submit = page.getByRole("button", { name: "创建导入任务" });
+  await expect(submit).toBeDisabled();
+  await page.getByLabel("结束时间（不含）").fill("2026-11-19 00:00:00");
+  await page.getByLabel("结束时间（不含）").press("Enter");
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
-    await page.screenshot({
-      path: `/tmp/gallery-faces/people-import-${width}.png`,
-    });
+    await page.screenshot({ path: `/tmp/gallery-faces/people-import-${width}.png` });
   }
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.waitForTimeout(350);
   await page.screenshot({ path: "/tmp/gallery-faces/people-import-dark.png" });
-  await dialog.getByRole("button", { name: "创建导入任务" }).click();
-  await expect(
-    dialog.getByRole("button", { name: "创建导入任务" }),
-  ).toBeDisabled();
-  await expect(dialog).toContainText("网络错误，请重试");
-  await expect(dialog.getByLabel("开始时间", { exact: true })).toHaveValue("2026-11-18 00:00:00",
-  );
+  await submit.click();
+  await expect(page.getByText("网络错误，请重试")).toBeVisible();
+  await expect(links).toHaveValue("https://www.twitter.com/Alice/\nhttps://x.com/bob");
+  await expect(picker).toContainText("未分组");
   fail = false;
-  await dialog.getByRole("button", { name: "创建导入任务" }).click();
-  await expect(dialog).toContainText("已创建 1 个任务，复用 1 个任务");
+  await submit.click();
+  await expect(page.getByText("已加入队列", { exact: true })).toBeVisible();
   expect(requests).toHaveLength(2);
   expect(requests[1]).toEqual({
-    urls: ["https://x.com/alice", "https://instagram.com/alice"],
+    urls: ["https://x.com/alice", "https://instagram.com/alice", "https://x.com/bob"],
+    directory: null,
     start: "2026-11-18T00:00:00Z",
     end: "2026-11-19T00:00:00Z",
   });
-  await expect(page).toHaveURL(/\/admin\/people$/);
-  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
-  await expect(
-    page.getByRole("checkbox", { name: "全选", exact: true }),
-  ).toBeChecked();
-  await page.getByRole("button", { name: "导入照片", exact: true }).click();
-  await expect(dialog.getByLabel("开始时间", { exact: true })).toHaveValue("");
-  await dialog.getByRole("button", { name: "取消" }).click();
-  await page.getByRole("button", { name: "清空选择" }).click();
-  await expect(
-    page.getByRole("button", { name: "导入照片", exact: true }),
-  ).toHaveCount(0);
-  await page.getByRole("checkbox", { name: "全选", exact: true }).check();
-  await page.getByRole("button", { name: "分组", exact: true }).click();
-  await page.getByRole("button", { name: "人物", exact: true }).click();
-  await expect(
-    page.getByRole("checkbox", { name: "全选", exact: true }),
-  ).not.toBeChecked();
-  await page.getByRole("checkbox", { name: "全选", exact: true }).check();
-  await page.getByRole("button", { name: "导入照片", exact: true }).click();
-  await dialog.getByRole("button", { name: "创建导入任务" }).click();
-  await dialog.getByRole("button", { name: "查看导入任务" }).click();
-  await expect(page).toHaveURL(/\/admin\/import$/);
-  expect(requests[2].start).toBe("");
-  expect(requests[2].end).toBe("");
 });

@@ -16,7 +16,6 @@ import {
 } from "naive-ui";
 import { Plus, UserRound } from "@lucide/vue";
 import { useLibrary } from "./store";
-import PeopleImportDialog from "./PeopleImportDialog.vue";
 import PersonAvatar from "./PersonAvatar.vue";
 import { useLatestRequest } from "./use-latest-request";
 import { useImageDownloads } from "./use-review-images";
@@ -35,9 +34,6 @@ const store = useLibrary(),
   accounts = ref<{ platform: string; username: string }[]>([]),
   newGroup = ref(""),
   baseline = ref("");
-const selectedPeople = ref<number[]>([]),
-  importOpen = ref(false),
-  importing = ref(false);
 const sortedPeople = computed(() => {
   const groupOrder = new Map(
     store.groups.map((group, index) => [group.id, index]),
@@ -55,25 +51,6 @@ const sortedPeople = computed(() => {
     .sort((a, b) => a.groupIndex - b.groupIndex)
     .map(({ person }) => person);
 });
-const importPeople = computed(() =>
-  store.people.filter((p) => selectedPeople.value.includes(p.id)),
-);
-watch(
-  () => store.people,
-  (people) => {
-    selectedPeople.value = selectedPeople.value.filter((id) =>
-      people.some((p) => p.id === id),
-    );
-  },
-);
-watch(tab, () => {
-  selectedPeople.value = [];
-});
-function selectPerson(personId: number, checked: boolean) {
-  selectedPeople.value = checked
-    ? [...new Set([...selectedPeople.value, personId])]
-    : selectedPeople.value.filter((id) => id !== personId);
-}
 const references = ref<any[]>([]),
   deletingPerson = ref<number | null>(null),
   upload = ref<any>(null),
@@ -283,14 +260,13 @@ async function removePerson(person: Person) {
   }
 }
 function beforeUnload(e: BeforeUnloadEvent) {
-  if (dirty.value || uploading.value || saving.value || importing.value) {
+  if (dirty.value || uploading.value || saving.value) {
     e.preventDefault();
     e.returnValue = "";
   }
 }
 onBeforeRouteLeave(
   async () =>
-    !importing.value &&
     !saving.value &&
     !uploading.value &&
     (!dirty.value || await confirm("有未保存的修改，确定离开吗？")),
@@ -318,30 +294,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
       <p>先添加姓名，再选择参考人脸。有效参考图会用于匹配未知人物</p>
       <n-button @click="open()">添加第一位人物</n-button>
     </div>
-    <div v-if="store.people.length" class="people-selection">
-      <n-checkbox
-        :checked="selectedPeople.length === store.people.length"
-        :indeterminate="
-          selectedPeople.length > 0 &&
-          selectedPeople.length < store.people.length
-        "
-        @update:checked="
-          selectedPeople = $event ? store.people.map((p) => p.id) : []
-        "
-        >全选</n-checkbox
-      >
-      <template v-if="selectedPeople.length"
-        ><span role="status">已选 {{ selectedPeople.length }} 人</span
-        ><n-button type="primary" @click="importOpen = true">导入照片</n-button
-        ><n-button @click="selectedPeople = []">清空选择</n-button></template
-      >
-    </div>
     <div v-for="person in sortedPeople" :key="person.id" class="person-row">
-      <n-checkbox
-        :checked="selectedPeople.includes(person.id)"
-        :aria-label="`选择人物 ${person.name}`"
-        @update:checked="selectPerson(person.id, $event)"
-      />
       <PersonAvatar
         :reference-id="person.avatar_reference_id"
         :name="person.name"
@@ -398,12 +351,6 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
       ><n-button @click="removeGroup(g)">删除</n-button>
     </div></template
   >
-  <PeopleImportDialog
-    v-if="importOpen"
-    :people="importPeople"
-    @close="importOpen = false"
-    @busy="importing = $event"
-  />
   <n-modal :show="editing" @update:show="!$event && close()"
     ><div
       class="form-dialog"
@@ -618,13 +565,6 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
 </template>
 
 <style scoped>
-.people-selection {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  margin: 16px 0;
-}
 @media (max-width: 640px) {
   .person-row {
     flex-wrap: wrap;

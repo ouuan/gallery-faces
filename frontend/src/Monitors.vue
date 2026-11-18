@@ -2,21 +2,27 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { NButton, NInput, NInputNumber, NSelect, NCheckbox, NModal, NCard, NAlert } from "naive-ui";
 import { api, send, dateLabel, platformLabel } from "./api";
+import PublisherSelect from "./PublisherSelect.vue";
+import { usePublisherSelection, uniqueAccounts, type PublisherAccount } from "./publisher-selection";
 import LocalDateTime from "./LocalDateTime.vue";
 import DateRangeHint from "./DateRangeHint.vue";
 import type { components } from "./schema";
 type Monitor = components["schemas"]["Monitor"];
 const items = ref<Monitor[]>([]), selected = ref<number[]>([]), error = ref(""), busy = ref(false), loading = ref(false);
 const intervals = ref<Record<number, number | null>>({});
-const platform = ref("instagram"), username = ref(""), interval = ref(60), start = ref(""), history = ref(false);
-const candidates = ref<{ label: string; value: string }[]>([]);
+const { selected: publishers, accounts: publisherAccounts } = usePublisherSelection();
+const manualAccounts = ref<PublisherAccount[]>([{ platform: "instagram", username: "" }]);
+const interval = ref(60), start = ref(""), history = ref(false);
+const accounts = computed(() => uniqueAccounts([...publisherAccounts.value, ...manualAccounts.value]));
+const createResults = ref<{ account: PublisherAccount; error?: string }[]>([]);
+const completedAccounts = ref<PublisherAccount[]>([]), batchDefaultStart = ref("");
+const pendingAccounts = computed(() => accounts.value.filter(account => !completedAccounts.value.some(done => done.platform === account.platform && done.username === account.username)));
 const dialog = ref<"delete" | "backfill" | "resume" | null>(null), targets = ref<number[]>([]), since = ref(""), mode = ref("catch_up");
 const results = ref<{ id: number; status: string; task_id?: number; error?: string }[]>([]);
 const all = computed(() => items.value.length > 0 && selected.value.length === items.value.length);
 const dialogTitle = computed(() => dialog.value === "delete" ? "删除 " + targets.value.length + " 项监控" : dialog.value === "resume" ? "恢复监控" : "补齐 " + targets.value.length + " 位发布者");
 const validSince = computed(() => !!since.value && Date.parse(since.value) < Date.now());
 let timer: ReturnType<typeof setInterval> | undefined;
-let searchVersion = 0;
 async function load() {
   loading.value = true;
   try {
@@ -25,16 +31,6 @@ async function load() {
   } catch (e) { error.value = (e as Error).message; }
   finally { loading.value = false; }
 }
-async function search(q = "") {
-  const version = ++searchVersion;
-  try {
-    const rows = await api<{ platform: string; username: string; label: string }[]>("/admin/publisher-candidates?q=" + encodeURIComponent(q));
-    if (version === searchVersion) candidates.value = rows.map(row => ({ value: row.platform + ":" + row.username, label: row.label + " · " + platformLabel(row.platform) + " @" + row.username }));
-  } catch (e) { error.value = (e as Error).message; }
-}
-function choose(value: string | null) {
-  if (value) [platform.value, username.value] = value.split(":") as [string, string];
-}
 async function perform(action: () => Promise<unknown>) {
   busy.value = true; error.value = "";
   try { await action(); await load(); }
@@ -42,9 +38,25 @@ async function perform(action: () => Promise<unknown>) {
   finally { busy.value = false; }
 }
 async function create() {
+  if (busy.value || !pendingAccounts.value.length || !interval.value || (history.value && !start.value)) return;
+  const batchAccounts = [...pendingAccounts.value];
+  batchDefaultStart.value ||= new Date().toISOString();
+  const batchStart = history.value ? start.value : batchDefaultStart.value;
+  const batchInterval = interval.value;
   await perform(async () => {
-    await send("/admin/monitors", { platform: platform.value, username: username.value, interval_minutes: interval.value, start: history.value ? start.value : "" });
-    username.value = ""; start.value = ""; history.value = false;
+    createResults.value = completedAccounts.value.map(account => ({ account }));
+    for (const account of batchAccounts) {
+      try {
+        await send("/admin/monitors", { ...account, interval_minutes: batchInterval, start: batchStart });
+        createResults.value.push({ account });
+        completedAccounts.value.push(account);
+      } catch (e) { createResults.value.push({ account, error: (e as Error).message }); }
+    }
+    if (createResults.value.every(result => !result.error)) {
+      publishers.value = []; manualAccounts.value = [{ platform: "instagram", username: "" }];
+      start.value = ""; history.value = false;
+      completedAccounts.value = []; batchDefaultStart.value = "";
+    }
   });
 }
 function open(action: "delete" | "backfill" | "resume", ids: number[]) {
@@ -71,27 +83,34 @@ function resultLabel(raw: string | null) {
   const result = JSON.parse(raw || "{}");
   return "imported" in result ? `新入库 ${result.imported} · 跳过已收录 ${result.skipped_existing} · 跳过回收站 ${result.skipped_trashed}` : "暂无导入结果";
 }
-onMounted(() => { void load(); void search(); timer = setInterval(() => { if (!busy.value && !loading.value) void load(); }, 5000); });
-onUnmounted(() => { clearInterval(timer); ++searchVersion; });
+onMounted(() => { void load(); timer = setInterval(() => { if (!busy.value && !loading.value) void load(); }, 5000); });
+onUnmounted(() => { clearInterval(timer); });
 </script>
 <template>
   <div class="monitor-manager">
     <n-alert v-if="error" type="error">{{ error }}</n-alert>
     <form class="monitor-create" @submit.prevent="create">
       <h2>添加发布者</h2>
-      <label class="field-label">搜索人物账号或来源发布者
-        <n-select :value="null" filterable remote clearable :options="candidates" placeholder="搜索人物、昵称或用户名" @search="search" @update:value="choose" />
+      <label class="field-label">发布者
+        <PublisherSelect v-model="publishers" :disabled="busy" />
       </label>
-      <div class="monitor-fields">
-        <label class="field-label">平台<n-select v-model:value="platform" :options="[{ label: 'Instagram', value: 'instagram' }, { label: 'X', value: 'x' }]" /></label>
-        <label class="field-label">用户名<n-input v-model:value="username" placeholder="用户名，不含 @" /></label>
-        <label class="field-label">检查间隔（分钟）<n-input-number v-model:value="interval" :min="5" :precision="0" /></label>
+      <p class="hint">监控所选人物的全部关联账号，可同时手动添加账号</p>
+      <div class="section-heading"><h3>手动账号</h3><n-button :disabled="busy" @click="manualAccounts.push({ platform: 'instagram', username: '' })">添加账号</n-button></div>
+      <div v-for="(account, i) in manualAccounts" :key="i" class="monitor-fields">
+        <label class="field-label">平台<n-select v-model:value="account.platform" :aria-label="`账号 ${i + 1} 平台`" :disabled="busy" :options="[{ label: 'Instagram', value: 'instagram' }, { label: 'X', value: 'x' }]" /></label>
+        <label class="field-label">用户名<n-input v-model:value="account.username" :aria-label="`账号 ${i + 1} 用户名`" :disabled="busy" placeholder="用户名，不含 @" /></label>
+        <n-button :disabled="busy" :aria-label="`移除账号 ${i + 1}`" @click="manualAccounts.splice(i, 1)">移除</n-button>
       </div>
-      <n-checkbox v-model:checked="history">指定起始时间，补拉历史</n-checkbox>
-      <label v-if="history" class="field-label">起始时间<LocalDateTime aria-label="起始时间" v-model="start" /></label>
+      <label class="field-label">检查间隔（分钟）<n-input-number v-model:value="interval" :disabled="busy" :min="5" :precision="0" /></label>
+      <n-checkbox v-model:checked="history" :disabled="busy">指定起始时间，补拉历史</n-checkbox>
+      <label v-if="history" class="field-label">起始时间<LocalDateTime aria-label="起始时间" v-model="start" :disabled="busy" /></label>
       <DateRangeHint v-if="history" :start="start" end="" />
       <p v-else class="hint">默认只收新增，以保存时刻为起点。</p>
-      <n-button type="primary" attr-type="submit" :loading="busy" :disabled="busy || !username.trim() || !interval || (history && !start)">添加监控</n-button>
+      <n-button type="primary" attr-type="submit" :loading="busy" :disabled="busy || !pendingAccounts.length || !interval || (history && !start)">添加监控</n-button>
+      <p v-if="accounts.length" class="hint">共 {{ accounts.length }} 个账号，统一使用以上间隔和起始时间</p>
+      <div v-if="createResults.length" role="status">
+        <p v-for="result in createResults" :key="result.account.platform + ':' + result.account.username" :class="{ 'error-text': result.error }">{{ platformLabel(result.account.platform) }} @{{ result.account.username }}：{{ result.error || '已添加监控' }}</p>
+      </div>
     </form>
     <div class="monitor-toolbar">
       <n-checkbox :checked="all" :indeterminate="selected.length > 0 && !all" @update:checked="selected = $event ? items.map(item => item.id) : []">全选当前列表</n-checkbox>
@@ -160,7 +179,7 @@ onUnmounted(() => { clearInterval(timer); ++searchVersion; });
 <style scoped>
 .monitor-manager { display: grid; gap: 24px; }
 .monitor-create { display: grid; gap: 12px; max-width: 760px; }
-.monitor-create h2 { margin: 0; }
+.monitor-create h2, .monitor-create h3, .monitor-create .field-label, .monitor-create > .hint, .monitor-create .section-heading { margin: 0; }
 .monitor-fields, .monitor-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .monitor-fields > label { flex: 1 1 180px; min-width: 0; }
 .monitor-list { list-style: none; margin: 0; padding: 0; }
