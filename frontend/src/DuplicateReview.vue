@@ -2,7 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { NButton, NModal, useMessage } from "naive-ui";
 import { Copy } from "@lucide/vue";
-import { api, send, platformLabel, type Source } from "./api";
+import { api, send, platformLabel, dateLabel, type Source } from "./api";
 import { useLibrary } from "./store";
 
 type CandidateImage = {
@@ -77,7 +77,7 @@ async function decide(action: "merge" | "separate") {
       <h3>来源</h3>
       <p v-if="!details.sources.length" class="muted">暂无来源</p>
       <p v-for="source in details.sources" :key="source.id">
-        <a :href="source.url" target="_blank" rel="noopener noreferrer">{{ platformLabel(source.platform) }} · {{ store.publisherName(source) }} · {{ source.published_at }}</a>
+        <a :href="source.url" target="_blank" rel="noopener noreferrer">{{ platformLabel(source.platform) }} · {{ store.publisherName(source) }} · {{ dateLabel(source.published_at) }}</a>
       </p>
       <p class="hint">拆分后的图片不会再次自动合并。</p>
     </template>

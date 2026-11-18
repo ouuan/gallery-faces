@@ -1,3 +1,4 @@
+import { ref } from "vue";
 export class ApiError extends Error {
   constructor(message: string, public status: number, public retryAfter: number) { super(message); }
 }
@@ -81,16 +82,20 @@ export type Photo = {
   earliest_source?: Source;
   members?: any[];
 };
-export let siteTimezone = "Asia/Shanghai";
+export const siteTimezone = ref("Asia/Shanghai");
 export function setSiteTimezone(value: string) {
-  siteTimezone = value;
+  siteTimezone.value = value;
 }
-export const dateLabel = (value: string) =>
+export const dateLabel = (value: string | null | undefined) =>
+  !value ? "缺少日期" :
   new Intl.DateTimeFormat("zh-CN", {
-    timeZone: siteTimezone,
+    timeZone: siteTimezone.value,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
   }).format(new Date(value));
 
 export type ImportResult = { value: string; status: "queued" | "duplicate" | "invalid"; task_id?: number };

@@ -12,7 +12,7 @@ import {
   NModal,
   useMessage,
 } from "naive-ui";
-import { api, send, platformLabel } from "./api";
+import { api, send, platformLabel, dateLabel } from "./api";
 import { useLibrary } from "./store";
 import FeedbackPanel from "./FeedbackPanel.vue";
 import FaceBoxEditor from "./FaceBoxEditor.vue";
@@ -576,7 +576,7 @@ onMounted(load);
               <span class="grow"
                 >{{ platformLabel(source.platform) }} ·
                 {{ store.publisherName(source) }} ·
-                {{ source.published_at || "缺少日期" }}</span
+                {{ dateLabel(source.published_at) }}</span
               ><n-button @click="sourceEdit = { ...source }"
                 >补全 / 编辑</n-button
               >
