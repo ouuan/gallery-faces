@@ -82,7 +82,8 @@ for (const width of [1440, 390]) test(`thumbnail request budget at ${width}px`, 
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url());
     if (url.pathname.includes('/admin/media/')) {
-      if (url.searchParams.has('thumbnail')) {
+      // The strip uses fetch; the editor also displays a thumbnail while its original loads.
+      if (url.searchParams.has('thumbnail') && route.request().resourceType() === 'fetch') {
         thumbnailRequests++;
         thumbnails.add(Number(url.pathname.split('/').pop()));
       }
@@ -96,22 +97,33 @@ for (const width of [1440, 390]) test(`thumbnail request budget at ${width}px`, 
   });
   await page.goto('/admin/review');
   await expect(page.locator('.face-box-editor img')).toBeVisible();
-  await page.waitForLoadState('networkidle');
+  const strip = page.locator('.review-strip');
+  const waitForStripThumbnails = () => expect.poll(() => strip.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    // Include the observer's one-thumbnail preload margin before scrolling away.
+    const visible = Array.from(element.querySelectorAll('img')).filter(image => {
+      const rect = image.getBoundingClientRect();
+      return rect.right >= bounds.left - 124 && rect.left <= bounds.right + 124;
+    });
+    return visible.length > 0 && visible.every(image => image.complete && image.naturalWidth === 800);
+  })).toBe(true);
+  await waitForStripThumbnails();
   const initial = thumbnails.size;
   console.log(`${width}px initial thumbnails: ${initial}/200`);
   expect(initial).toBeGreaterThan(0);
   expect(initial).toBeLessThanOrEqual(Math.ceil(width / 124) + 1);
   expect(thumbnails.has(200)).toBe(false);
   await page.screenshot({ path: `/tmp/gallery-faces/review-${width}.png` });
-  const strip = page.locator('.review-strip');
   await strip.evaluate(element => { element.scrollLeft = element.scrollWidth; });
   await expect.poll(() => thumbnails.has(200)).toBe(true);
-  await expect.poll(() => strip.locator('img').last().evaluate(image => (image as HTMLImageElement).naturalWidth)).toBe(800);
+  await waitForStripThumbnails();
   await strip.evaluate(element => { element.scrollLeft = 0; });
-  await expect(strip.locator('img').first()).toBeVisible();
+  await waitForStripThumbnails();
+  const refreshed = page.waitForResponse(response =>
+    new URL(response.url()).pathname.endsWith('/admin/images') && response.ok());
   await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await refreshed;
   await expect(page.getByText('正在加载审核项目…')).toHaveCount(0);
-  await page.waitForLoadState('networkidle');
+  await waitForStripThumbnails();
   expect(thumbnailRequests).toBe(thumbnails.size);
-  await expect.poll(() => strip.locator('img').first().evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
 });
