@@ -121,3 +121,32 @@ def test_validation_candidates_interval_and_source_roundtrip(client):
     assert client.post('/api/v1/admin/monitors/batch',json={'ids':[item['id']],'action':'backfill','start':''}).status_code == 400
     client.post('/api/v1/logout',json={})
     assert client.get('/api/v1/admin/monitors').status_code == 401
+
+
+def test_batch_interval_preserves_schedule_and_partial_results(client):
+    a = create(client)
+    b = create(client, username='bob')
+    untouched = create(client, username='charlie')
+    monitors.edit(b['id'], monitors.Edit(paused=True))
+    before = {row['id']: row for row in monitors.listing()}
+    response = client.post('/api/v1/admin/monitors/batch', json={
+        'ids': [a['id'], b['id'], 999, a['id']], 'action': 'interval', 'interval_minutes': 5,
+    })
+    assert response.status_code == 200
+    assert [r['status'] for r in response.json()] == ['updated', 'updated', 'error']
+    for row in monitors.listing():
+        expected = dict(before[row['id']])
+        if row['id'] != untouched['id']:
+            expected['interval_minutes'] = 5
+        assert row == expected
+
+
+@pytest.mark.parametrize('value', [None, 4, 5.5])
+def test_batch_interval_rejects_invalid_values(client, value):
+    item = create(client)
+    body = {'ids': [item['id']], 'action': 'interval'}
+    if value is not None:
+        body['interval_minutes'] = value
+    response = client.post('/api/v1/admin/monitors/batch', json=body)
+    assert response.status_code == (400 if value is None else 422)
+    assert monitors.listing()[0]['interval_minutes'] == 60

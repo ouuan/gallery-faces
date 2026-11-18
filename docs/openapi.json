@@ -2517,7 +2517,8 @@
             "enum": [
               "delete",
               "update",
-              "backfill"
+              "backfill",
+              "interval"
             ],
             "title": "Action"
           },
@@ -2525,6 +2526,18 @@
             "type": "string",
             "title": "Start",
             "default": ""
+          },
+          "interval_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 5.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Minutes"
           }
         },
         "type": "object",
@@ -2625,6 +2638,7 @@
             "enum": [
               "deleted",
               "queued",
+              "updated",
               "error"
             ],
             "title": "Status"

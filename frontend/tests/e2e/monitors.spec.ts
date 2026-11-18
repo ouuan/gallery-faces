@@ -106,3 +106,54 @@ test("create monitors from publisher groups and independent manual accounts with
   expect(calls).toHaveLength(4);
   expect(calls[3].username).toBe("bob");
 });
+
+
+test("batch interval validates input, reports partial failure and refreshes saved values", async ({ page }) => {
+  const items = [1, 2, 3].map(id => ({ id, platform: "x", username: `user${id}`, interval_minutes: 60, paused: id === 2 ? 1 : 0, active_task_id: null, next_check_at: "2026-11-19T00:00:00Z" }));
+  const calls: any[] = [];
+  await page.route("**/api/v1/**", async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/batch")) {
+      const body = route.request().postDataJSON(); calls.push(body);
+      items[0].interval_minutes = body.interval_minutes;
+      return route.fulfill({ json: [{ id: 1, status: "updated" }, { id: 2, status: "error", error: "监控不存在" }] });
+    }
+    if (path.endsWith("/session")) return route.fulfill({ json: { admin: true } });
+    if (path.endsWith("/monitors")) return route.fulfill({ json: items });
+    if (path.endsWith("/site")) return route.fulfill({ json: { site_title: "Gallery Faces" } });
+    return route.fulfill({ json: [] });
+  });
+  await page.goto("/admin/monitors");
+  await expect(page.getByRole("button", { name: "修改间隔", exact: true })).toHaveCount(0);
+  await page.getByRole("checkbox", { name: "选择 user1", exact: true }).check();
+  await page.getByRole("checkbox", { name: "选择 user2", exact: true }).check();
+  // A saved batch value must replace an older unsaved edit in the row.
+  await page.locator(".monitor-list li").first().getByRole("textbox").fill("90");
+  await page.getByRole("button", { name: "修改间隔", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("修改 2 项监控的间隔");
+  await dialog.getByRole("button", { name: "取消", exact: true }).click();
+  expect(calls).toHaveLength(0);
+  await page.getByRole("button", { name: "修改间隔", exact: true }).click();
+  await dialog.getByRole("textbox").fill("");
+  await dialog.getByRole("textbox").press("Tab");
+  await expect(dialog.getByRole("button", { name: "确认修改" })).toBeDisabled();
+  await dialog.getByRole("textbox").fill("30");
+  await dialog.getByRole("textbox").press("Tab");
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const theme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
+      await page.waitForTimeout(350);
+      await page.screenshot({ path: `/tmp/gallery-faces/batch-interval-${width}-${theme}.png` });
+    }
+  }
+  await dialog.getByRole("button", { name: "确认修改" }).click();
+  await expect(dialog).not.toBeVisible();
+  expect(calls).toEqual([{ action: "interval", ids: [1, 2], start: "", interval_minutes: 30 }]);
+  await expect(page.getByRole("status")).toContainText("已修改检查间隔");
+  await expect(page.getByRole("status")).toContainText("监控不存在");
+  await expect(page.locator(".monitor-list li").first().getByRole("textbox")).toHaveValue("30");
+  await expect(page.locator(".monitor-list li").nth(2).getByRole("textbox")).toHaveValue("60");
+});

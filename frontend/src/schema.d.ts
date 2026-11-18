@@ -851,12 +851,14 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "delete" | "update" | "backfill";
+            action: "delete" | "update" | "backfill" | "interval";
             /**
              * Start
              * @default
              */
             start: string;
+            /** Interval Minutes */
+            interval_minutes?: number | null;
         };
         /** BatchFaceEdit */
         BatchFaceEdit: {
@@ -897,7 +899,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "deleted" | "queued" | "error";
+            status: "deleted" | "queued" | "updated" | "error";
             /** Task Id */
             task_id?: number | null;
             /** Error */

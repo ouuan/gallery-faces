@@ -8,6 +8,8 @@ import LocalDateTime from "./LocalDateTime.vue";
 import type { components } from "./schema";
 type Monitor = components["schemas"]["Monitor"];
 const items = ref<Monitor[]>([]), selected = ref<number[]>([]), error = ref(""), busy = ref(false), loading = ref(false);
+const batchInterval = ref<number | null>(60);
+const validInterval = computed(() => batchInterval.value !== null && Number.isInteger(batchInterval.value) && batchInterval.value >= 5);
 const intervals = ref<Record<number, number | null>>({});
 const { selected: publishers, accounts: publisherAccounts } = usePublisherSelection();
 const manualAccounts = ref<PublisherAccount[]>([{ platform: "instagram", username: "" }]);
@@ -16,10 +18,10 @@ const accounts = computed(() => uniqueAccounts([...publisherAccounts.value, ...m
 const createResults = ref<{ account: PublisherAccount; error?: string }[]>([]);
 const completedAccounts = ref<PublisherAccount[]>([]), batchDefaultStart = ref("");
 const pendingAccounts = computed(() => accounts.value.filter(account => !completedAccounts.value.some(done => done.platform === account.platform && done.username === account.username)));
-const dialog = ref<"delete" | "backfill" | "resume" | null>(null), targets = ref<number[]>([]), since = ref(""), mode = ref("catch_up");
+const dialog = ref<"delete" | "backfill" | "resume" | "interval" | null>(null), targets = ref<number[]>([]), since = ref(""), mode = ref("catch_up");
 const results = ref<{ id: number; status: string; task_id?: number; error?: string }[]>([]);
 const all = computed(() => items.value.length > 0 && selected.value.length === items.value.length);
-const dialogTitle = computed(() => dialog.value === "delete" ? "删除 " + targets.value.length + " 项监控" : dialog.value === "resume" ? "恢复监控" : "补齐 " + targets.value.length + " 位发布者");
+const dialogTitle = computed(() => dialog.value === "interval" ? "修改 " + targets.value.length + " 项监控的间隔" : dialog.value === "delete" ? "删除 " + targets.value.length + " 项监控" : dialog.value === "resume" ? "恢复监控" : "补齐 " + targets.value.length + " 位发布者");
 const validSince = computed(() => !!since.value && Date.parse(since.value) < Date.now());
 let timer: ReturnType<typeof setInterval> | undefined;
 async function load() {
@@ -58,12 +60,20 @@ async function create() {
     }
   });
 }
-function open(action: "delete" | "backfill" | "resume", ids: number[]) {
+function open(action: "delete" | "backfill" | "resume" | "interval", ids: number[]) {
+  batchInterval.value = items.value.find(item => item.id === ids[0])?.interval_minutes ?? 60;
   error.value = ""; targets.value = [...ids]; since.value = ""; mode.value = "catch_up"; dialog.value = action;
 }
-async function batch(action: "delete" | "backfill" | "update", ids: number[]) {
+async function batch(action: "delete" | "backfill" | "update" | "interval", ids: number[]) {
+  if (busy.value || (action === "interval" && !validInterval.value)) return;
+  const intervalMinutes = batchInterval.value;
   await perform(async () => {
-    results.value = await send("/admin/monitors/batch", { action, ids, start: since.value });
+    results.value = await send("/admin/monitors/batch", { action, ids: [...ids], start: since.value, ...(action === "interval" ? { interval_minutes: intervalMinutes } : {}) });
+    if (action === "interval") {
+      for (const result of results.value) {
+        if (result.status === "updated") delete intervals.value[result.id];
+      }
+    }
     dialog.value = null;
   });
 }
@@ -115,6 +125,7 @@ onUnmounted(() => { clearInterval(timer); });
       <span v-if="selected.length">已选 {{ selected.length }} 项</span>
       <template v-if="selected.length">
         <n-button :disabled="busy" @click="batch('update', selected)">立刻更新</n-button>
+        <n-button :disabled="busy" @click="open('interval', selected)">修改间隔</n-button>
         <n-button :disabled="busy" @click="open('backfill', selected)">补齐</n-button>
         <n-button :disabled="busy" @click="open('delete', selected)">删除</n-button>
       </template>
@@ -123,7 +134,7 @@ onUnmounted(() => { clearInterval(timer); });
     </div>
     <div v-if="results.length" role="status">
       <p v-for="result in results" :key="result.id" :class="{ 'error-text': result.error }">
-        #{{ result.id }}：{{ result.error || (result.status === 'deleted' ? '已删除监控，已导入照片保留' : '任务 #' + result.task_id + ' 已提交或复用') }}
+        #{{ result.id }}：{{ result.error || (result.status === 'updated' ? '已修改检查间隔' : result.status === 'deleted' ? '已删除监控，已导入照片保留' : '任务 #' + result.task_id + ' 已提交或复用') }}
       </p>
     </div>
     <p v-if="!items.length && !loading" class="hint">还没有发布者监控。添加后会立即检查，并按设定间隔收集新增照片。</p>
@@ -156,6 +167,10 @@ onUnmounted(() => { clearInterval(timer); });
       <n-card class="monitor-dialog" role="dialog" aria-modal="true" :title="dialogTitle" :aria-label="dialogTitle">
         <n-alert v-if="error" type="error">{{ error }}</n-alert>
         <p v-if="dialog === 'delete'">将删除监控配置并取消未完成任务，已导入照片会保留。</p>
+        <label v-else-if="dialog === 'interval'" class="field-label">检查间隔（分钟）
+          <n-input-number v-model:value="batchInterval" aria-label="检查间隔（分钟）" :disabled="busy" :min="5" :precision="0" />
+          <span class="hint">统一应用于所选 {{ targets.length }} 项监控，最少 5 分钟</span>
+        </label>
         <template v-else>
           <n-select v-if="dialog === 'resume'" v-model:value="mode" aria-label="恢复方式" :options="[{ value: 'catch_up', label: '补齐暂停期间' }, { value: 'new', label: '不补，只收之后新增' }, { value: 'start', label: '指定起始时间' }]" />
           <template v-if="dialog === 'backfill' || mode === 'start'">
@@ -167,7 +182,7 @@ onUnmounted(() => { clearInterval(timer); });
         </template>
         <div class="monitor-toolbar">
           <n-button :disabled="busy" @click="dialog = null">取消</n-button>
-          <n-button type="primary" :loading="busy" :disabled="busy || ((dialog === 'backfill' || (dialog === 'resume' && mode === 'start')) && !validSince)" @click="confirm">确认{{ dialog === 'delete' ? '删除' : dialog === 'resume' ? '恢复' : '补齐' }}</n-button>
+          <n-button type="primary" :loading="busy" :disabled="busy || (dialog === 'interval' && !validInterval) || ((dialog === 'backfill' || (dialog === 'resume' && mode === 'start')) && !validSince)" @click="confirm">确认{{ dialog === 'interval' ? '修改' : dialog === 'delete' ? '删除' : dialog === 'resume' ? '恢复' : '补齐' }}</n-button>
         </div>
       </n-card>
     </n-modal>

@@ -80,8 +80,9 @@ class Resume(BaseModel):
 
 class Batch(BaseModel):
     ids: list[int] = Field(min_length=1, max_length=1000)
-    action: Literal['delete', 'update', 'backfill']
+    action: Literal['delete', 'update', 'backfill', 'interval']
     start: str = ''
+    interval_minutes: int | None = Field(default=None, ge=5)
 
 class TaskResult(BaseModel):
     task_id: int
@@ -91,7 +92,7 @@ class Created(TaskResult):
 
 class BatchResult(BaseModel):
     id: int
-    status: Literal['deleted', 'queued', 'error']
+    status: Literal['deleted', 'queued', 'updated', 'error']
     task_id: int | None = None
     error: str | None = None
 
@@ -183,6 +184,8 @@ def resume(monitor_id: int, body: Resume) -> TaskResult:
     return {'task_id': tid}
 
 def batch(body: Batch) -> list[BatchResult]:
+    if body.action == 'interval' and body.interval_minutes is None:
+        raise HTTPException(400, '请输入检查间隔（分钟）')
     timestamp = now()
     start = instant(body.start) if body.action == 'backfill' else None
     if start and start >= timestamp:
@@ -197,9 +200,13 @@ def batch(body: Batch) -> list[BatchResult]:
                     cancel(db, mid)
                     db.execute('DELETE FROM monitors WHERE id=?', (mid,))
                     tid = None
+                elif body.action == 'interval':
+                    db.execute('UPDATE monitors SET interval_minutes=? WHERE id=?', (body.interval_minutes, mid))
+                    tid = None
                 else:
                     tid = enqueue(db, mid, start=start, end=timestamp)
-            results.append(dict(id=mid, status='deleted' if body.action == 'delete' else 'queued', task_id=tid))
+            status = {'delete': 'deleted', 'interval': 'updated'}.get(body.action, 'queued')
+            results.append(dict(id=mid, status=status, task_id=tid))
         except HTTPException as error:
             results.append(dict(id=mid, status='error', error=error.detail, task_id=None))
     return results
