@@ -721,7 +721,7 @@ def test_nickname_schema_upgrade_preserves_existing_posts(client):
     db.init()
     with db.connect() as conn:
         assert conn.execute('SELECT author,author_name FROM posts').fetchone()['author'] == 'alice'
-        assert [r[0] for r in conn.execute('SELECT version FROM schema_version')] == [5]
+        assert [r[0] for r in conn.execute('SELECT version FROM schema_version')] == [6]
 
 
 def test_reference_avatars_crop_selected_face_and_recover_legacy_uploads(client, monkeypatch):
@@ -1143,3 +1143,31 @@ def test_detection_threshold_settings_and_migration(client):
         conn.execute("DELETE FROM settings WHERE key='detection_threshold'")
     db.init()
     assert float(client.get(endpoint).json()["detection_threshold"]) == 0.5
+
+def test_representative_original_size(client):
+    with db.connect(True) as conn:
+        first = image(conn)
+        group = conn.execute("SELECT group_id FROM images WHERE id=?", (first,)).fetchone()[0]
+        second = image(conn, group=group)
+        hidden = image(conn, group=group)
+        conn.execute("UPDATE images SET width=2000,file_size=10 WHERE id=?", (first,))
+        conn.execute("UPDATE images SET file_size=20 WHERE id=?", (second,))
+        conn.execute("UPDATE images SET file_size=100,hidden=1 WHERE id=?", (hidden,))
+    assert client.get(f"/api/v1/gallery/{group}").json()["image_id"] == second
+    with db.connect(True) as conn:
+        conn.execute("UPDATE images SET file_size=20 WHERE id=?", (first,))
+    assert client.get(f"/api/v1/gallery/{group}").json()["image_id"] == first
+
+
+def test_original_size_migration(client, caplog):
+    with db.connect(True) as conn:
+        first = image(conn)
+        image(conn)
+        conn.execute("ALTER TABLE images DROP COLUMN file_size")
+        conn.execute("UPDATE schema_version SET version=5")
+    (db.DATA / "originals" / "0.png").write_bytes(b"original")
+    db.init()
+    db.init()
+    with db.connect() as conn:
+        assert [r[0] for r in conn.execute("SELECT file_size FROM images ORDER BY id")] == [8, 0]
+    assert "Original unavailable" in caplog.text

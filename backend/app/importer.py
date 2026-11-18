@@ -135,11 +135,12 @@ def import_file(path, raw, start=None, end=None):
         image = db.execute("SELECT id FROM images WHERE sha256=?", (digest,)).fetchone()
         if image:
             image_id = image[0]
+            db.execute("UPDATE images SET file_size=? WHERE id=?", (path.stat().st_size, image_id))
         else:
             group = db.execute("INSERT INTO duplicate_groups DEFAULT VALUES").lastrowid
             image_id = db.execute(
-                "INSERT INTO images(sha256,filename,width,height,phash,group_id) VALUES(?,?,?,?,?,?)",
-                (digest, filename, width, height, hash_value, group),
+                "INSERT INTO images(sha256,filename,width,height,phash,group_id,file_size) VALUES(?,?,?,?,?,?,?)",
+                (digest, filename, width, height, hash_value, group, path.stat().st_size),
             ).lastrowid
             from .db import schedule_detection
             schedule_detection(db, image_id)

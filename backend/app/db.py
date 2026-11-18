@@ -1,3 +1,4 @@
+import logging
 import os
 import secrets
 import time
@@ -96,7 +97,18 @@ def init():
             db.execute("ALTER TABLE reference_images ADD COLUMN box TEXT")
         db.execute("INSERT OR IGNORE INTO private_config VALUES('feedback_secret',?)", (secrets.token_hex(32),))
         db.execute("DELETE FROM feedback_submissions WHERE submitted_at<=?", (time.time() - 86400,))
-        db.execute("UPDATE schema_version SET version=5 WHERE version<5")
+        if "file_size" not in {row[1] for row in db.execute("PRAGMA table_info(images)")}:
+            db.execute("ALTER TABLE images ADD COLUMN file_size INTEGER NOT NULL DEFAULT 0")
+            for image in db.execute("SELECT id,sha256 FROM images").fetchall():
+                originals = sorted((DATA / "originals").glob(image["sha256"] + ".*"))
+                try:
+                    size = originals[0].stat().st_size if originals else 0
+                except OSError:
+                    size = 0
+                if not size:
+                    logging.getLogger(__name__).warning("Original unavailable for image %s", image["id"])
+                db.execute("UPDATE images SET file_size=? WHERE id=?", (size, image["id"]))
+        db.execute("UPDATE schema_version SET version=6 WHERE version<6")
 
 
 def settings(db):

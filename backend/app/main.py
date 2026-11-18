@@ -681,7 +681,7 @@ def gallery_rows(
 
 def visible_members(db, group_id):
     return db.execute(
-        "SELECT i.* FROM images i WHERE group_id=? AND hidden=0 AND detection='done' AND EXISTS(SELECT 1 FROM sources s JOIN posts p ON p.id=s.post_id WHERE s.image_id=i.id AND p.author IS NOT NULL AND p.published_at IS NOT NULL AND p.url IS NOT NULL) ORDER BY width*height DESC,id",
+        "SELECT i.* FROM images i WHERE group_id=? AND hidden=0 AND detection='done' AND EXISTS(SELECT 1 FROM sources s JOIN posts p ON p.id=s.post_id WHERE s.image_id=i.id AND p.author IS NOT NULL AND p.published_at IS NOT NULL AND p.url IS NOT NULL) ORDER BY file_size DESC,id",
         (group_id,),
     ).fetchall()
 
