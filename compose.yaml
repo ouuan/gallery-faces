@@ -26,6 +26,7 @@ services:
     command: ["python", "-m", "app.worker"]
     environment:
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-auto}
+      WORKER_IDLE_TIMEOUT_SECONDS: ${WORKER_IDLE_TIMEOUT_SECONDS:-300}
     stop_grace_period: 5m
     volumes:
       - gallery-data:/data

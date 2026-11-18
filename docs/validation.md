@@ -37,3 +37,17 @@ Reproduce with installed models using `DATA_DIR=/path/to/data PYTHONPATH=backend
 | 4 | 8.19 | 2.93 | 30.35 | 370.5% | 1295 |
 
 RSS is the process high-water mark, with the concurrent pass following the serial pass in the same process. These synthetic fixtures verify execution and concurrency, not recognition quality or production throughput. Initial thresholds still need evaluation on representative gallery photos. The pinned detector has static 640 output-shape annotations despite supporting dynamic spatial inputs; ONNX Runtime logs output-shape warnings at 1280, but returns the expected stride-specific tensor lengths, validated by real inference and equivalence checks. Existing Starlette TestClient emits one unrelated httpx deprecation warning.
+
+## Worker idle reclamation (2026-11-18)
+
+All 231 backend tests and Docker Compose configuration validation pass. Idle-policy tests use a controlled monotonic clock to cover timeout boundaries, arrivals before/at the deadline, all four task kinds, long-running jobs, one release per idle period, resumption, disabled/invalid configuration and shutdown. Model lifecycle tests verify session collection and shared lazy reload, including platforms without malloc_trim.
+
+Real-model validation on local Linux/Python 3.14.10 retained a four-thread executor across three rounds. Each round ran 12 mixed auto/highres jobs using the astronaut, small astronaut and blank fixtures described above, then called release_idle_memory after all jobs finished. Reloaded boxes and embeddings matched the first round at absolute tolerances 1e-5 and 1e-6. Current RSS was read from /proc/self/status, rather than the process high-water mark.
+
+| Round | RSS before release MiB | RSS after release MiB | Release seconds |
+| --- | --- | --- | --- |
+| 1 | 1137.9 | 176.0 | 0.068 |
+| 2 | 1290.3 | 201.2 | 0.041 |
+| 3 | 1174.5 | 162.9 | 0.032 |
+
+These measurements are workload- and allocator-dependent observations, not fixed memory limits or unit-test thresholds. The API process has its own model cache and is not included in these figures.

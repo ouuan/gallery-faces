@@ -19,6 +19,7 @@ from .vision import (
     install_models,
     validate_embedding,
     DetectionCancelled,
+    release_idle_memory,
 )
 from .importer import EXTENSIONS, import_file, safe_directory
 
@@ -441,8 +442,18 @@ def worker_concurrency():
     return max(1, min(4, cpus))
 
 
+def worker_idle_timeout():
+    value = os.environ.get("WORKER_IDLE_TIMEOUT_SECONDS", "300")
+    if not value.isascii() or not value.isdecimal():
+        raise ValueError("WORKER_IDLE_TIMEOUT_SECONDS must be a non-negative integer")
+    return int(value)
+
+
 def run_worker(stop):
     concurrency = worker_concurrency()
+    idle_timeout = worker_idle_timeout()
+    idle_since = None
+    idle_released = False
     with (
         ThreadPoolExecutor(max_workers=concurrency) as compute,
         ThreadPoolExecutor(max_workers=1) as io,
@@ -463,6 +474,16 @@ def run_worker(stop):
                         break
                     running[executor].add(executor.submit(execute, task))
             cleanup_deleted_files()
+            if any(running.values()):
+                idle_since = None
+                idle_released = False
+            elif idle_timeout and not idle_released and not stop.is_set():
+                now = time.monotonic()
+                if idle_since is None:
+                    idle_since = now
+                elif now - idle_since >= idle_timeout:
+                    release_idle_memory()
+                    idle_released = True
             stop.wait(0.1)
 
 

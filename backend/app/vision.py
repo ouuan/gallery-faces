@@ -1,3 +1,5 @@
+import ctypes
+import gc
 import hashlib
 import os
 import tempfile
@@ -41,6 +43,21 @@ _sessions = {}
 # Set once per process, never enter/leave a global BLAS limit inside worker threads.
 cv2.setNumThreads(1)
 _thread_limit = threadpool_limits(limits=1)
+
+
+def release_idle_memory():
+    """Release cached models; caller must ensure all worker jobs have finished."""
+    with _lock:
+        _sessions.clear()
+    gc.collect()
+    # Optional allocator support: unavailable on musl and some other platforms.
+    try:
+        trim = ctypes.CDLL(None).malloc_trim
+    except (AttributeError, OSError):
+        return
+    trim.argtypes = [ctypes.c_size_t]
+    trim.restype = ctypes.c_int
+    trim(0)
 
 
 def file_state(path):

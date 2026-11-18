@@ -8,6 +8,42 @@ def face(short=60):
     return np.array([0, 0, short, short]), vision.ARCFACE.copy(), short
 
 
+@pytest.mark.parametrize("allocator", ["supported", "missing_symbol", "unavailable"])
+def test_idle_release_frees_sessions_and_reloads(monkeypatch, allocator):
+    import weakref
+    from concurrent.futures import ThreadPoolExecutor
+
+    class Session:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    trims = []
+
+    def trim(pad):
+        trims.append(pad)
+        return 1
+
+    def libc(_):
+        if allocator == "unavailable":
+            raise OSError("unavailable")
+        return SimpleNamespace(malloc_trim=trim) if allocator == "supported" else SimpleNamespace()
+
+    monkeypatch.setattr(vision.ctypes, "CDLL", libc)
+    monkeypatch.setattr(vision, "_sessions", {})
+    monkeypatch.setattr(vision, "verify_model", lambda *_: (1, 2, 3, 4, 5))
+    monkeypatch.setattr(vision.ort, "InferenceSession", Session)
+    for _ in range(2):
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            models = list(pool.map(lambda _: vision.Vision(), range(8)))
+        assert all(model.detector is models[0].detector for model in models)
+        assert all(model.recognizer is models[0].recognizer for model in models)
+        refs = [weakref.ref(models[0].detector), weakref.ref(models[0].recognizer)]
+        del models
+        vision.release_idle_memory()
+        assert all(ref() is None for ref in refs)
+    assert trims == ([0, 0] if allocator == "supported" else [])
+
+
 @pytest.mark.parametrize(
     "initial,sizes",
     [
