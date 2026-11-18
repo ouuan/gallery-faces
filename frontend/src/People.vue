@@ -592,26 +592,27 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
   >
   <n-modal :show="!!groupEdit" @update:show="!$event && (groupEdit = null)"
     ><div
-      v-if="groupEdit"
       class="form-dialog"
       role="dialog"
       aria-modal="true"
       aria-label="编辑分组"
     >
       <h2>编辑分组</h2>
-      <label class="field-label"
-        >名称<n-input v-model:value="groupEdit.name" /></label
-      ><label class="field-label"
-        >成员<n-select
-          v-model:value="groupEdit.person_ids"
-          multiple
-          filterable
-          :options="store.people.map((p) => ({ label: p.name, value: p.id }))"
-      /></label>
-      <div class="form-actions">
-        <n-button @click="groupEdit = null">取消</n-button
-        ><n-button type="primary" @click="saveGroup">保存分组</n-button>
-      </div>
+      <template v-if="groupEdit">
+        <label class="field-label"
+          >名称<n-input v-model:value="groupEdit.name" /></label
+        ><label class="field-label"
+          >成员<n-select
+            v-model:value="groupEdit.person_ids"
+            multiple
+            filterable
+            :options="store.people.map((p) => ({ label: p.name, value: p.id }))"
+        /></label>
+        <div class="form-actions">
+          <n-button @click="groupEdit = null">取消</n-button
+          ><n-button type="primary" @click="saveGroup">保存分组</n-button>
+        </div>
+      </template>
     </div></n-modal
   >
 </template>

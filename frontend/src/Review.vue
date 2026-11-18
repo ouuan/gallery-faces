@@ -740,95 +740,97 @@ onMounted(load);
   </div>
   <n-modal :show="!!newPersonFace" @update:show="!$event && closeNewPerson()">
     <div
-      v-if="newPersonFace"
       class="form-dialog"
       role="dialog"
       aria-modal="true"
       aria-labelledby="face-person-title"
     >
       <h2 id="face-person-title">从人脸添加人物</h2>
-      <div class="new-person-preview">
-        <img
-          class="face-crop"
-          :src="`/api/v1/admin/faces/${newPersonFace.id}/crop`"
-          :alt="`人脸 #${newPersonFace.id}`"
-        />
-        <p>创建后，人脸 #{{ newPersonFace.id }} 将确认为这位人物</p>
-      </div>
-      <n-alert v-if="createError" type="error">{{ createError }}</n-alert>
-      <form @submit.prevent="createPerson">
-        <label class="field-label">
-          <span>姓名 <span class="required">必填</span></span>
-          <n-input
-            v-model:value="newPersonName"
-            placeholder="输入新人物姓名"
-            maxlength="100"
-            autofocus
+      <template v-if="newPersonFace">
+        <div class="new-person-preview">
+          <img
+            class="face-crop"
+            :src="`/api/v1/admin/faces/${newPersonFace.id}/crop`"
+            :alt="`人脸 #${newPersonFace.id}`"
+          />
+          <p>创建后，人脸 #{{ newPersonFace.id }} 将确认为这位人物</p>
+        </div>
+        <n-alert v-if="createError" type="error">{{ createError }}</n-alert>
+        <form @submit.prevent="createPerson">
+          <label class="field-label">
+            <span>姓名 <span class="required">必填</span></span>
+            <n-input
+              v-model:value="newPersonName"
+              placeholder="输入新人物姓名"
+              maxlength="100"
+              autofocus
+              :disabled="creatingPerson"
+            />
+          </label>
+          <PersonDetailsFields
+            v-model:groups="newPersonGroups"
+            v-model:accounts="newPersonAccounts"
+            v-model:new-group="newGroup"
             :disabled="creatingPerson"
           />
-        </label>
-        <PersonDetailsFields
-          v-model:groups="newPersonGroups"
-          v-model:accounts="newPersonAccounts"
-          v-model:new-group="newGroup"
-          :disabled="creatingPerson"
-        />
-        <n-checkbox
-          v-model:checked="addReference"
-          :disabled="creatingPerson || !newPersonFace.has_embedding"
-          :aria-disabled="creatingPerson || !newPersonFace.has_embedding"
-          >将此人脸作为参考图</n-checkbox
-        >
-        <p class="hint">
-          {{
-            newPersonFace.has_embedding
-              ? "参考图用于自动匹配其他未知人脸"
-              : "此人脸暂无有效特征，可先创建人物，再到人物管理中添加参考图"
-          }}
-        </p>
-        <div class="form-actions">
-          <n-button :disabled="creatingPerson" @click="closeNewPerson"
-            >取消</n-button
+          <n-checkbox
+            v-model:checked="addReference"
+            :disabled="creatingPerson || !newPersonFace.has_embedding"
+            :aria-disabled="creatingPerson || !newPersonFace.has_embedding"
+            >将此人脸作为参考图</n-checkbox
           >
-          <n-button class="stable-loading-button"
-            type="primary"
-            attr-type="submit"
-            :loading="creatingPerson"
-            :disabled="creatingPerson || !newPersonName.trim()"
-            >创建并确认人脸</n-button
-          >
-        </div>
-      </form>
+          <p class="hint">
+            {{
+              newPersonFace.has_embedding
+                ? "参考图用于自动匹配其他未知人脸"
+                : "此人脸暂无有效特征，可先创建人物，再到人物管理中添加参考图"
+            }}
+          </p>
+          <div class="form-actions">
+            <n-button :disabled="creatingPerson" @click="closeNewPerson"
+              >取消</n-button
+            >
+            <n-button class="stable-loading-button"
+              type="primary"
+              attr-type="submit"
+              :loading="creatingPerson"
+              :disabled="creatingPerson || !newPersonName.trim()"
+              >创建并确认人脸</n-button
+            >
+          </div>
+        </form>
+      </template>
     </div>
   </n-modal>
   <n-modal :show="!!sourceEdit" @update:show="!$event && (sourceEdit = null)"
     ><div
-      v-if="sourceEdit"
       class="form-dialog"
       role="dialog"
       aria-modal="true"
       aria-label="编辑来源"
     >
       <h2>编辑来源</h2>
-      <label class="field-label"
-        >发布者用户名<n-input v-model:value="sourceEdit.author" /></label
-      ><label class="field-label"
-        >账号昵称<n-input
-          v-model:value="sourceEdit.author_name"
-          placeholder="未关联人物时显示" /></label
-      ><label class="field-label"
-        >时间（含时区）<n-input
-          v-model:value="sourceEdit.published_at"
-          placeholder="2026-01-01T12:00:00+08:00" /></label
-      ><label class="field-label"
-        >帖子链接<n-input v-model:value="sourceEdit.url" /></label
-      ><label class="field-label"
-        >正文<n-input v-model:value="sourceEdit.post_text" type="textarea"
-      /></label>
-      <div class="form-actions">
-        <n-button @click="sourceEdit = null">取消</n-button
-        ><n-button type="primary" @click="saveSource">保存来源</n-button>
-      </div>
+      <template v-if="sourceEdit">
+        <label class="field-label"
+          >发布者用户名<n-input v-model:value="sourceEdit.author" /></label
+        ><label class="field-label"
+          >账号昵称<n-input
+            v-model:value="sourceEdit.author_name"
+            placeholder="未关联人物时显示" /></label
+        ><label class="field-label"
+          >时间（含时区）<n-input
+            v-model:value="sourceEdit.published_at"
+            placeholder="2026-01-01T12:00:00+08:00" /></label
+        ><label class="field-label"
+          >帖子链接<n-input v-model:value="sourceEdit.url" /></label
+        ><label class="field-label"
+          >正文<n-input v-model:value="sourceEdit.post_text" type="textarea"
+        /></label>
+        <div class="form-actions">
+          <n-button @click="sourceEdit = null">取消</n-button
+          ><n-button type="primary" @click="saveSource">保存来源</n-button>
+        </div>
+      </template>
     </div></n-modal
   >
 </template>
