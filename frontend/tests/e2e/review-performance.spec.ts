@@ -62,12 +62,12 @@ for (const queueSize of [200, 1]) test(`face confirmations refresh their group a
     await expect(page.getByText('正在加载审核项目…')).toHaveCount(0);
   }
   if (queueSize === 200) {
-    await expect(page.locator('.review-main > .review-heading h3')).toContainText('代表图 #2');
+    await expect(page.locator('.review-main > .review-heading h3')).toContainText('图片 #2');
     await expect(page.locator('.review-strip button')).toHaveCount(199);
-    await page.getByRole('button', { name: '下一组', exact: true }).click();
-    await expect(page.locator('.review-main > .review-heading h3')).toContainText('代表图 #3');
+    await page.getByRole('button', { name: '下一张', exact: true }).click();
+    await expect(page.locator('.review-main > .review-heading h3')).toContainText('图片 #3');
   } else {
-    await expect(page.locator('.review-main > .review-heading h3')).toContainText('代表图 #201');
+    await expect(page.locator('.review-main > .review-heading h3')).toContainText('图片 #201');
     await expect(page.locator('.review-strip button')).toHaveCount(1);
   }
   console.log(`Review response rows: ${reads.map(read => read.rows)}; mutation refresh bytes: ${reads.slice(1).reduce((sum, read) => sum + read.bytes, 0)}`);

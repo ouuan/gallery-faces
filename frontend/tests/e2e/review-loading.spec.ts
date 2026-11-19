@@ -30,7 +30,7 @@ test('review lazily loads thumbnails and cancels the previous full image', async
   await expect.poll(() => thumbnails.size).toBeGreaterThan(0);
   expect(thumbnails.size).toBeLessThan(200);
   expect(thumbnails.has(200)).toBe(false);
-  await page.getByRole('button', { name: '下一组', exact: true }).click();
+  await page.getByRole('button', { name: '下一张', exact: true }).click();
   await expect.poll(() => originalCancelled).toBe(true);
   await expect.poll(() => feedbackCancelled).toBe(true);
   await expect(page.locator('.face-box-editor img')).toBeVisible();

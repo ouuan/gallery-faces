@@ -72,12 +72,12 @@ for (const width of [390, 1280]) {
     await page.keyboard.press("Space");
     await expect(first).toHaveAttribute("aria-pressed", "true");
     await expect(page).not.toHaveURL(/photo=/);
-    await expect(page.getByText("已选 1 组", { exact: true })).toBeVisible();
+    await expect(page.getByText("已选 1 张", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "加载更多" }).click();
     await expect(page.locator(".photo-card")).toHaveCount(6);
     await expect(first).toHaveAttribute("aria-pressed", "true");
     await page.getByRole("button", { name: "全选已加载" }).click();
-    await expect(page.getByText("已选 6 组", { exact: true })).toBeVisible();
+    await expect(page.getByText("已选 6 张", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "取消全选" }).click();
     await expect(download).toBeDisabled();
     await first.click();
@@ -118,7 +118,7 @@ test("download error keeps selection for retry; filter changes clear it", async 
   await page.getByRole("button", { name: "选择 人物 1 的照片" }).click();
   await page.getByRole("button", { name: "下载 ZIP" }).click();
   await expect(page.getByText("部分照片已不可用，请刷新后重新选择")).toBeVisible();
-  await expect(page.getByText("已选 1 组", { exact: true })).toBeVisible();
+  await expect(page.getByText("已选 1 张", { exact: true })).toBeVisible();
   options.fail = false;
   const downloaded = page.waitForEvent("download");
   await page.getByRole("button", { name: "下载 ZIP" }).click();
@@ -128,7 +128,7 @@ test("download error keeps selection for retry; filter changes clear it", async 
   await page.locator(".n-base-select-option").filter({ hasText: /^最早发布$/ }).click();
   await expect(page.getByRole("button", { name: "下载", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "下载", exact: true }).click();
-  await expect(page.getByText("已选 0 组", { exact: true })).toBeVisible();
+  await expect(page.getByText("已选 0 张", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "下载", exact: true })).toBeVisible();
 });
@@ -150,7 +150,7 @@ test("cancelling preparation prevents a late download", async ({ page, archiveUr
   await page.getByRole("button", { name: "取消", exact: true }).click();
   release();
   await page.getByRole("button", { name: "下载", exact: true }).click();
-  await expect(page.getByText("已选 0 组", { exact: true })).toBeVisible();
+  await expect(page.getByText("已选 0 张", { exact: true })).toBeVisible();
   expect(downloads).toEqual([]);
 });
 
@@ -158,8 +158,8 @@ test("large selections explain the per-download limit", async ({ page, archiveUr
   await setup(page, archiveUrl, { count: 201 });
   await page.getByRole("button", { name: "下载", exact: true }).click();
   await page.getByRole("button", { name: "全选已加载" }).click();
-  await expect(page.getByText("已选 201 组", { exact: true })).toBeVisible();
-  await expect(page.getByText(/每次最多 200 组/)).toBeVisible();
+  await expect(page.getByText("已选 201 张", { exact: true })).toBeVisible();
+  await expect(page.getByText(/每次最多 200 张/)).toBeVisible();
   await expect(page.getByRole("button", { name: "下载 ZIP" })).toBeDisabled();
   await page.locator(".photo-card").first().click();
   await expect(page.getByRole("button", { name: "下载 ZIP" })).toBeEnabled();

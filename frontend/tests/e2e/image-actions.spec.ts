@@ -31,20 +31,20 @@ test("recycling expands the current image to its whole group and confirms the sc
     return route.fulfill({ json: [] });
   });
   await page.goto("/admin/review");
-  await page.getByRole("button", { name: "审核重复组（代表图 2，共 2 个版本）", exact: true }).click();
+  await page.getByRole("button", { name: "审核图片（2，共 2 个版本）", exact: true }).click();
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.locator(".review-toolbar").screenshot({ path: `/tmp/gallery-faces/image-actions-${width}.png` });
   }
-  const recycle = page.getByRole("button", { name: "将当前重复组移入回收站", exact: true });
+  const recycle = page.getByRole("button", { name: "将当前图片移入回收站", exact: true });
   await recycle.click();
-  await expect(page.getByRole("dialog")).toContainText("1 组共 2 张图片");
-  await expect(page.getByRole("dialog")).toContainText("包含同组的所有重复版本");
+  await expect(page.getByRole("dialog")).toContainText("共 2 张图片");
+  await expect(page.getByRole("dialog")).toContainText("包含所选图片的所有重复版本");
   await page.getByRole("dialog").getByRole("button", { name: "取消", exact: true }).click();
   expect(calls).toEqual([]);
   await recycle.click();
   await page.getByRole("dialog").getByRole("button", { name: "确认", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "代表图 #3 · 共 1 个版本", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "图片 #3 · 共 1 个版本", exact: true })).toBeVisible();
   expect(calls).toEqual([{ action: "delete", ids: [2], scope_token: "scope-1" }]);
-  await expect(page.getByRole("button", { name: "审核重复组（代表图 1，共 1 个版本）", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "审核图片（1，共 1 个版本）", exact: true })).toHaveCount(0);
 });

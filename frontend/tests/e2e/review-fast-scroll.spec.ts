@@ -72,8 +72,8 @@ for (const width of [1440, 390]) {
       expect(peak).toBeLessThanOrEqual(2 * (Math.ceil(width / 124) + 2));
       expect(requestsAtEnd).toBeLessThan(100);
       if (movement === 'jump') expect(requestsAtEnd).toBeLessThanOrEqual(2 * (Math.ceil(width / 124) + 1));
-      await strip.getByRole('button', { name: '审核重复组（代表图 200，共 1 个版本）', exact: true }).click();
-      await expect(page.locator('.review-main > .review-heading h3')).toContainText('代表图 #200');
+      await strip.getByRole('button', { name: '审核图片（200，共 1 个版本）', exact: true }).click();
+      await expect(page.locator('.review-main > .review-heading h3')).toContainText('图片 #200');
       await expect.poll(() => page.locator('.face-box-editor img').evaluate(image => (image as HTMLImageElement).naturalWidth)).toBe(800);
       await expect(page).toHaveURL(/image=200/);
       // Return to the beginning and end to check reuse after the rapid movement.

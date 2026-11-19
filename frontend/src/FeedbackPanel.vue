@@ -81,7 +81,7 @@ watch([endpoint, () => props.group], () => { items.value = []; cursor.value = nu
 <template>
   <LoadingOverlay v-if="admin && !items.length && !error && !submitError" :show="loading" label="正在加载反馈…" />
   <section v-if="!admin || error || submitError || items.length" class="feedback-panel loading-region" :aria-busy="loading" aria-label="图片反馈">
-    <h3>{{ group ? "组内反馈" : "图片反馈" }}<span v-if="!admin && pendingCount" class="muted">（已有 {{ pendingCount }} 条反馈）</span><span v-if="admin && pendingCount" class="muted">（{{ pendingCount }} 条待处理）</span></h3>
+    <h3>图片反馈<span v-if="!admin && pendingCount" class="muted">（已有 {{ pendingCount }} 条反馈）</span><span v-if="admin && pendingCount" class="muted">（{{ pendingCount }} 条待处理）</span></h3>
     <template v-if="admin">
       <n-alert v-if="error" type="error">{{ error }} <n-button :disabled="loading" @click="load()">重试</n-button></n-alert>
       <LoadingOverlay :show="loading" label="正在加载反馈…" />

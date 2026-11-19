@@ -99,8 +99,8 @@ test("each face selects and saves its own person independently", async ({ page }
   await expect(first.getByRole("button", { name: "撤销", exact: true })).toBeDisabled();
   expect(saved).toHaveLength(2);
   await first.locator("label").filter({ has: page.getByRole("radio", { name: /人物乙/ }) }).click();
-  await page.getByRole("button", { name: "下一组", exact: true }).click();
-  await page.getByRole("button", { name: "审核重复组（代表图 1，共 1 个版本）", exact: true }).click();
+  await page.getByRole("button", { name: "下一张", exact: true }).click();
+  await page.getByRole("button", { name: "审核图片（1，共 1 个版本）", exact: true }).click();
   await expect(first.locator(".n-cascader")).toContainText("人物甲");
   await expect(first.getByRole("button", { name: "确认", exact: true })).toBeDisabled();
   await expect(first.locator(".reference-grid")).toHaveCount(0);

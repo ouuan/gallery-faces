@@ -38,7 +38,7 @@ test('member links resolve to one group, with all sources and paginated feedback
   await page.goto('/admin/review?state=review&image=1');
   await expect(page).toHaveURL(/image=2/);
   await expect(page.locator('.review-strip button')).toHaveCount(2);
-  await expect(page.locator('.review-main > .review-heading h3')).toHaveText('代表图 #2 · 共 2 个版本');
+  await expect(page.locator('.review-main > .review-heading h3')).toHaveText('图片 #2 · 共 2 个版本');
   await expect(page.locator('.review-sources')).toContainText('来源待补全：#1');
   await expect(page.locator('.source-members')).toHaveText('图片 #1、#2');
   await page.getByRole('button', { name: '加载更多反馈' }).click();
@@ -54,9 +54,9 @@ test('member links resolve to one group, with all sources and paginated feedback
       await page.screenshot({ path: `/tmp/gallery-faces/group-review-${width}-${colorScheme}.png`, fullPage: true });
     }
   }
-  await page.getByRole('button', { name: '下一组', exact: true }).click();
+  await page.getByRole('button', { name: '下一张', exact: true }).click();
   await expect(page).toHaveURL(/image=3/);
-  await page.getByRole('button', { name: '上一组', exact: true }).click();
+  await page.getByRole('button', { name: '上一张', exact: true }).click();
   await expect(page).toHaveURL(/image=2/);
 });
 
@@ -81,10 +81,10 @@ test('a changed representative rejects an old edit, preserves the choice, then r
   await expect(page.getByText('代表图已变化，请刷新后审核当前代表图')).toBeVisible();
   await expect(page.getByRole('radio', { name: /人物8/ })).toBeChecked();
   expect(reads).toBe(1);
-  await expect(page.locator('.review-main > .review-heading h3')).toContainText('代表图 #2');
+  await expect(page.locator('.review-main > .review-heading h3')).toContainText('图片 #2');
   await page.getByRole('button', { name: '刷新', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: '确认', exact: true }).click();
-  await expect(page.locator('.review-main > .review-heading h3')).toHaveText('代表图 #4 · 共 3 个版本');
+  await expect(page.locator('.review-main > .review-heading h3')).toHaveText('图片 #4 · 共 3 个版本');
   await expect(page).toHaveURL(/image=4/);
   expect(reads).toBe(2);
 });
@@ -106,7 +106,7 @@ test('a completed group leaves the queue and advances to the following group', a
   await page.goto('/admin/review');
   await page.getByRole('button', { name: '全部确认', exact: true }).click();
   await expect(page.locator('.review-strip button')).toHaveCount(1);
-  await expect(page.locator('.review-main > .review-heading h3')).toHaveText('代表图 #3 · 共 1 个版本');
+  await expect(page.locator('.review-main > .review-heading h3')).toHaveText('图片 #3 · 共 1 个版本');
   await expect(page).toHaveURL(/image=3/);
 });
 
@@ -139,7 +139,7 @@ test('manual refresh reveals new feedback for an unchanged representative and al
   await expect(page.locator('.feedback-panel')).toHaveCount(0);
   feedback = [{ id: 1, image_id: 1, content: '刚收到的同组反馈', status: 'pending', created_at: '2026-01-01T00:00:00Z' }];
   await page.getByRole('button', { name: '刷新', exact: true }).click();
-  await expect(page.locator('.review-main > .review-heading h3')).toHaveText('代表图 #2 · 共 2 个版本');
+  await expect(page.locator('.review-main > .review-heading h3')).toHaveText('图片 #2 · 共 2 个版本');
   await expect(page.locator('.feedback-content')).toHaveText('刚收到的同组反馈');
   await expect(page.locator('.feedback-panel')).toContainText('1 条待处理');
   expect(feedbackReads).toBe(2);

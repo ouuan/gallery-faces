@@ -257,7 +257,7 @@ onUnmounted(() => {
           <p class="muted">
             {{
               photos.length
-                ? `已展示 ${photos.length} 组照片`
+                ? `已展示 ${photos.length} 张照片`
                 : "按人物、发布者和日期浏览"
             }}
           </p>
@@ -296,8 +296,8 @@ onUnmounted(() => {
       </div>
       <section v-if="selecting" class="gallery-selection" aria-label="批量下载">
         <div class="selection-summary">
-          <strong role="status">已选 {{ downloadSelection.size }} 组</strong>
-          <span class="hint">每组下载一张，优先原图；每次最多 200 组</span>
+          <strong role="status">已选 {{ downloadSelection.size }} 张</strong>
+          <span class="hint">优先下载原图；每次最多 200 张</span>
         </div>
         <div class="selection-actions">
           <n-button :disabled="loading || preparingDownload || !photos.length" @click="toggleAllLoaded">

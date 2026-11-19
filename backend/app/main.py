@@ -966,7 +966,7 @@ def prepare_gallery_download(body: GalleryDownloadInput):
 def download_gallery(groups: str = Query(min_length=1, max_length=4000)):
     parts = groups.split(",")
     if len(parts) > 200 or any(not re.fullmatch(r"[0-9]{1,19}", part) for part in parts):
-        fail("请选择 1–200 组照片")
+        fail("请选择 1–200 张照片")
     ids = [int(part) for part in parts]
     if any(not 0 < identifier <= 9223372036854775807 for identifier in ids):
         fail("照片编号无效")

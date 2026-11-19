@@ -448,7 +448,7 @@ async function action(value: string) {
   const ids = [...actionIds.value];
   if (
     !await confirm(
-      `重新检测${selected.value.length ? "所选" : "当前"} ${ids.length} 组的代表图（${ids.map((id) => "#" + id).join("、")}）？`,
+      `重新检测${selected.value.length ? "所选" : "当前"} ${ids.length} 张图片（${ids.map((id) => "#" + id).join("、")}）？`,
     )
   )
     return;
@@ -470,7 +470,7 @@ async function deleteImages(ids: number[]) {
   try {
     const preview = await send("/admin/images/recycle-preview", { ids: targets });
     if (!await confirm(
-      `将 ${preview.groups} 组共 ${preview.total} 张图片移入回收站？包含同组的所有重复版本，其中 ${preview.already_trashed} 张已在回收站。所选图片：${targets.map(id => "#" + id).join("、")}。原图和大图将立即清理，缩略图、来源和审核记录保留；恢复需要重新获取原文件。${dirty.value ? "未保存的编辑也会丢弃。" : ""}`,
+      `将共 ${preview.total} 张图片移入回收站？包含所选图片的所有重复版本，其中 ${preview.already_trashed} 张已在回收站。所选图片：${targets.map(id => "#" + id).join("、")}。原图和大图将立即清理，缩略图、来源和审核记录保留；恢复需要重新获取原文件。${dirty.value ? "未保存的编辑也会丢弃。" : ""}`,
     )) return;
     const result = await send("/admin/images/actions", {
       action: "delete", ids: targets, scope_token: preview.scope_token,
@@ -550,7 +550,7 @@ onMounted(load);
         :disabled="savingBox || savingFaces || acting || deleting"
         v-model:value="state"
         :options="[
-          ...(state === 'image' ? [{ value: 'image', label: '当前重复组' }] : []),
+          ...(state === 'image' ? [{ value: 'image', label: '当前图片' }] : []),
           { value: 'review', label: '全部待审核' },
           { value: 'feedback', label: '用户反馈' },
           { value: 'unknown', label: '未知人物' },
@@ -559,7 +559,7 @@ onMounted(load);
           { value: 'incomplete', label: '来源待补全' },
           { value: 'pending', label: '等待检测' },
           { value: 'trash', label: '回收站' },
-          { value: 'all', label: '全部在库重复组' },
+          { value: 'all', label: '全部在库图片' },
         ]"
       />
       <n-button v-if="state !== 'trash'" :disabled="navigationDisabled" @click="openFilters">
@@ -567,9 +567,9 @@ onMounted(load);
       </n-button>
       <span v-if="state !== 'trash'">{{
         selected.length
-          ? `已选 ${selected.length} 组`
+          ? `已选 ${selected.length} 张`
           : active
-            ? `代表图 #${active.id}`
+            ? `图片 #${active.id}`
             : "暂无图片"
       }}</span>
     </div>
@@ -586,10 +586,10 @@ onMounted(load);
         secondary
         :disabled="actionsDisabled"
         :loading="deleting"
-        :aria-label="selected.length ? '将所选图片及重复组移入回收站' : '将当前重复组移入回收站'"
+        :aria-label="selected.length ? '将所选图片及所有重复版本移入回收站' : '将当前图片移入回收站'"
         aria-keyshortcuts="d"
         @click="deleteImages(actionIds)"
-        >{{ selected.length ? "回收所选重复组" : "移入回收站" }}<kbd class="shortcut-key" aria-hidden="true">D</kbd></n-button
+        >{{ selected.length ? "回收所选图片" : "移入回收站" }}<kbd class="shortcut-key" aria-hidden="true">D</kbd></n-button
       >
     </div>
   </div>
@@ -622,7 +622,7 @@ onMounted(load);
       >
         <n-checkbox
           :checked="selected.includes(image.id)"
-          :aria-label="`选择重复组（代表图 ${image.id}）`"
+          :aria-label="`选择图片（${image.id}）`"
           @update:checked="
             $event
               ? selected.push(image.id)
@@ -631,7 +631,7 @@ onMounted(load);
         /><button
           @click="moveImage(i)"
           :disabled="navigationDisabled"
-          :aria-label="`审核重复组（代表图 ${image.id}，共 ${image.member_count ?? 1} 个版本）`"
+          :aria-label="`审核图片（${image.id}，共 ${image.member_count ?? 1} 个版本）`"
           :aria-current="i === current ? 'true' : undefined"
         >
           <img :data-thumbnail="`/api/v1/admin/media/${image.id}?thumbnail=true`" width="72" height="48" alt="" />#{{ image.id }}
@@ -640,16 +640,16 @@ onMounted(load);
     </div>
     <div v-if="active" class="review-main">
       <div class="review-heading">
-        <h3>代表图 #{{ active.id }} <span class="muted">· 共 {{ active.member_count ?? 1 }} 个版本</span></h3>
+        <h3>图片 #{{ active.id }} <span class="muted">· 共 {{ active.member_count ?? 1 }} 个版本</span></h3>
         <div class="review-navigation">
-          <span class="muted">{{ current + 1 }} / {{ images.length }} 组</span>
-          <n-button :disabled="navigationDisabled || current === 0" @click="moveImage(current - 1)" aria-label="上一组" aria-keyshortcuts="ArrowLeft"
-            >上一组<kbd class="shortcut-key" aria-hidden="true">←</kbd></n-button
+          <span class="muted">{{ current + 1 }} / {{ images.length }} 张</span>
+          <n-button :disabled="navigationDisabled || current === 0" @click="moveImage(current - 1)" aria-label="上一张" aria-keyshortcuts="ArrowLeft"
+            >上一张<kbd class="shortcut-key" aria-hidden="true">←</kbd></n-button
           >
           <n-button
             :disabled="navigationDisabled || current >= images.length - 1"
-            @click="moveImage(current + 1)" aria-label="下一组" aria-keyshortcuts="ArrowRight"
-            >下一组<kbd class="shortcut-key" aria-hidden="true">→</kbd></n-button
+            @click="moveImage(current + 1)" aria-label="下一张" aria-keyshortcuts="ArrowRight"
+            >下一张<kbd class="shortcut-key" aria-hidden="true">→</kbd></n-button
           >
         </div>
       </div>
@@ -799,7 +799,7 @@ onMounted(load);
             class="review-sources"
             aria-labelledby="review-sources-title"
           >
-            <h3 id="review-sources-title">组内来源</h3>
+            <h3 id="review-sources-title">图片来源</h3>
             <p v-if="active.incomplete_image_ids?.length" class="hint">
               来源待补全：{{ active.incomplete_image_ids.map((id: number) => "#" + id).join("、") }}
             </p>
