@@ -1,5 +1,7 @@
 import io
+from datetime import datetime, timezone
 from pathlib import Path
+import struct
 from zipfile import ZipFile
 
 import pytest
@@ -8,9 +10,12 @@ from app import archives, db
 from test_workflows import client, image
 
 
-def seed(*, group=None, original=True, size=100):
+PUBLISHED_AT = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+def seed(*, group=None, original=True, size=100, date="2026-01-01T00:00:00Z"):
     with db.connect(True) as conn:
-        identifier = image(conn, group=group)
+        identifier = image(conn, group=group, date=date)
         filename = f"photo-{identifier}.jpg"
         original_filename = f"original-{identifier}.png" if original else None
         conn.execute(
@@ -43,6 +48,27 @@ def test_download_public_representatives_original_fallback_and_deduplication(cli
         assert archive.read(archive.namelist()[0]) == f"original {representative}".encode()
         assert archive.read(archive.namelist()[1]) == f"display {second}".encode()
         assert archive.testzip() is None
+
+
+@pytest.mark.parametrize("original", [True, False])
+def test_download_uses_earliest_public_post_time(client, original):
+    _, group = seed(date="2024-05-06T07:08:09Z")
+    representative, _ = seed(group=group, size=200, original=original)
+    with db.connect(True) as conn:
+        hidden = image(conn, group=group, date="2020-01-01T00:00:00Z")
+        conn.execute("UPDATE images SET hidden=1 WHERE id=?", (hidden,))
+        pending = image(conn, group=group, date="2021-01-01T00:00:00Z")
+        conn.execute("UPDATE images SET detection='pending' WHERE id=?", (pending,))
+        image(conn, group=group, date="2022-01-01T00:00:00Z", author=None)
+    response = client.get(f"/api/v1/gallery/download.zip?groups={group}")
+    assert response.status_code == 200
+    with ZipFile(io.BytesIO(response.content)) as archive:
+        info, = archive.infolist()
+        filename = f"original-{representative}.png" if original else f"photo-{representative}.jpg"
+        assert info.filename == f"{group}-{filename}"
+        assert info.date_time == (2024, 5, 6, 7, 8, 8)
+        timestamp = int(datetime(2024, 5, 6, 7, 8, 9, tzinfo=timezone.utc).timestamp())
+        assert info.extra == struct.pack("<HHBI", 0x5455, 5, 1, timestamp)
 
 
 @pytest.mark.parametrize("unavailable", ["hidden", "pending", "source", "missing", "deleted"])
@@ -106,14 +132,15 @@ def test_zip_streams_before_reading_files_and_closes_on_cancel(tmp_path, monkeyp
         return handle
 
     monkeypatch.setattr(Path, "open", track_open)
-    stream = archives.stream_zip([("one.jpg", first), ("two.jpg", second)])
+    files = [("one.jpg", first, PUBLISHED_AT), ("two.jpg", second, PUBLISHED_AT)]
+    stream = archives.stream_zip(files)
     assert next(stream).startswith(b"PK")
     assert len(opened) == 1 and opened[0].tell() == 0
     assert next(stream) == content[:archives.CHUNK_SIZE]
     assert opened[0].tell() == archives.CHUNK_SIZE
     stream.close()
     assert len(opened) == 1 and opened[0].closed
-    chunks = list(archives.stream_zip([("one.jpg", first), ("two.jpg", second)]))
+    chunks = list(archives.stream_zip(files))
     assert max(map(len, chunks)) <= archives.CHUNK_SIZE
     with ZipFile(io.BytesIO(b"".join(chunks))) as archive:
         assert archive.read("one.jpg") == content
@@ -126,7 +153,29 @@ def test_zip64_directory(tmp_path, monkeypatch):
     monkeypatch.setattr(zipfile, "ZIP64_LIMIT", 100)
     path = tmp_path / "large.jpg"
     path.write_bytes(b"x" * 200)
-    content = b"".join(archives.stream_zip([("large.jpg", path)]))
+    content = b"".join(archives.stream_zip([("large.jpg", path, PUBLISHED_AT)]))
     assert b"PK\x06\x06" in content
     with ZipFile(io.BytesIO(content)) as archive:
         assert archive.read("large.jpg") == b"x" * 200
+
+
+@pytest.mark.parametrize("published_at,expected_date", [
+    ("2024-05-06T07:08:09+08:00", (2024, 5, 5, 23, 8, 8)),
+    ("1975-05-06T07:08:09Z", (1980, 1, 1, 0, 0, 0)),
+    ("1960-05-06T07:08:09Z", (1980, 1, 1, 0, 0, 0)),
+    ("2200-05-06T07:08:09Z", (2107, 12, 31, 23, 59, 58)),
+])
+def test_zip_timestamp_timezone_and_range(tmp_path, published_at, expected_date):
+    path = tmp_path / "photo.jpg"
+    path.write_bytes(b"photo")
+    date = datetime.fromisoformat(published_at)
+    content = b"".join(archives.stream_zip([("photo.jpg", path, date)]))
+    with ZipFile(io.BytesIO(content)) as archive:
+        info = archive.getinfo("photo.jpg")
+        assert info.date_time == expected_date
+        timestamp = int(date.timestamp())
+        if 0 <= timestamp <= 0xFFFFFFFF:
+            assert struct.unpack("<HHBI", info.extra) == (0x5455, 5, 1, timestamp)
+        else:
+            assert info.extra == b""
+        assert archive.read(info) == b"photo"

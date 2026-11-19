@@ -891,6 +891,14 @@ def gallery_download_files(group_ids):
             ).fetchone()
             if not row:
                 fail("部分照片已不可用，请刷新后重新选择", 404)
+            published_at = db.execute(
+                "SELECT p.published_at FROM images i JOIN sources s ON s.image_id=i.id "
+                "JOIN posts p ON p.id=s.post_id WHERE i.group_id=? "
+                "AND i.hidden=0 AND i.detection='done' AND p.author IS NOT NULL "
+                "AND p.published_at IS NOT NULL AND p.url IS NOT NULL "
+                "ORDER BY p.published_at,p.id LIMIT 1",
+                (group_id,),
+            ).fetchone()[0]
             original = row["original_filename"]
             path = DATA / "originals" / original if original else None
             if path is None or not path.is_file():
@@ -898,7 +906,7 @@ def gallery_download_files(group_ids):
             if not path.is_file():
                 fail("部分照片文件缺失，请刷新后重试或联系管理员", 404)
             # Group IDs keep archive entries unique even when source names collide.
-            files.append((f"{group_id}-{path.name}", path))
+            files.append((f"{group_id}-{path.name}", path, datetime.fromisoformat(published_at)))
     return files
 
 
