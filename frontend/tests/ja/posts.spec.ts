@@ -50,6 +50,7 @@ for (const width of [320, 390, 768, 1280, 1440]) {
     await page.getByLabel('テーマ', { exact: true }).click();
     await page.getByText('ダーク', { exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.locator('iframe[title="X 投稿"]')).toHaveCSS('color-scheme', 'light');
     await page.screenshot({path:`/tmp/gallery-faces/ja-${width}-dark.png`,fullPage:true});
     expect(requests.filter(url => /\/api\/v1\/(media|gallery|admin|session)/.test(url))).toEqual([]);
     await expect(page.locator('img')).toHaveCount(0);

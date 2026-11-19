@@ -67,7 +67,7 @@ onBeforeUnmount(() => { generation++; observer?.disconnect(); });
 </script>
 <template>
   <article class="post-embed">
-    <div v-show="!failed" ref="host" class="embed-host" />
+    <div v-show="!failed" ref="host" class="embed-host" :class="{ 'x-embed': post.platform === 'x' }" />
     <p v-if="busy" class="embed-status muted" role="status">投稿を読み込み中…</p>
     <p v-if="failed" class="embed-status" role="status">投稿を表示できません。<n-button text @click="render">再試行</n-button></p>
     <a v-if="url" class="post-source" :href="url" target="_blank" rel="noopener noreferrer">{{ post.platform === 'x' ? 'X' : 'Instagram' }}で投稿を見る</a>
@@ -82,6 +82,8 @@ onBeforeUnmount(() => { generation++; observer?.disconnect(); });
   min-width: 0 !important;
   max-width: 100% !important;
 }
+/* X themes the card itself; match its iframe document's light scheme to keep the canvas transparent. */
+.x-embed { color-scheme: light; }
 .embed-host :deep(.twitter-tweet), .embed-host :deep(.instagram-media) { margin: 0 auto !important; }
 .embed-status { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .post-source { display: inline-flex; align-items: center; justify-self: start; min-height: 44px; }
