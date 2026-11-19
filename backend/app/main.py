@@ -11,7 +11,7 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 from fastapi import (
     FastAPI,
     Depends,
@@ -22,7 +22,7 @@ from fastapi import (
     File,
     Query,
 )
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, unknown_sql, cleanup_deleted_files
@@ -32,6 +32,7 @@ from .vision import MODEL_VERSION, Vision, candidates, models_ready, validate_em
 from .db import schedule_detection, ACTIVE_REFERENCE
 from .trash import require_active, require_active_face
 from .representatives import complete_source_sql, representative_sql, require_representative, require_representative_face
+from .archives import stream_zip
 
 
 @asynccontextmanager
@@ -869,6 +870,66 @@ def gallery(
             else None
         )
         return {"items": [summary(db, r) for r in page], "next_cursor": next_cursor}
+
+
+class GalleryDownloadInput(BaseModel):
+    group_ids: list[Annotated[int, Field(strict=True, ge=1, le=9223372036854775807)]] = Field(min_length=1, max_length=200)
+
+
+class GalleryDownloadLink(BaseModel):
+    download_url: str
+
+
+def gallery_download_files(group_ids):
+    files = []
+    with connect() as db:
+        db.execute("BEGIN")
+        for group_id in dict.fromkeys(group_ids):
+            row = db.execute(
+                f"SELECT * FROM images WHERE id={representative_sql('?', public=True)}",
+                (group_id,),
+            ).fetchone()
+            if not row:
+                fail("部分照片已不可用，请刷新后重新选择", 404)
+            original = row["original_filename"]
+            path = DATA / "originals" / original if original else None
+            if path is None or not path.is_file():
+                path = DATA / "images" / row["filename"]
+            if not path.is_file():
+                fail("部分照片文件缺失，请刷新后重试或联系管理员", 404)
+            # Group IDs keep archive entries unique even when source names collide.
+            files.append((f"{group_id}-{path.name}", path))
+    return files
+
+
+@app.post("/api/v1/gallery/downloads", response_model=GalleryDownloadLink)
+def prepare_gallery_download(body: GalleryDownloadInput):
+    ids = list(dict.fromkeys(body.group_ids))
+    gallery_download_files(ids)
+    # Validate before handing the request to the browser's download manager.
+    # This stores no archive or job; GET rechecks visibility and availability.
+    return {"download_url": "/api/v1/gallery/download.zip?groups=" + ",".join(map(str, ids))}
+
+
+@app.get(
+    "/api/v1/gallery/download.zip", response_class=StreamingResponse,
+    responses={200: {"content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}}}},
+)
+def download_gallery(groups: str = Query(min_length=1, max_length=4000)):
+    parts = groups.split(",")
+    if len(parts) > 200 or any(not re.fullmatch(r"[0-9]{1,19}", part) for part in parts):
+        fail("请选择 1–200 组照片")
+    ids = [int(part) for part in parts]
+    if any(not 0 < identifier <= 9223372036854775807 for identifier in ids):
+        fail("照片编号无效")
+    files = gallery_download_files(ids)
+    filename = datetime.now(timezone.utc).strftime("gallery-%Y%m%d-%H%M%S.zip")
+    return StreamingResponse(stream_zip(files), media_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "X-Accel-Buffering": "no",
+        "Cache-Control": "no-store",
+        "Cloudflare-CDN-Cache-Control": "no-store",
+    })
 
 
 @app.get("/api/v1/gallery/{group_id}", response_model=GalleryPhoto)

@@ -915,6 +915,86 @@
         }
       }
     },
+    "/api/v1/gallery/downloads": {
+      "post": {
+        "summary": "Prepare Gallery Download",
+        "operationId": "prepare_gallery_download_api_v1_gallery_downloads_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GalleryDownloadInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GalleryDownloadLink"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/gallery/download.zip": {
+      "get": {
+        "summary": "Download Gallery",
+        "operationId": "download_gallery_api_v1_gallery_download_zip_get",
+        "parameters": [
+          {
+            "name": "groups",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "title": "Groups"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/gallery/{group_id}": {
       "get": {
         "summary": "Detail",
@@ -3164,6 +3244,39 @@
           "status"
         ],
         "title": "FeedbackStatus"
+      },
+      "GalleryDownloadInput": {
+        "properties": {
+          "group_ids": {
+            "items": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Group Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "group_ids"
+        ],
+        "title": "GalleryDownloadInput"
+      },
+      "GalleryDownloadLink": {
+        "properties": {
+          "download_url": {
+            "type": "string",
+            "title": "Download Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "download_url"
+        ],
+        "title": "GalleryDownloadLink"
       },
       "GalleryPage": {
         "properties": {

@@ -313,6 +313,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/gallery/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare Gallery Download */
+        post: operations["prepare_gallery_download_api_v1_gallery_downloads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gallery/download.zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Gallery */
+        get: operations["download_gallery_api_v1_gallery_download_zip_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/gallery/{group_id}": {
         parameters: {
             query?: never;
@@ -1057,6 +1091,16 @@ export interface components {
              * @enum {string}
              */
             status: "pending" | "resolved";
+        };
+        /** GalleryDownloadInput */
+        GalleryDownloadInput: {
+            /** Group Ids */
+            group_ids: number[];
+        };
+        /** GalleryDownloadLink */
+        GalleryDownloadLink: {
+            /** Download Url */
+            download_url: string;
         };
         /** GalleryPage */
         GalleryPage: {
@@ -2079,6 +2123,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GalleryPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepare_gallery_download_api_v1_gallery_downloads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GalleryDownloadInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GalleryDownloadLink"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_gallery_api_v1_gallery_download_zip_get: {
+        parameters: {
+            query: {
+                groups: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
                 };
             };
             /** @description Validation Error */

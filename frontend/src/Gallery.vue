@@ -20,6 +20,8 @@ import {
   ZoomIn,
   ZoomOut,
   ExternalLink,
+  Check,
+  ListChecks,
 } from "@lucide/vue";
 import { useLibrary } from "./store";
 import { usePageTitle } from "./page-title";
@@ -46,6 +48,66 @@ const photos = ref<Photo[]>([]),
   detailError = ref(""),
   zoom = ref(1);
 const authenticated = ref(false);
+const selecting = ref(false),
+  downloadSelection = ref(new Set<number>()),
+  preparingDownload = ref(false),
+  downloadError = ref(""),
+  downloadNotice = ref("");
+const allLoadedSelected = computed(() => photos.value.length > 0 && photos.value.every(photo => downloadSelection.value.has(photo.id)));
+let downloadController: AbortController | null = null;
+function stopSelecting() {
+  downloadController?.abort();
+  downloadController = null;
+  preparingDownload.value = false;
+  selecting.value = false;
+  downloadSelection.value.clear();
+  downloadError.value = "";
+  downloadNotice.value = "";
+}
+function togglePhoto(photo: Photo) {
+  if (preparingDownload.value) return;
+  if (downloadSelection.value.has(photo.id)) downloadSelection.value.delete(photo.id);
+  else downloadSelection.value.add(photo.id);
+  downloadError.value = "";
+  downloadNotice.value = "";
+}
+function toggleAllLoaded() {
+  if (allLoadedSelected.value) downloadSelection.value.clear();
+  else photos.value.forEach(photo => downloadSelection.value.add(photo.id));
+  downloadError.value = "";
+  downloadNotice.value = "";
+}
+async function downloadSelected() {
+  if (preparingDownload.value || !downloadSelection.value.size || downloadSelection.value.size > 200) return;
+  const controller = new AbortController();
+  downloadController = controller;
+  preparingDownload.value = true;
+  downloadError.value = "";
+  downloadNotice.value = "";
+  try {
+    const result = await api<{ download_url: string }>("/gallery/downloads", {
+      method: "POST",
+      body: JSON.stringify({ group_ids: [...downloadSelection.value] }),
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted) return;
+    // Let the browser stream to disk instead of buffering the ZIP in a Blob.
+    const link = document.createElement("a");
+    link.href = result.download_url;
+    link.download = "";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    downloadNotice.value = "已发起下载，可在浏览器中查看进度";
+  } catch (e) {
+    if (!controller.signal.aborted) downloadError.value = (e as Error).message;
+  } finally {
+    if (downloadController === controller) {
+      preparingDownload.value = false;
+      downloadController = null;
+    }
+  }
+}
 const photoGrid = ref<HTMLElement | null>(null);
 useMasonry(photoGrid, () => layout.value === "masonry", () => photos.value);
 let requestVersion = 0,
@@ -141,6 +203,10 @@ function move(delta: number) {
     });
 }
 function keys(event: KeyboardEvent) {
+  if (event.key === "Escape" && selecting.value && !drawer.value && !selectedId.value) {
+    stopSelecting();
+    return;
+  }
   if (
     !selectedId.value ||
     ["INPUT", "TEXTAREA"].includes((event.target as HTMLElement).tagName)
@@ -152,7 +218,7 @@ function keys(event: KeyboardEvent) {
 }
 watch(
   () => JSON.stringify(toQuery(filter.value)),
-  () => load(),
+  () => { stopSelecting(); load(); },
   { immediate: true },
 );
 watch(selectedId, loadDetail, {
@@ -172,6 +238,7 @@ onUnmounted(() => {
   detailVersion++;
   galleryController?.abort();
   detailController?.abort();
+  downloadController?.abort();
 });
 </script>
 <template>
@@ -186,7 +253,8 @@ onUnmounted(() => {
     <div class="gallery-content loading-region" :aria-busy="loading">
       <LoadingOverlay :show="loading && !cursor" label="正在加载照片" />
       <div class="gallery-toolbar">
-        <div>
+        <div class="gallery-heading">
+          <div>
           <h1>照片库</h1>
           <p class="muted">
             {{
@@ -195,6 +263,10 @@ onUnmounted(() => {
                 : "按人物、发布者和日期浏览"
             }}
           </p>
+          </div>
+          <n-button v-if="!selecting" :disabled="!photos.length || loading" @click="selecting = true">
+            <template #icon><ListChecks /></template>多选下载
+          </n-button>
         </div>
         <div class="toolbar-actions">
           <n-button class="mobile-filter" @click="openFilters"
@@ -218,6 +290,26 @@ onUnmounted(() => {
           />
         </div>
       </div>
+      <section v-if="selecting" class="gallery-selection" aria-label="批量下载">
+        <div class="selection-summary">
+          <strong role="status">已选 {{ downloadSelection.size }} 组</strong>
+          <span class="hint">每组下载一张，优先原图；每次最多 200 组</span>
+        </div>
+        <div class="selection-actions">
+          <n-button :disabled="loading || preparingDownload || !photos.length" @click="toggleAllLoaded">
+            {{ allLoadedSelected ? '取消全选' : '全选已加载' }}
+          </n-button>
+          <n-button type="primary" class="stable-loading-button" :loading="preparingDownload"
+            :disabled="!downloadSelection.size || downloadSelection.size > 200" @click="downloadSelected">
+            下载 ZIP
+          </n-button>
+          <n-button @click="stopSelecting">取消</n-button>
+        </div>
+        <n-alert v-if="downloadError" type="error" title="无法下载" class="selection-feedback">
+          {{ downloadError }}
+        </n-alert>
+        <p v-else-if="downloadNotice" class="hint selection-feedback" role="status">{{ downloadNotice }}</p>
+      </section>
       <n-alert v-if="error" type="error" title="无法加载照片"
         >{{ error }}
         <button class="text-button" @click="load()">重试</button></n-alert
@@ -234,17 +326,25 @@ onUnmounted(() => {
           v-for="photo in photos"
           :key="photo.id"
           class="photo-card"
+          :class="{ 'photo-selected': selecting && downloadSelection.has(photo.id) }"
           :style="{ '--ratio': photo.width / photo.height }"
-          @click="open(photo)"
-          :aria-label="`查看 ${photo.people.map((p) => p.name).join('、') || '未知人物'} 的照片`"
+          @click="selecting ? togglePhoto(photo) : open(photo)"
+          :aria-pressed="selecting ? downloadSelection.has(photo.id) : undefined"
+          :aria-disabled="selecting && preparingDownload || undefined"
+          :aria-label="`${selecting ? '选择' : '查看'} ${photo.people.map((p) => p.name).join('、') || '未知人物'} 的照片`"
         >
+          <span class="photo-preview">
           <img
             :src="photo.thumbnail_url"
             :width="photo.width"
             :height="photo.height"
             alt=""
             loading="lazy"
-          /><span class="photo-meta"
+          />
+          <span v-if="selecting" class="photo-selection-mark" aria-hidden="true">
+            <Check v-if="downloadSelection.has(photo.id)" :size="20" />
+          </span>
+          </span><span class="photo-meta"
             ><strong>{{
               photo.people.map((p) => p.name).join(" · ") || "未知人物"
             }}</strong
