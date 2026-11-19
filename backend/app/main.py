@@ -337,6 +337,45 @@ def people():
         return result
 
 
+class PublisherCandidate(BaseModel):
+    platform: Literal["x", "instagram"]
+    username: str
+    label: str
+
+
+@app.get("/api/v1/publisher-candidates", response_model=list[PublisherCandidate])
+def publisher_candidates() -> list[PublisherCandidate]:
+    """Return account names found in posts that are not linked to a person."""
+    with connect() as db:
+        rows = db.execute(
+            """
+            WITH ranked AS (
+                SELECT p.platform, p.author AS username,
+                    COALESCE(NULLIF(TRIM(p.author_name), ''), p.author) AS label,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY p.platform, lower(p.author)
+                        ORDER BY CASE WHEN TRIM(COALESCE(p.author_name, '')) = '' THEN 1 ELSE 0 END,
+                                 p.id DESC
+                    ) AS rank
+                FROM posts p
+                WHERE p.platform IN ('x', 'instagram')
+                  AND p.author IS NOT NULL
+                  AND TRIM(p.author) <> ''
+                  AND NOT EXISTS (
+                      SELECT 1 FROM accounts a
+                      WHERE a.platform = p.platform
+                        AND lower(a.username) = lower(p.author)
+                  )
+            )
+            SELECT platform, username, label
+            FROM ranked
+            WHERE rank = 1
+            ORDER BY lower(label), lower(username), platform
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
 @app.get("/api/v1/groups")
 def groups():
     with connect() as db:

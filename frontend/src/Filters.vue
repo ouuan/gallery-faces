@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import { t, ja } from "./locale";
 import LocalDateTime from "./LocalDateTime.vue";
-import { computed, ref } from "vue";
+import { computed } from "vue";
 import {
   NCheckbox,
-  NSelect,
-  NInput,
-  NButton,
   NRadioGroup,
   NRadioButton,
   NRadio,
@@ -19,26 +16,6 @@ import PeopleMultiSelect from "./PeopleMultiSelect.vue";
 const props = defineProps<{ modelValue: Filter; hideNoFaces?: boolean }>(),
   emit = defineEmits(["update:modelValue", "clear"]);
 const store = useLibrary();
-const publisherPlatform = ref("x"),
-  publisherName = ref("");
-function addPublisher() {
-  const username = publisherName.value.trim().replace(/^@/, "");
-  if (!username) return;
-  const linked = store.people.find((p) =>
-    p.accounts.some(
-      (a) =>
-        a.platform === publisherPlatform.value &&
-        a.username.toLowerCase() === username.toLowerCase(),
-    ),
-  );
-  set("publishers", [
-    ...new Set([
-      ...props.modelValue.publishers,
-      linked ? `person:${linked.id}` : publisherPlatform.value + ":" + username,
-    ]),
-  ]);
-  publisherName.value = "";
-}
 const personValues = computed(() =>
   props.modelValue.people.map((id) => `person:${id}`),
 );
@@ -92,25 +69,8 @@ function set(key: keyof Filter, value: any) {
     </fieldset>
     <fieldset>
       <legend>{{ t("发布者") }}</legend>
-      <PublisherSelect :model-value="modelValue.publishers" @update:model-value="set('publishers', $event)" />
-      <p class="hint">{{ t("匹配所选人物在所有平台的关联账号") }}</p>
-      <div class="publisher-entry">
-        <n-select
-          v-model:value="publisherPlatform"
-          :aria-label="t('发布平台')"
-          :options="[
-            { label: 'X / Twitter', value: 'x' },
-            { label: 'Instagram', value: 'instagram' },
-          ]"
-        /><n-input
-          v-model:value="publisherName"
-          :aria-label="t('发布者用户名')"
-          :placeholder="t('输入用户名')"
-          @keydown.enter.prevent="addPublisher"
-        /><n-button :disabled="!publisherName.trim()" @click="addPublisher"
-          >{{ t("添加发布者") }}</n-button
-        >
-      </div>
+      <PublisherSelect include-other :model-value="modelValue.publishers" @update:model-value="set('publishers', $event)" />
+      <p class="hint">{{ t("匹配所选人物的关联账号或其他发布者账号") }}</p>
     </fieldset>
     <fieldset>
       <legend>{{ t("发布日期") }}</legend>

@@ -1,20 +1,25 @@
 <script setup lang="ts">
-import { t, ja } from "./locale";
+import { t } from "./locale";
 import { computed } from "vue";
 import { NCascader } from "naive-ui";
 import type { Person } from "./api";
 import { peopleOptions, peopleKeys, updatePeople } from "./people-cascader";
 
 const props = withDefaults(defineProps<{
-  // People use person:<id>; supplemental options keep their own values.
   modelValue: string[];
   people: Person[];
   groups: { id: number; name: string }[];
-  extraOptions?: { label: string; value: string }[];
-}>(), { extraOptions: () => [] });
+  extraGroups?: { label: string; value: string; children: { label: string; value: string }[] }[];
+}>(), { extraGroups: () => [] });
 const emit = defineEmits<{ "update:modelValue": [value: string[]] }>();
 const groupedOptions = computed(() => peopleOptions(props.people, props.groups));
-const options = computed(() => [...groupedOptions.value, ...props.extraOptions]);
+const options = computed(() => [...groupedOptions.value, ...props.extraGroups]);
+const extraGroupOptions = computed(() => props.extraGroups.flatMap((group) => group.children));
+function selectedExtraValues(keys: Set<string | number>) {
+  return props.extraGroups.flatMap((group) => group.children
+    .filter((option) => keys.has(group.value) || keys.has(option.value))
+    .map((option) => option.value));
+}
 const selectedIds = computed(() => {
   const available = new Set(props.people.map((person) => `person:${person.id}`));
   return props.modelValue
@@ -23,18 +28,14 @@ const selectedIds = computed(() => {
 });
 const value = computed(() => [
   ...peopleKeys(selectedIds.value, groupedOptions.value),
-  ...props.extraOptions
-    .filter((option) => props.modelValue.includes(option.value))
-    .map((option) => option.value),
+  ...extraGroupOptions.value.filter((option) => props.modelValue.includes(option.value)).map((option) => option.value),
 ]);
 function update(keys: (string | number)[] | null) {
   const selected = new Set(keys);
   emit("update:modelValue", [
     ...updatePeople(keys, selectedIds.value, groupedOptions.value)
       .map((id) => `person:${id}`),
-    ...props.extraOptions
-      .filter((option) => selected.has(option.value))
-      .map((option) => option.value),
+    ...selectedExtraValues(selected),
   ]);
 }
 </script>

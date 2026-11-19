@@ -29,11 +29,11 @@ describe("gallery experience", () => {
     setActivePinia(createPinia());
     const store = useLibrary();
     await Promise.all([store.loadSite(), store.loadSite(), store.load(), store.load()]);
-    expect(fetch).toHaveBeenCalledTimes(3);
-    await store.loadSite();
-    expect(fetch).toHaveBeenCalledTimes(3);
-    await store.loadSite(true);
     expect(fetch).toHaveBeenCalledTimes(4);
+    await store.loadSite();
+    expect(fetch).toHaveBeenCalledTimes(4);
+    await store.loadSite(true);
+    expect(fetch).toHaveBeenCalledTimes(5);
     vi.unstubAllGlobals();
   });
 });

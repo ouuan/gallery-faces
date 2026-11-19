@@ -640,7 +640,7 @@ test("people cascader groups, shared members, search and mobile apply", async ({
     .toBeNull();
 });
 
-test("publisher cascader groups, shared members, manual accounts and mobile apply", async ({ page }) => {
+test("publisher cascader groups, unlinked accounts and mobile apply", async ({ page }) => {
   const groups = [{ id: 1, name: "朋友" }, { id: 2, name: "同事" }];
   const people = [
     { id: 1, name: "共同成员", groups, accounts: [{ platform: "x", username: "shared" }] },
@@ -651,26 +651,38 @@ test("publisher cascader groups, shared members, manual accounts and mobile appl
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/people")) return route.fulfill({ json: people });
     if (path.endsWith("/groups")) return route.fulfill({ json: groups });
+    if (path.endsWith("/publisher-candidates")) return route.fulfill({ json: [
+      { platform: "x", username: "unlinked", label: "未关联昵称" },
+      { platform: "x", username: "shared", label: "不应重复显示" },
+    ] });
     if (path.endsWith("/site")) return route.fulfill({ json: { timezone: "Asia/Shanghai" } });
     return route.fulfill({ json: { items: [], next_cursor: null } });
   });
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/?publishers=x:manual,person:99");
+  await page.goto("/");
   const picker = page.locator(".desktop-filters .publisher-cascader");
+  await expect(page.getByRole("button", { name: "添加发布者", exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("发布者用户名", { exact: true })).toHaveCount(0);
   const option = (label: string) => page.locator(".people-cascader-menu:visible .n-cascader-option")
     .filter({ has: page.locator(".n-cascader-option__label", { hasText: new RegExp(`^${label}$`) }) });
   const selected = () => new URL(page.url()).searchParams.get("publishers")?.split(",").sort();
   await picker.locator(".n-base-selection").click();
   await option("朋友").locator(".n-checkbox").click();
-  await expect.poll(selected).toEqual(["person:1", "person:2", "person:99", "x:manual"]);
+  await expect.poll(selected).toEqual(["person:1", "person:2"]);
+  await option("其他").locator(".n-cascader-option__label").click();
+  await expect(option("X · 未关联昵称")).toHaveCount(1);
+  await option("其他").locator(".n-checkbox").click();
+  await expect.poll(selected).toEqual(["person:1", "person:2", "x:unlinked"]);
+  await expect(option("X · 不应重复显示")).toHaveCount(0);
+  await page.screenshot({ path: "/tmp/gallery-faces/publisher-other-desktop.png", animations: "disabled" });
   await option("同事").locator(".n-cascader-option__label").click();
   await expect(option("共同成员").getByRole("checkbox")).toHaveAttribute("aria-checked", "true");
   await expect(option("没有账号")).toHaveCount(0);
   await option("共同成员").click();
-  await expect.poll(selected).toEqual(["person:2", "person:99", "x:manual"]);
+  await expect.poll(selected).toEqual(["person:2", "x:unlinked"]);
   await picker.locator("input").fill("共同");
   await page.locator(".people-cascader-search:visible .n-base-select-option").first().click();
-  await expect.poll(selected).toEqual(["person:1", "person:2", "person:99", "x:manual"]);
+  await expect.poll(selected).toEqual(["person:1", "person:2", "x:unlinked"]);
   await page.getByRole("heading", { name: "照片库", exact: true }).click();
   await page.reload();
   await picker.locator(".n-base-selection").click();
@@ -684,13 +696,14 @@ test("publisher cascader groups, shared members, manual accounts and mobile appl
   await mobile.locator(".n-base-selection").click();
   await option("同事").locator(".n-cascader-option__label").click();
   await option("共同成员").click();
-  await expect.poll(selected).toEqual(["person:1", "person:2", "person:99", "x:manual"]);
+  await expect.poll(selected).toEqual(["person:1", "person:2", "x:unlinked"]);
+  await option("其他").locator(".n-cascader-option__label").click();
   await page.screenshot({ path: "/tmp/gallery-faces/publisher-cascader-mobile.png", animations: "disabled" });
   const bounds = await page.locator(".people-cascader-menu:visible").boundingBox();
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
   await page.getByRole("button", { name: "应用筛选" }).click();
-  await expect.poll(selected).toEqual(["person:2", "person:99", "x:manual"]);
+  await expect.poll(selected).toEqual(["person:2", "x:unlinked"]);
   await page.getByRole("button", { name: "筛选", exact: true }).click();
   await mobile.hover();
   await mobile.locator(".n-base-clear").click();

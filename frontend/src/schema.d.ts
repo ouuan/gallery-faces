@@ -107,6 +107,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/publisher-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Publisher Candidates
+         * @description Return account names found in posts that are not linked to a person.
+         */
+        get: operations["publisher_candidates_api_v1_publisher_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/groups": {
         parameters: {
             query?: never;
@@ -1376,6 +1396,18 @@ export interface components {
             /** Published At */
             published_at: string;
         };
+        /** PublisherCandidate */
+        PublisherCandidate: {
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "x" | "instagram";
+            /** Username */
+            username: string;
+            /** Label */
+            label: string;
+        };
         /** ReferenceInput */
         ReferenceInput: {
             /** Face Id */
@@ -1736,6 +1768,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    publisher_candidates_api_v1_publisher_candidates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublisherCandidate"][];
                 };
             };
         };

@@ -207,6 +207,29 @@
         }
       }
     },
+    "/api/v1/publisher-candidates": {
+      "get": {
+        "summary": "Publisher Candidates",
+        "description": "Return account names found in posts that are not linked to a person.",
+        "operationId": "publisher_candidates_api_v1_publisher_candidates_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PublisherCandidate"
+                  },
+                  "type": "array",
+                  "title": "Response Publisher Candidates Api V1 Publisher Candidates Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/groups": {
       "get": {
         "summary": "Groups",
@@ -4011,6 +4034,33 @@
           "published_at"
         ],
         "title": "PublicPost"
+      },
+      "PublisherCandidate": {
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "x",
+              "instagram"
+            ],
+            "title": "Platform"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "platform",
+          "username",
+          "label"
+        ],
+        "title": "PublisherCandidate"
       },
       "ReferenceInput": {
         "properties": {

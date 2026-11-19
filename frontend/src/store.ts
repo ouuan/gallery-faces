@@ -7,9 +7,15 @@ import {
   type Person,
   type Source,
 } from "./api";
+export type PublisherCandidate = {
+  platform: string;
+  username: string;
+  label: string;
+};
 export const useLibrary = defineStore("library", () => {
   const people = ref<Person[]>([]),
     groups = ref<{ id: number; name: string; name_ja?: string | null }[]>([]),
+    publisherCandidates = ref<PublisherCandidate[]>([]),
     siteTitle = ref("Gallery Faces"),
     theme = ref(localStorage.getItem("theme") || "system"),
     systemDark = ref(matchMedia("(prefers-color-scheme: dark)").matches);
@@ -38,9 +44,14 @@ export const useLibrary = defineStore("library", () => {
   async function load(): Promise<void> {
     if (libraryRequest) return libraryRequest;
     libraryRequest = (async () => {
-      const [persons, collections] = await Promise.all([api("/people"), api("/groups")]);
+      const [persons, collections, candidates] = await Promise.all([
+        api("/people"),
+        api("/groups"),
+        api<PublisherCandidate[]>("/publisher-candidates"),
+      ]);
       people.value = persons.map((p: Person) => ({ ...p, name: ja ? p.name_ja || p.name : p.name }));
       groups.value = collections.map((g: { name: string; name_ja?: string | null }) => ({ ...g, name: ja ? g.name_ja || g.name : g.name }));
+      publisherCandidates.value = Array.isArray(candidates) ? candidates : [];
     })();
     try { await libraryRequest; } finally { libraryRequest = null; }
   }
@@ -54,6 +65,7 @@ export const useLibrary = defineStore("library", () => {
   return {
     people,
     groups,
+    publisherCandidates,
     siteTitle,
     theme,
     dark,
