@@ -1,10 +1,46 @@
 import shutil
+import os
+import tempfile
+import logging
+from contextlib import contextmanager
+from pathlib import Path
 from PIL import Image, ImageOps
 from .db import DATA, IMPORT, connect, settings, file_hash
 from .vision import phash, similarity
 from .metadata import metadata, validate_url, source_image, save_source, in_date_range
 
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".avif"}
+
+
+@contextmanager
+def atomic_asset(target):
+    # Same filesystem for atomic replacement. Flush bytes and the directory
+    # entry before the caller commits the corresponding database record.
+    fd, name = tempfile.mkstemp(dir=target.parent, prefix=".asset-")
+    temporary = Path(name)
+    try:
+        os.close(fd)
+        yield temporary
+        with temporary.open("rb") as stream:
+            os.fsync(stream.fileno())
+        temporary.replace(target)
+        directory = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        if temporary.exists():
+            temporary.unlink(missing_ok=True)
+
+
+def valid_image(path):
+    try:
+        with Image.open(path) as image:
+            image.load()
+        return True
+    except (OSError, ValueError):
+        return False
 
 
 def write_assets(path, digest, *, refresh=False):
@@ -16,13 +52,19 @@ def write_assets(path, digest, *, refresh=False):
         width, height = im.size
         filename = digest + ".jpg"
         target = DATA / "images" / filename
-        if refresh or not target.exists():
-            im.convert("RGB").save(target, quality=97)
-        if refresh or not (DATA / "thumbs" / filename).exists():
+        if refresh or not valid_image(target):
+            with atomic_asset(target) as temporary:
+                im.convert("RGB").save(temporary, format="JPEG", quality=97)
+        thumbnail = DATA / "thumbs" / filename
+        if refresh or not valid_image(thumbnail):
             im.thumbnail((640, 640))
-            im.convert("RGB").save(DATA / "thumbs" / filename, quality=85)
-    if not original.exists() or (refresh and path.resolve() != original.resolve()):
-        shutil.copyfile(path, original)
+            with atomic_asset(thumbnail) as temporary:
+                im.convert("RGB").save(temporary, format="JPEG", quality=85)
+    if not original.exists() or file_hash(original) != digest:
+        with atomic_asset(original) as temporary:
+            shutil.copyfile(path, temporary)
+            if file_hash(temporary) != digest:
+                raise ValueError("导入期间原文件发生变化，请重试")
     return filename, width, height, original.name
 
 
@@ -66,6 +108,7 @@ def import_file(path, raw, start=None, end=None, *, counts=None):
             ).lastrowid
             from .db import schedule_detection
             schedule_detection(db, image_id)
+            db.execute("INSERT INTO pending_deduplications(image_id) VALUES(?)", (image_id,))
         db.execute(
             "UPDATE images SET image_sha256=?,thumbnail_sha256=?,original_filename=?,file_size=? WHERE id=?",
             (file_hash(target), file_hash(DATA / "thumbs" / filename), original_name, path.stat().st_size, image_id),
@@ -74,9 +117,31 @@ def import_file(path, raw, start=None, end=None, *, counts=None):
         record_location(db, image_id, path)
         if counts is not None:
             counts["skipped_existing" if image else "imported"] += 1
-    if not image:
-        deduplicate(image_id)
+    finish_deduplication(image_id)
     return image_id
+
+
+def finish_deduplication(image_id):
+    with connect() as db:
+        if not db.execute("SELECT 1 FROM pending_deduplications WHERE image_id=?", (image_id,)).fetchone():
+            return
+    deduplicate(image_id)
+    with connect(True) as db:
+        db.execute("DELETE FROM pending_deduplications WHERE image_id=?", (image_id,))
+
+
+def recover_deduplications(stop):
+    with connect() as db:
+        pending = [r[0] for r in db.execute("SELECT image_id FROM pending_deduplications ORDER BY image_id")]
+    for image_id in pending:
+        if stop.is_set():
+            break
+        try:
+            finish_deduplication(image_id)
+        except Exception:
+            # Keep the durable entry for a later retry without blocking startup
+            # for unrelated images when an existing file is unavailable.
+            logging.getLogger(__name__).exception("Could not resume deduplication for image %s", image_id)
 
 
 def deduplicate(image_id):

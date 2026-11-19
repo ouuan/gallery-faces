@@ -497,11 +497,31 @@ def main():
 
     with (DATA / "worker.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        recover_tasks()
         stop = threading.Event()
         for signum in (signal.SIGTERM, signal.SIGINT):
             signal.signal(signum, lambda *_: stop.set())
+        cleanup_interrupted_files()
+        recover_tasks()
+        from .importer import recover_deduplications
+        recover_deduplications(stop)
         run_worker(stop)
+
+
+def cleanup_interrupted_files():
+    """Only run with the exclusive worker lock, before dispatching any work."""
+    import shutil
+
+    for path in (DATA / "downloads").iterdir():
+        if path.name.startswith(("attempt-", "restore-local-", "restore-remote-")):
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+            else:
+                path.unlink(missing_ok=True)
+    # Asset writers and cleanup share the database write lock.
+    with connect(True):
+        for folder in ("images", "thumbs", "originals"):
+            for path in (DATA / folder).glob(".asset-*"):
+                path.unlink(missing_ok=True)
 
 
 def recover_tasks():
