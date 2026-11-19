@@ -24,9 +24,9 @@ const batchInterval = ref<number | null>(60);
 const validInterval = computed(() => batchInterval.value !== null && Number.isInteger(batchInterval.value) && batchInterval.value >= 5);
 const intervals = ref<Record<number, number | null>>({});
 const { selected: publishers, accounts: publisherAccounts } = usePublisherSelection();
-const platforms = ref<string[]>(["instagram", "x"]);
+const platforms = ref<string[]>(["x", "instagram"]);
 const listUrls = ref("");
-const manualAccounts = ref<PublisherAccount[]>([{ platform: "instagram", username: "" }]);
+const manualAccounts = ref<PublisherAccount[]>([{ platform: "x", username: "" }]);
 const interval = ref(60), start = ref(""), history = ref(false);
 const accounts = computed(() => uniqueAccounts([...publisherAccounts.value.filter(account => platforms.value.includes(account.platform)), ...manualAccounts.value, ...listUrls.value.split("\n").map(username => ({ platform: "x", username: normalizeList(username) }))]));
 function normalizeList(value: string) {
@@ -87,7 +87,7 @@ async function create() {
       } catch (e) { createResults.value.push({ account, error: (e as Error).message }); }
     }
     if (createResults.value.every(result => !result.error)) {
-      publishers.value = []; manualAccounts.value = [{ platform: "instagram", username: "" }];
+      publishers.value = []; manualAccounts.value = [{ platform: "x", username: "" }];
       start.value = ""; history.value = false; listUrls.value = "";
       completedAccounts.value = []; batchDefaultStart.value = "";
     }
@@ -147,13 +147,13 @@ onUnmounted(() => { clearInterval(timer); });
         </label>
         <div class="field-label" id="monitor-platforms-label">添加平台</div>
         <div class="monitor-toolbar" role="group" aria-labelledby="monitor-platforms-label">
-          <n-checkbox v-for="platform in ['instagram', 'x']" :key="platform" :checked="platforms.includes(platform)" :disabled="busy" @update:checked="platforms = $event ? [...platforms, platform] : platforms.filter(value => value !== platform)">{{ platformLabel(platform) }}</n-checkbox>
+          <n-checkbox v-for="platform in ['x', 'instagram']" :key="platform" :checked="platforms.includes(platform)" :disabled="busy" @update:checked="platforms = $event ? [...platforms, platform] : platforms.filter(value => value !== platform)">{{ platformLabel(platform) }}</n-checkbox>
         </div>
         <p class="hint">平台选择统一应用于所有所选人物，默认添加全部平台；手动账号和 List 单独添加</p>
         <p v-if="publishers.length && !publisherAccounts.some(account => platforms.includes(account.platform))" class="hint" role="status">所选人物在这些平台没有关联账号，请调整平台或人物选择</p>
-        <div class="section-heading"><h3>手动账号</h3><n-button :disabled="busy" @click="manualAccounts.push({ platform: 'instagram', username: '' })">添加账号</n-button></div>
+        <div class="section-heading"><h3>手动账号</h3><n-button :disabled="busy" @click="manualAccounts.push({ platform: 'x', username: '' })">添加账号</n-button></div>
         <div v-for="(account, i) in manualAccounts" :key="i" class="monitor-manual-account">
-          <label class="field-label">平台<n-select v-model:value="account.platform" :aria-label="`账号 ${i + 1} 平台`" :disabled="busy" :options="[{ label: 'Instagram', value: 'instagram' }, { label: 'X', value: 'x' }]" /></label>
+          <label class="field-label">平台<n-select v-model:value="account.platform" :aria-label="`账号 ${i + 1} 平台`" :disabled="busy" :options="[{ label: 'X', value: 'x' }, { label: 'Instagram', value: 'instagram' }]" /></label>
           <label class="field-label">用户名<n-input v-model:value="account.username" :aria-label="`账号 ${i + 1} 用户名`" :disabled="busy" placeholder="用户名，不含 @" /></label>
           <n-button :disabled="busy" :aria-label="`移除账号 ${i + 1}`" @click="manualAccounts.splice(i, 1)">移除</n-button>
         </div>

@@ -562,7 +562,7 @@ onUnmounted(() => {
           仅接受 Netscape cookies 文件。替换后用于后续下载任务
         </p>
         <div
-          v-for="platform in ['instagram', 'x']"
+          v-for="platform in ['x', 'instagram']"
           :key="platform"
           class="cookie-row"
         >

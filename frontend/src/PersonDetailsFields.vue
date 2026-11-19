@@ -54,7 +54,7 @@ function addGroup() {
     <h3>关联账号</h3>
     <n-button
       :disabled="disabled"
-      @click="accounts.push({ platform: 'instagram', username: '' })"
+      @click="accounts.push({ platform: 'x', username: '' })"
       >添加账号</n-button
     >
   </div>
@@ -64,8 +64,8 @@ function addGroup() {
       :aria-label="`账号 ${i + 1} 平台`"
       :disabled="disabled"
       :options="[
-        { label: 'Instagram', value: 'instagram' },
         { label: 'X / Twitter', value: 'x' },
+        { label: 'Instagram', value: 'instagram' },
       ]"
     />
     <n-input
