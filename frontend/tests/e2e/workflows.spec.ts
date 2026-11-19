@@ -410,23 +410,6 @@ test("filters omit avatars and people management uses reference face crops", asy
   });
   await page.goto("/");
   await expect(page.locator(".people-cascader")).toBeVisible();
-  const peoplePicker = page.locator(".people-cascader");
-  await peoplePicker.locator(".n-base-selection").click();
-  await page
-    .locator(".people-cascader-menu .n-cascader-option__label")
-    .filter({ hasText: /^未分组$/ })
-    .click();
-  await expect(
-    page
-      .locator(".people-cascader-menu .n-cascader-option__label")
-      .filter({ hasText: /^有参考图$/ }),
-  ).toHaveCount(1);
-  await expect(
-    page
-      .locator(".people-cascader-menu .n-cascader-option__label")
-      .filter({ hasText: /^暂无参考图人物$/ }),
-  ).toHaveCount(0);
-  await page.keyboard.press("Escape");
   await expect(page.locator(".filters img, .filters .avatar")).toHaveCount(0);
   await page.goto("/admin/people");
   const avatar = page.getByRole("img", { name: "有参考图的参考人脸" });
@@ -562,7 +545,7 @@ test("people cascader groups, shared members, search and mobile apply", async ({
   ].map((person) => ({
     ...person,
     accounts: [],
-    reference_count: 1,
+    reference_count: 0,
     avatar_reference_id: null,
   }));
   await page.route("**/api/v1/**", (route) => {

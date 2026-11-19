@@ -21,9 +21,6 @@ const props = defineProps<{ modelValue: Filter; hideNoFaces?: boolean }>(),
 const store = useLibrary();
 const publisherPlatform = ref("x"),
   publisherName = ref("");
-const filterPeople = computed(() =>
-  store.people.filter((person) => person.reference_count > 0),
-);
 function addPublisher() {
   const username = publisherName.value.trim().replace(/^@/, "");
   if (!username) return;
@@ -69,7 +66,7 @@ function set(key: keyof Filter, value: any) {
         v-else
         class="people-cascader"
         :aria-label="t('照片中的人物')"
-        :people="filterPeople"
+        :people="store.people"
         :groups="store.groups"
         :model-value="personValues"
         :placeholder="t('选择分组或搜索人物')"
