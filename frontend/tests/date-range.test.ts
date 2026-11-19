@@ -10,10 +10,9 @@ describe("local date ranges", () => {
     expect(rangeError("2026-01-01", "")).toContain("重新选择");
     expect(rangeError("2026-01-01T01:00:00", "")).toContain("重新选择");
   });
-  it("shows range guidance and validation without requests", async () => {
+  it("shows validation without requests", async () => {
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
     const view = mount(DateRangeHint, { props: { start: "", end: "" } });
-    expect(view.text()).toContain("包含开始，不含结束");
     await view.setProps({ start: "2026-01-01" });
     expect(view.text()).toContain("重新选择");
     expect(fetch).not.toHaveBeenCalled();

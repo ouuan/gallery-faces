@@ -36,7 +36,6 @@ for (const zone of ["Asia/Shanghai", "America/New_York", "Asia/Kathmandu"]) {
       await page.goto("/?start=2026-01-01");
       await expect(filters).toContainText("重新选择");
       await page.goto("/admin/import");
-      await expect(page.locator(".import-form")).toContainText("包含开始，不含结束");
       await page.locator(".import-form .n-date-picker input").first().click();
       await expect(page.locator(".n-date-panel")).toBeVisible();
       await page.waitForTimeout(350);

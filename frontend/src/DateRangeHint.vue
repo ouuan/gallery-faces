@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { t, ja } from "./locale";
+import { computed } from "vue";
 import { rangeError } from "./date-range";
-defineProps<{ start: string; end: string }>();
+const props = defineProps<{ start: string; end: string }>();
+const error = computed(() => rangeError(props.start, props.end));
 </script>
-<template><p class="hint date-range-hint" role="status">{{ rangeError(start, end) || t("包含开始，不含结束") }}</p></template>
+<template><p v-if="error" class="hint date-range-hint" role="status">{{ error }}</p></template>
