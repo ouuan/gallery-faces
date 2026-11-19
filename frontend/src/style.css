@@ -599,6 +599,18 @@ svg {
 .detail-sidebar .source-meta time {
   white-space: nowrap;
 }
+.detail-sidebar .source-coauthors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.detail-sidebar .source-coauthors strong {
+  color: var(--text);
+  font-weight: 600;
+}
 .lightbox .detail-sidebar .feedback-panel {
   margin-top: 16px;
 }

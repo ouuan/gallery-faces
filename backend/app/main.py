@@ -787,6 +787,16 @@ class GalleryPage(BaseModel):
     next_cursor: str | None
 
 
+def source_record(row):
+    source = dict(row)
+    try:
+        coauthors = json.loads(source.get("coauthors") or "[]")
+    except (TypeError, ValueError):
+        coauthors = []
+    source["coauthors"] = coauthors if isinstance(coauthors, list) else []
+    return source
+
+
 def parse_people_publishers(people, publishers):
     try:
         if len(people.split(",")) > 50 or len(publishers.split(",")) > 50:
@@ -990,7 +1000,7 @@ def detail(group_id: int, matched_post: int | None = None):
         ids = [m["id"] for m in members]
         marks = ",".join("?" for _ in ids)
         sources = [
-            dict(r)
+            source_record(r)
             for r in db.execute(
                 f"SELECT DISTINCT p.* FROM posts p JOIN sources s ON s.post_id=p.id WHERE s.image_id IN ({marks}) AND p.author IS NOT NULL AND p.published_at IS NOT NULL AND p.url IS NOT NULL ORDER BY published_at,p.id",
                 ids,

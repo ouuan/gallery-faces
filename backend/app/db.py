@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS person_groups(person_id INTEGER REFERENCES people ON 
 CREATE TABLE IF NOT EXISTS accounts(id INTEGER PRIMARY KEY, person_id INTEGER REFERENCES people ON DELETE CASCADE, platform TEXT NOT NULL, username TEXT NOT NULL, UNIQUE(person_id,platform,username));
 CREATE TABLE IF NOT EXISTS duplicate_groups(id INTEGER PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS images(id INTEGER PRIMARY KEY, sha256 TEXT NOT NULL UNIQUE, filename TEXT NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, phash TEXT, group_id INTEGER NOT NULL REFERENCES duplicate_groups, detection TEXT NOT NULL DEFAULT 'pending', error TEXT, hidden INTEGER NOT NULL DEFAULT 0, created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')));
-CREATE TABLE IF NOT EXISTS posts(id INTEGER PRIMARY KEY, platform TEXT NOT NULL, post_key TEXT NOT NULL, author TEXT, author_name TEXT, published_at TEXT, url TEXT, post_text TEXT, collected_account TEXT, UNIQUE(platform,post_key));
+CREATE TABLE IF NOT EXISTS posts(id INTEGER PRIMARY KEY, platform TEXT NOT NULL, post_key TEXT NOT NULL, author TEXT, author_name TEXT, published_at TEXT, url TEXT, post_text TEXT, collected_account TEXT, coauthors TEXT, UNIQUE(platform,post_key));
 CREATE TABLE IF NOT EXISTS sources(id INTEGER PRIMARY KEY, image_id INTEGER NOT NULL REFERENCES images, post_id INTEGER NOT NULL REFERENCES posts, media_key TEXT NOT NULL, UNIQUE(post_id,media_key));
 CREATE TABLE IF NOT EXISTS faces(id INTEGER PRIMARY KEY, image_id INTEGER NOT NULL REFERENCES images, box TEXT NOT NULL, embedding BLOB, model_version TEXT, person_id INTEGER REFERENCES people ON DELETE SET NULL, locked INTEGER NOT NULL DEFAULT 0, ignored INTEGER NOT NULL DEFAULT 0, candidates TEXT NOT NULL DEFAULT '[]', revision INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS reference_images(id INTEGER PRIMARY KEY, person_id INTEGER NOT NULL REFERENCES people ON DELETE CASCADE, image_id INTEGER REFERENCES images, face_id INTEGER REFERENCES faces, filename TEXT, box TEXT, embedding BLOB NOT NULL, model_version TEXT NOT NULL);
@@ -113,6 +113,8 @@ def init():
                 db.execute(f"ALTER TABLE tasks ADD COLUMN {column} TEXT")
         if "author_name" not in {row[1] for row in db.execute("PRAGMA table_info(posts)")}:
             db.execute("ALTER TABLE posts ADD COLUMN author_name TEXT")
+        if "coauthors" not in {row[1] for row in db.execute("PRAGMA table_info(posts)")}:
+            db.execute("ALTER TABLE posts ADD COLUMN coauthors TEXT")
         if "box" not in {row[1] for row in db.execute("PRAGMA table_info(reference_images)")}:
             db.execute("ALTER TABLE reference_images ADD COLUMN box TEXT")
         db.execute("INSERT OR IGNORE INTO private_config VALUES('feedback_secret',?)", (secrets.token_hex(32),))
@@ -145,6 +147,7 @@ def init():
             if db.execute("SELECT 1 FROM reference_images r JOIN images i ON i.id=r.image_id WHERE i.hidden=1").fetchone():
                 schedule_rematch(db)
             db.execute("UPDATE schema_version SET version=9 WHERE version<9")
+        db.execute("UPDATE schema_version SET version=10 WHERE version<10")
         # Recover files written by a restore interrupted before its transaction
         # committed, including tasks cancelled during process recovery.
         for row in db.execute("SELECT * FROM images WHERE hidden=1").fetchall():
@@ -154,7 +157,7 @@ def init():
             db.execute(f"CREATE INDEX IF NOT EXISTS image_{column} ON images({column})")
     backfill_media_hashes()
     with connect(True) as db:
-        db.execute("UPDATE schema_version SET version=9 WHERE version<9")
+        db.execute("UPDATE schema_version SET version=10 WHERE version<10")
 
 
 def file_hash(path):

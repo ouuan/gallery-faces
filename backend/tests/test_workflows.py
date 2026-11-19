@@ -928,6 +928,33 @@ def test_nickname_metadata_backfill_and_actual_publisher(client, tmp_path):
     assert importer.metadata({'category': 'instagram', 'owner': {'username': 'ig', 'full_name': 'IG 昵称'}}, 'a')['author_name'] == 'IG 昵称'
 
 
+def test_instagram_coauthor_keeps_primary_nickname_and_detail_authors(client, tmp_path):
+    from PIL import Image
+
+    path = tmp_path / 'coauthor.jpg'
+    Image.new('RGB', (30, 40), 'red').save(path)
+    raw = {
+        'category': 'instagram',
+        'post_id': 'coauthor-post',
+        'post_url': 'https://www.instagram.com/p/coauthor-post/',
+        'user': {'username': 'coauthor_ig', 'full_name': '共同作者昵称'},
+        'username': 'main_author',
+        'fullname': '主作者昵称',
+        'coauthors': [{'username': 'coauthor_ig', 'full_name': '共同作者昵称'}],
+        'date': '2026-01-01T00:00:00Z',
+        'num': 1,
+    }
+    image_id = importer.import_file(path, raw)
+    with db.connect(True) as conn:
+        conn.execute("UPDATE images SET detection='done' WHERE id=?", (image_id,))
+    assert importer.metadata(raw, path.name)['author'] == 'main_author'
+    assert importer.metadata(raw, path.name)['author_name'] == '主作者昵称'
+    detail = client.get(f'/api/v1/gallery/{image_id}').json()
+    assert detail['sources'][0]['coauthors'] == [
+        {'username': 'coauthor_ig', 'full_name': '共同作者昵称'},
+    ]
+
+
 def test_nickname_schema_upgrade_preserves_existing_posts(client):
     with db.connect(True) as conn:
         image(conn)
@@ -938,7 +965,8 @@ def test_nickname_schema_upgrade_preserves_existing_posts(client):
     db.init()
     with db.connect() as conn:
         assert conn.execute('SELECT author,author_name FROM posts').fetchone()['author'] == 'alice'
-        assert [r[0] for r in conn.execute('SELECT version FROM schema_version')] == [9]
+        assert 'coauthors' in {row[1] for row in conn.execute('PRAGMA table_info(posts)')}
+        assert [r[0] for r in conn.execute('SELECT version FROM schema_version')] == [10]
 
 
 def test_reference_avatars_crop_selected_face_and_recover_legacy_uploads(client, monkeypatch):

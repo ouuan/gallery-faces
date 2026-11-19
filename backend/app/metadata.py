@@ -1,5 +1,6 @@
 """Lightweight metadata shared by extraction and import."""
 from datetime import datetime, timezone
+import json
 from urllib.parse import urlparse
 
 
@@ -27,19 +28,26 @@ def metadata(raw, filename):
     platform = "x" if platform in ("twitter", "x") else platform
     if platform not in ("instagram", "x"):
         raise ValueError("无法识别 metadata 平台")
-    user = raw.get("author") or raw.get("owner") or raw.get("user") or {}
-    author = (
-        (
+    explicit_author = raw.get("author") or raw.get("owner")
+    collector = raw.get("user") or {}
+    user = explicit_author or collector
+    if isinstance(user, dict):
+        author = (
             (user.get("username") or user.get("name"))
             if platform == "instagram"
             else user.get("screen_name") or user.get("name")
         )
-        if isinstance(user, dict)
-        else user
-    )
-    author = (author or raw.get("username")) if raw.get("author") or raw.get("owner") else (raw.get("username") or author)
+    else:
+        author = user
+    if not explicit_author:
+        if platform == "instagram":
+            # gallery-dl's username/fullname are the post owner. `user` is
+            # the monitored account and may be an Instagram coauthor.
+            author = raw.get("username") or author
+        else:
+            author = raw.get("username") or author
     author_name = raw.get("author_name")
-    if isinstance(user, dict):
+    if isinstance(user, dict) and explicit_author:
         author_name = author_name or (
             user.get("full_name") or user.get("fullname")
             if platform == "instagram"
@@ -48,6 +56,23 @@ def metadata(raw, filename):
     if platform == "instagram":
         author_name = author_name or raw.get("fullname") or raw.get("full_name")
     author_name = author_name.strip() if isinstance(author_name, str) else None
+    coauthors = None
+    if platform == "instagram" and "coauthors" in raw:
+        coauthors = []
+        seen = set()
+        for coauthor in raw.get("coauthors") or []:
+            if not isinstance(coauthor, dict):
+                continue
+            username = str(coauthor.get("username") or "").strip()
+            key_username = username.casefold()
+            if not username or key_username in seen:
+                continue
+            seen.add(key_username)
+            full_name = coauthor.get("full_name") or coauthor.get("fullname")
+            coauthors.append({
+                "username": username,
+                "full_name": full_name.strip() if isinstance(full_name, str) and full_name.strip() else None,
+            })
     key = str(
         raw.get("tweet_id")
         or raw.get("post_id")
@@ -99,6 +124,7 @@ def metadata(raw, filename):
             if isinstance(raw.get("user"), dict)
             else None
         ),
+        coauthors=coauthors,
     )
 
 
@@ -110,9 +136,14 @@ def source_image(db, meta):
 
 
 def save_source(db, image_id, meta):
+    coauthors = (
+        json.dumps(meta["coauthors"], ensure_ascii=False, separators=(",", ":"))
+        if meta.get("coauthors") is not None
+        else None
+    )
     db.execute(
-        "INSERT INTO posts(platform,post_key,author,author_name,published_at,url,post_text,collected_account) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(platform,post_key) DO UPDATE SET author=COALESCE(excluded.author,posts.author), author_name=CASE WHEN lower(excluded.author)<>lower(posts.author) THEN excluded.author_name ELSE COALESCE(excluded.author_name,posts.author_name) END, published_at=COALESCE(excluded.published_at,posts.published_at),url=COALESCE(excluded.url,posts.url),post_text=COALESCE(NULLIF(excluded.post_text,''),posts.post_text)",
-        tuple(meta[k] for k in ("platform", "key", "author", "author_name", "date", "url", "text", "collected")),
+        "INSERT INTO posts(platform,post_key,author,author_name,published_at,url,post_text,collected_account,coauthors) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(platform,post_key) DO UPDATE SET author=COALESCE(excluded.author,posts.author), author_name=CASE WHEN lower(excluded.author)<>lower(posts.author) THEN excluded.author_name ELSE COALESCE(excluded.author_name,posts.author_name) END, published_at=COALESCE(excluded.published_at,posts.published_at),url=COALESCE(excluded.url,posts.url),post_text=COALESCE(NULLIF(excluded.post_text,''),posts.post_text),coauthors=COALESCE(excluded.coauthors,posts.coauthors)",
+        tuple(meta[k] for k in ("platform", "key", "author", "author_name", "date", "url", "text", "collected")) + (coauthors,),
     )
     post_id = db.execute("SELECT id FROM posts WHERE platform=? AND post_key=?", (meta["platform"], meta["key"])).fetchone()[0]
     db.execute("INSERT OR IGNORE INTO sources(image_id,post_id,media_key) VALUES(?,?,?)", (image_id, post_id, meta["media"]))

@@ -48,6 +48,7 @@ export type Source = {
   published_at: string;
   url: string;
   post_text?: string | null;
+  coauthors?: { username: string; full_name?: string | null }[];
 };
 export const platformLabel = (platform?: string) =>
   platform === "x"

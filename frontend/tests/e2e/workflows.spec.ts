@@ -272,6 +272,7 @@ test("publisher names, cross-platform selector and single-source links", async (
     author_name: "账号昵称",
     published_at: "2026-01-01T00:00:00Z",
     url: "https://x.com/alice/status/1",
+    coauthors: [{ username: "bob", full_name: "共同作者" }],
   };
   const person = {
     id: 7,
@@ -347,6 +348,7 @@ test("publisher names, cross-platform selector and single-source links", async (
   await page.locator(".photo-card").click();
   const dialog = page.getByRole("dialog", { name: "照片详情" });
   await expect(dialog.getByText("X · 关联人物", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("共同作者 (@bob)", { exact: true })).toBeVisible();
   await expect(dialog.getByRole("link", { name: "X · 关联人物", exact: true })).toHaveCount(1);
   await expect(
     dialog.getByRole("link", { name: "查看来源（最早收录帖子）" }),

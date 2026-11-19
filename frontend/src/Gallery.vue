@@ -25,6 +25,7 @@ import {
 import { useLibrary } from "./store";
 import { usePageTitle } from "./page-title";
 import { api, dateLabel, platformLabel, type Photo } from "./api";
+import { t } from "./locale";
 import { hasFilters, clearFilters, emptyFilter, fromQuery, toQuery, type Filter } from "./filters";
 import Filters from "./Filters.vue";
 import FeedbackPanel from "./FeedbackPanel.vue";
@@ -53,6 +54,11 @@ const selecting = ref(false),
   downloadError = ref(""),
   downloadNotice = ref("");
 const allLoadedSelected = computed(() => photos.value.length > 0 && photos.value.every(photo => downloadSelection.value.has(photo.id)));
+function coauthorLabel(coauthor: { username: string; full_name?: string | null }) {
+  const name = coauthor.full_name?.trim();
+  const username = coauthor.username?.trim();
+  return name && username ? `${name} (@${username})` : name || (username ? `@${username}` : "");
+}
 let downloadController: AbortController | null = null;
 function stopSelecting() {
   downloadController?.abort();
@@ -469,6 +475,10 @@ onUnmounted(() => {
                     <span aria-hidden="true">·</span>
                     <span>{{ [...new Set(source.images.map(image => image.width + " × " + image.height))].join("、") }}</span>
                   </span>
+                </div>
+                <div v-if="source.coauthors?.length" class="source-coauthors">
+                  <strong>{{ t("共同作者") }}</strong>
+                  <span>{{ source.coauthors.map(coauthorLabel).filter(Boolean).join("、") }}</span>
                 </div>
               </header>
               <SourceText :text="source.post_text" />
