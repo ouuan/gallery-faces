@@ -103,6 +103,9 @@ def init():
         db.execute("PRAGMA journal_mode=WAL")
         db.executescript(SCHEMA)
     with connect(True) as db:
+        for table in ('people', 'groups'):
+            if 'name_ja' not in {row[1] for row in db.execute(f'PRAGMA table_info({table})')}:
+                db.execute(f'ALTER TABLE {table} ADD COLUMN name_ja TEXT')
         task_columns = {row[1] for row in db.execute("PRAGMA table_info(tasks)")}
         for column in ("finished_at",):
             if column not in task_columns:

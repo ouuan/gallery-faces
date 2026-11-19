@@ -4,8 +4,15 @@ RUN npm install --global pnpm@12.21.0
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
-RUN pnpm run build
-FROM python:3.14-slim-bookworm
+RUN pnpm run build && pnpm run build:ja
+
+FROM nginx:stable-alpine AS japanese
+COPY --from=frontend /frontend/dist-ja /usr/share/nginx/html
+COPY deploy/nginx-ja.conf.template /etc/nginx/templates/default.conf.template
+ENV BACKEND_URL=http://web:8000
+EXPOSE 80
+
+FROM python:3.14-slim-bookworm AS default
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DATA_DIR=/data IMPORT_DIR=/imports FRONTEND_DIR=/app/frontend
 WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:0.13.9 /uv /usr/local/bin/uv

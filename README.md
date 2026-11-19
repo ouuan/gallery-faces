@@ -38,6 +38,8 @@
 
 公开图片长期缓存、升级扫描和 Cloudflare 配置见[缓存部署指南](docs/deployment-cache.md)。
 
+可另行构建部署[日语只读帖子前端](docs/japanese-frontend.md)，与中文版共享后端。
+
 ## 备份与恢复
 
 升级前先备份。为保证照片与数据库一致，备份和恢复时均需停止服务。

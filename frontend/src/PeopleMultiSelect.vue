@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, ja } from "./locale";
 import { computed } from "vue";
 import { NCascader } from "naive-ui";
 import type { Person } from "./api";
@@ -55,7 +56,7 @@ function update(keys: (string | number)[] | null) {
     }"
     @update:value="update"
   >
-    <template #empty><slot name="empty">暂无人物</slot></template>
-    <template #not-found><slot name="not-found">没有匹配的人物</slot></template>
+    <template #empty><slot name="empty">{{ t("暂无人物") }}</slot></template>
+    <template #not-found><slot name="not-found">{{ t("没有匹配的人物") }}</slot></template>
   </n-cascader>
 </template>

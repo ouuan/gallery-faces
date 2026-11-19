@@ -1,3 +1,4 @@
+import { ja, t } from "./locale";
 export class ApiError extends Error {
   constructor(message: string, public status: number, public retryAfter: number) { super(message); }
 }
@@ -18,7 +19,7 @@ export async function api<T = any>(
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new ApiError(
-      typeof error.detail === "string"
+      ja ? `リクエストに失敗しました (${response.status})` : typeof error.detail === "string"
         ? error.detail
         : `请求失败 (${response.status})`,
       response.status,
@@ -32,7 +33,8 @@ export const send = (path: string, body: unknown, method = "POST") =>
 export type Person = {
   id: number;
   name: string;
-  groups: { id: number; name: string }[];
+  name_ja?: string | null;
+  groups: { id: number; name: string; name_ja?: string | null }[];
   accounts: { platform: string; username: string }[];
   reference_count: number;
   avatar_reference_id: number | null;
@@ -65,7 +67,7 @@ export function publisherLabel(source: Source, people: Person[]) {
     linked.map((person) => person.name).join("、") ||
     source.author_name?.trim() ||
     source.author ||
-    "缺少发布者"
+    t("缺少发布者")
   );
 }
 export type DetailSource = Source & { images: { image_id: number; width: number; height: number }[] };
@@ -86,8 +88,8 @@ export type Photo = {
   members?: any[];
 };
 export const dateLabel = (value: string | null | undefined) =>
-  !value ? "缺少日期" :
-  new Intl.DateTimeFormat("zh-CN", {
+  !value ? t("缺少日期") :
+  new Intl.DateTimeFormat(ja ? "ja-JP" : "zh-CN", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

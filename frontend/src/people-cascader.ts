@@ -1,3 +1,4 @@
+import { t } from "./locale";
 import type { Person } from "./api";
 
 export type PeopleGroupOption = {
@@ -10,7 +11,7 @@ export function peopleOptions(
   people: Person[],
   groups: { id: number; name: string }[],
 ): PeopleGroupOption[] {
-  return [...groups, { id: 0, name: "未分组" }]
+  return [...groups, { id: 0, name: t("未分组") }]
     .map((group) => ({
       label: group.name,
       value: `group:${group.id}`,

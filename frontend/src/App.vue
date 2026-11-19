@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { ja, t } from "./locale";
 import { onMounted, watchEffect } from "vue";
 import {
   NConfigProvider,
-  zhCN,
+  zhCN, jaJP, dateJaJP,
   dateZhCN,
   NMessageProvider,
   NDialogProvider,
@@ -21,7 +22,7 @@ watchEffect(
 );
 </script>
 <template>
-  <n-config-provider class="site-layout" :locale="zhCN" :date-locale="dateZhCN"
+  <n-config-provider class="site-layout" :locale="ja ? jaJP : zhCN" :date-locale="ja ? dateJaJP : dateZhCN"
     :theme="store.dark ? darkTheme : null"
     :theme-overrides="{
       common: {
@@ -48,22 +49,22 @@ watchEffect(
           >
           <div class="header-actions">
             <n-select
-              aria-label="主题"
+              :aria-label="t('主题')"
               class="theme-select"
               :value="store.theme"
               @update:value="store.setTheme"
               :options="[
-                { label: '跟随系统', value: 'system' },
-                { label: '浅色', value: 'light' },
-                { label: '深色', value: 'dark' },
+                { label: t('跟随系统'), value: 'system' },
+                { label: t('浅色'), value: 'light' },
+                { label: t('深色'), value: 'dark' },
               ]"
-            /><router-link to="/admin/import" class="nav-link" aria-label="管理"
+            /><router-link v-if="!ja" to="/admin/import" class="nav-link" aria-label="管理"
               ><Settings :size="18" /><span>管理</span></router-link
             >
           </div>
         </header>
         <router-view />
-        <footer class="site-footer">
+        <footer v-if="!ja" class="site-footer">
           <a href="https://github.com/ouuan/gallery-faces" target="_blank" rel="noopener noreferrer">
             <Code2 :size="16" aria-hidden="true" />源代码
           </a>

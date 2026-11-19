@@ -279,6 +279,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Posts */
+        get: operations["posts_api_v1_posts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/gallery": {
         parameters: {
             query?: never;
@@ -1079,6 +1096,8 @@ export interface components {
         };
         /** GroupInput */
         GroupInput: {
+            /** Name Ja */
+            name_ja?: string | null;
             /** Name */
             name: string;
             /**
@@ -1178,6 +1197,8 @@ export interface components {
         };
         /** PersonFromFaceInput */
         PersonFromFaceInput: {
+            /** Name Ja */
+            name_ja?: string | null;
             /** Name */
             name: string;
             /**
@@ -1220,6 +1241,8 @@ export interface components {
         };
         /** PersonInput */
         PersonInput: {
+            /** Name Ja */
+            name_ja?: string | null;
             /** Name */
             name: string;
             /**
@@ -1265,6 +1288,32 @@ export interface components {
             url: string;
             /** Post Text */
             post_text?: string | null;
+        };
+        /** PostPage */
+        PostPage: {
+            /** Items */
+            items: components["schemas"]["PublicPost"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** PublicPost */
+        PublicPost: {
+            /** Id */
+            id: number;
+            /** Key */
+            key: string;
+            /** Platform */
+            platform: string;
+            /** Url */
+            url: string;
+            /** Embed Id */
+            embed_id: string | null;
+            /** Author */
+            author: string;
+            /** Author Name */
+            author_name: string | null;
+            /** Published At */
+            published_at: string;
         };
         /** ReferenceInput */
         ReferenceInput: {
@@ -1952,6 +2001,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    posts_api_v1_posts_get: {
+        parameters: {
+            query?: {
+                people?: string;
+                match?: "any" | "all";
+                publishers?: string;
+                start?: string;
+                end?: string;
+                include_no_faces?: boolean;
+                sort?: "newest" | "oldest";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostPage"];
                 };
             };
             /** @description Validation Error */

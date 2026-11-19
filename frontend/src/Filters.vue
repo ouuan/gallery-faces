@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, ja } from "./locale";
 import LocalDateTime from "./LocalDateTime.vue";
 import { computed, ref } from "vue";
 import {
@@ -50,73 +51,82 @@ function set(key: keyof Filter, value: any) {
 <template>
   <div class="filters">
     <div class="section-heading">
-      <h2>筛选照片</h2>
+      <h2>{{ t("筛选照片") }}</h2>
       <button
         v-if="hasFilters(modelValue)"
         class="text-button filter-clear"
         @click="emit('clear')"
-      >清空</button>
+      >{{ t("清空") }}</button>
     </div>
     <fieldset>
-      <legend>照片中的人物</legend>
-      <p v-if="!store.people.length" class="muted">尚未添加人物</p>
+      <legend>{{ t("照片中的人物") }}</legend>
+      <p v-if="!store.people.length" class="muted">{{ t("尚未添加人物") }}</p>
       <people-multi-select
         v-else
         class="people-cascader"
-        aria-label="照片中的人物"
+        :aria-label="t('照片中的人物')"
         :people="store.people"
         :groups="store.groups"
         :model-value="personValues"
-        placeholder="选择分组或搜索人物"
+        :placeholder="t('选择分组或搜索人物')"
         @update:model-value="selectPeople"
       />
       <p v-if="modelValue.people.length" class="hint">
-        已选 {{ modelValue.people.length }} 位人物
+        {{ ja ? `${modelValue.people.length} 人を選択中` : `已选 ${modelValue.people.length} 位人物` }}
       </p>
       <n-radio-group
-        aria-label="人物匹配方式"
+        :aria-label="t('人物匹配方式')"
         v-if="modelValue.people.length > 1"
         :value="modelValue.match"
         @update:value="set('match', $event)"
-        ><n-radio-button value="any">任一人物</n-radio-button
-        ><n-radio-button value="all">全部同框</n-radio-button></n-radio-group
+        ><n-radio-button value="any">{{ t("任一人物") }}</n-radio-button
+        ><n-radio-button value="all">{{ t("全部同框") }}</n-radio-button></n-radio-group
       >
     </fieldset>
     <fieldset>
-      <legend>发布者</legend>
+      <legend>{{ t("发布者") }}</legend>
       <PublisherSelect :model-value="modelValue.publishers" @update:model-value="set('publishers', $event)" />
-      <p class="hint">匹配所选人物在所有平台的关联账号</p>
+      <p class="hint">{{ t("匹配所选人物在所有平台的关联账号") }}</p>
       <div class="publisher-entry">
         <n-select
           v-model:value="publisherPlatform"
-          aria-label="发布平台"
+          :aria-label="t('发布平台')"
           :options="[
             { label: 'X / Twitter', value: 'x' },
             { label: 'Instagram', value: 'instagram' },
           ]"
         /><n-input
           v-model:value="publisherName"
-          aria-label="发布者用户名"
-          placeholder="输入用户名"
+          :aria-label="t('发布者用户名')"
+          :placeholder="t('输入用户名')"
           @keydown.enter.prevent="addPublisher"
         /><n-button :disabled="!publisherName.trim()" @click="addPublisher"
-          >添加发布者</n-button
+          >{{ t("添加发布者") }}</n-button
         >
       </div>
     </fieldset>
     <fieldset>
-      <legend>发布日期</legend>
+      <legend>{{ t("发布日期") }}</legend>
       <label class="field-label date-field"
-        >从<LocalDateTime aria-label="开始时间" :model-value="modelValue.start" @update:model-value="set('start', $event)" /></label
+        >{{ t("从") }}<LocalDateTime :aria-label="t('开始时间')" :model-value="modelValue.start" @update:model-value="set('start', $event)" /></label
       ><label class="field-label date-field"
-        >至<LocalDateTime aria-label="结束时间" :model-value="modelValue.end" @update:model-value="set('end', $event)" /></label>
+        >{{ t("至") }}<LocalDateTime :aria-label="t('结束时间')" :model-value="modelValue.end" @update:model-value="set('end', $event)" /></label>
       <DateRangeHint :start="modelValue.start" :end="modelValue.end" />
     </fieldset>
     <n-checkbox
       v-if="!hideNoFaces"
       :checked="modelValue.include_no_faces"
       @update:checked="set('include_no_faces', $event)"
-      >包含无人脸图片</n-checkbox
+      >{{ t("包含无人脸图片") }}</n-checkbox
     >
   </div>
 </template>
+<style scoped>
+:global(html[lang="ja"]) .field-label.date-field { grid-template-columns: 2em minmax(0, 1fr); gap: 8px; }
+</style>
+<style scoped>
+:global(html[lang="ja"]) .field-label.date-field > :first-child { white-space: nowrap; }
+</style>
+<style scoped>
+:global(html[lang="ja"]) .field-label.date-field { grid-template-columns: max-content minmax(0, 1fr); }
+</style>

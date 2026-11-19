@@ -30,6 +30,7 @@ const store = useLibrary(),
   error = ref(""),
   id = ref<number | null>(null),
   name = ref(""),
+  nameJa = ref(""),
   selectedGroups = ref<(number | string)[]>([]),
   accounts = ref<{ platform: string; username: string }[]>([]),
   newGroup = ref(""),
@@ -118,6 +119,7 @@ function toggleReference(faceId: number, checked: boolean) {
 const formState = () =>
   JSON.stringify([
     name.value,
+    nameJa.value,
     selectedGroups.value,
     accounts.value,
     newGroup.value,
@@ -131,6 +133,7 @@ function open(person?: Person) {
   faceRequest.cancel();
   id.value = person?.id || null;
   name.value = person?.name || "";
+  nameJa.value = person?.name_ja || "";
   selectedGroups.value = person?.groups.map((g) => g.id) || [];
   accounts.value = person ? JSON.parse(JSON.stringify(person.accounts)) : [];
   newGroup.value = "";
@@ -161,6 +164,7 @@ async function save() {
   try {
     const body: components["schemas"]["PersonInput"] = {
       name: name.value,
+      name_ja: nameJa.value,
       group_ids: selectedGroups.value.filter(
         (g): g is number => typeof g === "number",
       ),
@@ -370,6 +374,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
             :disabled="saving"
             autofocus
         /></label>
+        <label class="field-label">日语名称（可选）<n-input v-model:value="nameJa" maxlength="100" placeholder="未填写时使用原名" /></label>
         <PersonDetailsFields
           v-model:groups="selectedGroups"
           v-model:accounts="accounts"
@@ -546,6 +551,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
     >
       <h2>编辑分组</h2>
       <template v-if="groupEdit">
+        <label class="field-label">日语名称（可选）<n-input v-model:value="groupEdit.name_ja" maxlength="100" placeholder="未填写时使用原名" /></label>
         <label class="field-label"
           >名称<n-input v-model:value="groupEdit.name" /></label
         ><label class="field-label"

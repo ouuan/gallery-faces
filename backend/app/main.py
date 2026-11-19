@@ -171,6 +171,7 @@ class UploadedReference(BaseModel):
 
 
 class PersonInput(BaseModel):
+    name_ja: str | None = Field(default=None, max_length=100)
     name: str = Field(min_length=1, max_length=100)
     group_ids: list[int] = []
     new_groups: list[str] = []
@@ -194,6 +195,8 @@ def write_person(db, body, person_id=None):
         person_id = db.execute(
             "INSERT INTO people(name) VALUES(?)", (name,)
         ).lastrowid
+    if 'name_ja' in body.model_fields_set:
+        db.execute('UPDATE people SET name_ja=? WHERE id=?', ((body.name_ja or '').strip() or None, person_id))
     ids = set(body.group_ids)
     for value in body.new_groups:
         value = value.strip()
@@ -344,6 +347,7 @@ def groups():
 
 
 class GroupInput(BaseModel):
+    name_ja: str | None = Field(default=None, max_length=100)
     name: str = Field(min_length=1, max_length=100)
     person_ids: list[int] = []
 
@@ -366,6 +370,8 @@ def group_update(group_id: int, body: GroupInput, _: None = Depends(admin)):
         ):
             fail("人物不存在")
         db.execute("UPDATE groups SET name=? WHERE id=?", (name, group_id))
+        if 'name_ja' in body.model_fields_set:
+            db.execute('UPDATE groups SET name_ja=? WHERE id=?', ((body.name_ja or '').strip() or None, group_id))
         db.execute("DELETE FROM person_groups WHERE group_id=?", (group_id,))
         db.executemany(
             "INSERT INTO person_groups VALUES(?,?)",
@@ -602,9 +608,7 @@ def date_bounds(start, end):
     return lower, upper
 
 
-def gallery_rows(
-    db, people_ids, match, publishers, start, end, include_no_faces, sort, cursor, limit
-):
+def source_conditions(people_ids, match, publishers, start, end, include_no_faces):
     # Source filters share one post row; identity filters use the public representative.
     conditions = [
         "i.hidden=0",
@@ -650,6 +654,11 @@ def gallery_rows(
         conditions.append(
             f"EXISTS(SELECT 1 FROM images m JOIN faces f ON f.image_id=m.id WHERE {eligible} AND f.ignored=0)"
         )
+    return conditions, args
+
+
+def gallery_rows(db, people_ids, match, publishers, start, end, include_no_faces, sort, cursor, limit):
+    conditions, args = source_conditions(people_ids, match, publishers, start, end, include_no_faces)
     ranked = (
         "SELECT i.group_id,p.id AS post_id,p.platform,p.author,p.author_name,p.published_at,p.url,ROW_NUMBER() OVER(PARTITION BY i.group_id ORDER BY p.published_at,p.id) AS rank FROM images i JOIN sources s ON s.image_id=i.id JOIN posts p ON p.id=s.post_id WHERE "
         + " AND ".join(conditions)
@@ -752,6 +761,73 @@ def parse_people_publishers(people, publishers):
     except (ValueError, OverflowError):
         fail("筛选条件无效")
     return ids, accounts
+
+
+class PublicPost(BaseModel):
+    id: int
+    key: str
+    platform: str
+    url: str
+    embed_id: str | None
+    author: str
+    author_name: str | None
+    published_at: str
+
+
+class PostPage(BaseModel):
+    items: list[PublicPost]
+    next_cursor: str | None
+
+
+def post_identity(platform, url):
+    from urllib.parse import urlparse
+    if not validate_url(url or ''):
+        return None
+    parsed = urlparse(url)
+    host = parsed.hostname.removeprefix('www.')
+    pattern = r'/(?:[^/]+/status|i/web/status)/(\d+)(?:/.*)?' if platform == 'x' else r'/(?:p|reel|tv)/([A-Za-z0-9_-]+)(?:/.*)?'
+    if host not in ({'x.com', 'twitter.com'} if platform == 'x' else {'instagram.com'}):
+        return None
+    match = re.fullmatch(pattern, parsed.path)
+    return match[1] if match else None
+
+
+@app.get('/api/v1/posts', response_model=PostPage)
+def posts(people: str = '', match: Literal['any', 'all'] = 'any', publishers: str = '',
+          start: str = '', end: str = '', include_no_faces: bool = False,
+          sort: Literal['newest', 'oldest'] = 'newest', cursor: str = '',
+          limit: int = Query(default=20, ge=1, le=100)):
+    ids, accounts = parse_people_publishers(people, publishers)
+    lower, upper = date_bounds(start, end)
+    conditions, args = source_conditions(ids, match, accounts, lower, upper, include_no_faces)
+    conditions.append("p.platform IN ('x','instagram')")
+    with connect() as db:
+        db.create_function('post_identity', 2, post_identity, deterministic=True)
+        sql = """WITH eligible AS (
+            SELECT DISTINCT p.id FROM images i JOIN sources s ON s.image_id=i.id
+            JOIN posts p ON p.id=s.post_id WHERE """ + ' AND '.join(conditions) + """),
+            normalized AS (SELECT p.*, post_identity(platform,url) AS embed_id,
+                platform || ':' || COALESCE(post_identity(platform,url),'record:' || id) AS key
+                FROM posts p WHERE p.platform IN ('x','instagram')),
+            ranked AS (SELECT *, ROW_NUMBER() OVER(PARTITION BY key ORDER BY id) AS rank
+                FROM normalized JOIN eligible USING(id))
+            SELECT id,key,platform,url,embed_id,author,author_name,published_at FROM ranked WHERE rank=1
+            AND author IS NOT NULL AND published_at IS NOT NULL AND url IS NOT NULL"""
+        if cursor:
+            try:
+                if len(cursor) > 1024: raise ValueError()
+                stamp, identifier = json.loads(base64.urlsafe_b64decode(cursor))
+                if not isinstance(stamp, str) or not isinstance(identifier, int) or not 0 < identifier <= 9223372036854775807: raise ValueError()
+            except Exception:
+                fail('分页游标无效')
+            sql += ' AND (published_at,id) ' + ('<' if sort == 'newest' else '>') + ' (?,?)'
+            args.extend([stamp, identifier])
+        direction = 'DESC' if sort == 'newest' else 'ASC'
+        sql += f' ORDER BY published_at {direction}, id {direction} LIMIT ?'
+        rows = [dict(row) for row in db.execute(sql, [*args, limit + 1])]
+        page = rows[:limit]
+        next_cursor = base64.urlsafe_b64encode(json.dumps([page[-1]['published_at'],page[-1]['id']]).encode()).decode() if len(rows) > limit else None
+        return {'items': page, 'next_cursor': next_cursor}
 
 
 @app.get("/api/v1/gallery", response_model=GalleryPage)

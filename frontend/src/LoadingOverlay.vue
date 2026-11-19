@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { t, ja } from "./locale";
 import { NSpin } from "naive-ui";
 withDefaults(defineProps<{ show: boolean; label?: string; center?: boolean; error?: boolean }>(), {
-  label: "正在加载…",
+  label: t("正在加载…"),
 });
 </script>
 <template>

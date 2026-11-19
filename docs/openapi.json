@@ -655,6 +655,136 @@
         }
       }
     },
+    "/api/v1/posts": {
+      "get": {
+        "summary": "Posts",
+        "operationId": "posts_api_v1_posts_get",
+        "parameters": [
+          {
+            "name": "people",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "People"
+            }
+          },
+          {
+            "name": "match",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "any",
+                "all"
+              ],
+              "type": "string",
+              "default": "any",
+              "title": "Match"
+            }
+          },
+          {
+            "name": "publishers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Publishers"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "End"
+            }
+          },
+          {
+            "name": "include_no_faces",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include No Faces"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "newest",
+                "oldest"
+              ],
+              "type": "string",
+              "default": "newest",
+              "title": "Sort"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/gallery": {
       "get": {
         "summary": "Gallery",
@@ -3129,6 +3259,18 @@
       },
       "GroupInput": {
         "properties": {
+          "name_ja": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name Ja"
+          },
           "name": {
             "type": "string",
             "maxLength": 100,
@@ -3419,6 +3561,18 @@
       },
       "PersonFromFaceInput": {
         "properties": {
+          "name_ja": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name Ja"
+          },
           "name": {
             "type": "string",
             "maxLength": 100,
@@ -3492,6 +3646,18 @@
       },
       "PersonInput": {
         "properties": {
+          "name_ja": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name Ja"
+          },
           "name": {
             "type": "string",
             "maxLength": 100,
@@ -3598,6 +3764,96 @@
           "url"
         ],
         "title": "PostEdit"
+      },
+      "PostPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PublicPost"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "PostPage"
+      },
+      "PublicPost": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "platform": {
+            "type": "string",
+            "title": "Platform"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "embed_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embed Id"
+          },
+          "author": {
+            "type": "string",
+            "title": "Author"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "published_at": {
+            "type": "string",
+            "title": "Published At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "key",
+          "platform",
+          "url",
+          "embed_id",
+          "author",
+          "author_name",
+          "published_at"
+        ],
+        "title": "PublicPost"
       },
       "ReferenceInput": {
         "properties": {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, ja } from "./locale";
 import { computed } from "vue";
 import { useLibrary } from "./store";
 import { platformLabel } from "./api";
@@ -25,7 +26,7 @@ const publisherExtraOptions = computed(() => {
         value,
         label:
           platform === "person"
-            ? "已删除人物"
+            ? t("已删除人物")
             : `${platformLabel(platform)} · @${username}`,
       };
     });
@@ -34,15 +35,15 @@ const publisherExtraOptions = computed(() => {
 <template>
   <PeopleMultiSelect
     class="publisher-cascader"
-    aria-label="发布者"
+    :aria-label="t('发布者')"
     :people="publisherPeople"
     :groups="store.groups"
     :model-value="modelValue"
     :extra-options="publisherExtraOptions"
-    placeholder="选择分组或搜索发布者"
+    :placeholder="t('选择分组或搜索发布者')"
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <template #empty>暂无关联账号的人物</template>
-    <template #not-found>没有匹配的发布者</template>
+    <template #empty>{{ t("暂无关联账号的人物") }}</template>
+    <template #not-found>{{ t("没有匹配的发布者") }}</template>
   </PeopleMultiSelect>
 </template>

@@ -1,3 +1,4 @@
+import { ja } from "./locale";
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import {
@@ -8,7 +9,7 @@ import {
 } from "./api";
 export const useLibrary = defineStore("library", () => {
   const people = ref<Person[]>([]),
-    groups = ref<{ id: number; name: string }[]>([]),
+    groups = ref<{ id: number; name: string; name_ja?: string | null }[]>([]),
     siteTitle = ref("Gallery Faces"),
     theme = ref(localStorage.getItem("theme") || "system"),
     systemDark = ref(matchMedia("(prefers-color-scheme: dark)").matches);
@@ -38,8 +39,8 @@ export const useLibrary = defineStore("library", () => {
     if (libraryRequest) return libraryRequest;
     libraryRequest = (async () => {
       const [persons, collections] = await Promise.all([api("/people"), api("/groups")]);
-      people.value = persons;
-      groups.value = collections;
+      people.value = persons.map((p: Person) => ({ ...p, name: ja ? p.name_ja || p.name : p.name }));
+      groups.value = collections.map((g: { name: string; name_ja?: string | null }) => ({ ...g, name: ja ? g.name_ja || g.name : g.name }));
     })();
     try { await libraryRequest; } finally { libraryRequest = null; }
   }
