@@ -37,29 +37,82 @@ onMounted(loadLibrary);
 onBeforeUnmount(() => { version++; controller?.abort(); });
 </script>
 <template>
-  <main class="gallery-shell">
-    <aside class="desktop-filters"><Filters :model-value="filter" @update:model-value="apply" @clear="apply(clearFilters(filter))" /></aside>
-    <div class="gallery-content" :aria-busy="loading">
-      <div class="gallery-toolbar">
-        <div><h1>投稿一覧</h1><p class="muted">人物・投稿者・投稿日で検索</p></div>
-        <div class="toolbar-actions">
-          <n-button class="mobile-filter" @click="draft = { ...filter, people: [...filter.people], publishers: [...filter.publishers] }; drawer = true">絞り込み</n-button>
+  <main class="posts-shell">
+    <aside class="posts-filters"><Filters :model-value="filter" @update:model-value="apply" @clear="apply(clearFilters(filter))" /></aside>
+    <div class="posts-content" :aria-busy="loading">
+      <div class="posts-toolbar">
+        <div><h1>投稿一覧</h1><p class="muted">人物・投稿者・投稿日で絞り込み</p></div>
+        <div class="posts-actions">
+          <n-button class="posts-filter-toggle" @click="draft = { ...filter, people: [...filter.people], publishers: [...filter.publishers] }; drawer = true">絞り込み</n-button>
           <n-select aria-label="並び順" :value="filter.sort" :options="[{label:'新しい順',value:'newest'},{label:'古い順',value:'oldest'}]" @update:value="apply({...filter, sort: $event})" />
         </div>
       </div>
       <n-alert v-if="error" type="error">{{ error }} <n-button @click="load(!!cursor); loadLibrary()">再試行</n-button></n-alert>
       <div class="post-timeline">
         <PostEmbed v-for="post in items" :key="post.key" :post="post" />
-        <p v-if="loading" role="status">読み込み中…</p>
-        <p v-else-if="!items.length && !error" class="empty-state">条件に一致する投稿がありません</p>
-        <n-button v-if="cursor" :loading="loading" @click="load(true)">もっと見る</n-button>
+        <p v-if="loading && !items.length" class="post-list-status muted" role="status">投稿を読み込み中…</p>
+        <p v-else-if="!items.length && !error" class="empty-state">条件に合う投稿が見つかりません</p>
+        <n-button v-if="cursor" class="post-load-more stable-loading-button" :loading="loading" @click="load(true)">もっと見る</n-button>
       </div>
     </div>
     <n-drawer :show="drawer" placement="left" width="min(340px, 100vw)" @update:show="!$event && closeFilters()">
-      <n-drawer-content :native-scrollbar="false" :body-content-style="{ padding: '24px' }" aria-label="投稿を絞り込む"><Filters v-model="draft" @clear="draft = clearFilters(draft)" /><template #footer><n-button @click="closeFilters">適用</n-button></template></n-drawer-content>
+      <n-drawer-content :native-scrollbar="false" :body-content-style="{ padding: '24px' }" aria-label="投稿を絞り込む"><Filters v-model="draft" @clear="draft = clearFilters(draft)" /><template #footer><n-button @click="closeFilters">絞り込みを適用</n-button></template></n-drawer-content>
     </n-drawer>
   </main>
 </template>
 <style scoped>
-.post-timeline { max-width: 550px; margin: 24px auto; }
+/* 4px spacing scale: 8px within controls, 24px between groups, 32px page inset. */
+.posts-shell {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  width: 100%;
+  max-width: 1120px;
+  margin-inline: auto;
+  flex: 1;
+  min-height: 0;
+}
+.posts-filters {
+  min-width: 0;
+  padding: 32px 24px;
+  background: var(--panel);
+  border-inline: 1px solid var(--line);
+}
+.posts-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 614px; /* 550px embed plus page insets. */
+  min-width: 0;
+  padding: 32px;
+  justify-self: center;
+}
+.posts-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.posts-toolbar p { margin-top: 4px; }
+.posts-actions { display: flex; gap: 8px; }
+.posts-actions .n-select { width: 120px; }
+.posts-filter-toggle { display: none; }
+.post-timeline { display: grid; gap: 24px; min-width: 0; }
+.post-list-status { display: grid; place-items: center; min-height: 300px; }
+.post-load-more { justify-self: center; min-width: 160px; }
+@media (max-width: 900px) {
+  .posts-shell { grid-template-columns: minmax(0, 1fr); }
+  .posts-filters { display: none; }
+  .posts-filter-toggle { display: inline-flex; }
+}
+@media (max-width: 640px) {
+  .posts-content {
+    max-width: 582px;
+    padding: 24px max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
+  .posts-toolbar { align-items: stretch; flex-direction: column; }
+  .posts-actions > * { flex: 1; min-width: 0; }
+  .posts-actions .n-select { width: auto; }
+}
 </style>

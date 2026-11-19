@@ -67,13 +67,22 @@ onBeforeUnmount(() => { generation++; observer?.disconnect(); });
 </script>
 <template>
   <article class="post-embed">
-    <div ref="host" class="embed-host" />
-    <p v-if="busy" role="status">投稿を読み込み中…</p>
-    <p v-if="failed" role="status">投稿を表示できません。<n-button text @click="render">再試行</n-button></p>
-    <a v-if="url" :href="url" target="_blank" rel="noopener noreferrer">{{ post.platform === 'x' ? 'X' : 'Instagram' }} で投稿を見る</a>
+    <div v-show="!failed" ref="host" class="embed-host" />
+    <p v-if="busy" class="embed-status muted" role="status">投稿を読み込み中…</p>
+    <p v-if="failed" class="embed-status" role="status">投稿を表示できません。<n-button text @click="render">再試行</n-button></p>
+    <a v-if="url" class="post-source" :href="url" target="_blank" rel="noopener noreferrer">{{ post.platform === 'x' ? 'X' : 'Instagram' }}で投稿を見る</a>
   </article>
 </template>
 <style scoped>
-.post-embed { border-bottom: 1px solid var(--line); padding: 0 0 24px; margin-bottom: 24px; overflow-wrap: anywhere; }
-.embed-host { min-height: 100px; } .embed-host :deep(iframe) { max-width: 100% !important; } .embed-host :deep(blockquote) { min-width: 0 !important; }
+.post-embed { display: grid; gap: 8px; min-width: 0; border-bottom: 1px solid var(--line); padding-bottom: 16px; overflow-wrap: anywhere; }
+.embed-host { min-width: 0; min-height: 100px; }
+/* Both platforms fill the same responsive column, including their inline-sized wrappers. */
+.embed-host :deep(iframe), .embed-host :deep(blockquote), .embed-host :deep(.twitter-tweet) {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+.embed-host :deep(.twitter-tweet), .embed-host :deep(.instagram-media) { margin: 0 auto !important; }
+.embed-status { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.post-source { display: inline-flex; align-items: center; justify-self: start; min-height: 44px; }
 </style>

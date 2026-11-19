@@ -7,8 +7,7 @@ export default defineConfig(({ mode }) => ({
       if (mode !== 'ja') return html;
       return html.replace('lang="zh-CN"', 'lang="ja"').replace('照片库', '投稿一覧')
         .replace('/src/main.ts', '/src/main-ja.ts')
-        .replace(/<link rel="icon"[^>]*>/, '')
-        .replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="img-src 'none'; media-src 'none'; object-src 'none'; frame-src https://platform.twitter.com https://platform.x.com https://syndication.twitter.com https://www.instagram.com;">`);
+        .replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="img-src data:; media-src 'none'; object-src 'none'; frame-src https://platform.twitter.com https://platform.x.com https://syndication.twitter.com https://www.instagram.com;">`);
     } },
   }],
   build: { outDir: mode === 'ja' ? 'dist-ja' : 'dist' },

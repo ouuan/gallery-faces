@@ -9,6 +9,7 @@ import {
   NButton,
   NRadioGroup,
   NRadioButton,
+  NRadio,
 } from "naive-ui";
 import { useLibrary } from "./store";
 import { hasFilters, type Filter } from "./filters";
@@ -49,7 +50,7 @@ function set(key: keyof Filter, value: any) {
 }
 </script>
 <template>
-  <div class="filters">
+  <div class="filters" :class="{ 'filters-ja': ja }">
     <div class="section-heading">
       <h2>{{ t("筛选照片") }}</h2>
       <button
@@ -72,15 +73,21 @@ function set(key: keyof Filter, value: any) {
         @update:model-value="selectPeople"
       />
       <p v-if="modelValue.people.length" class="hint">
-        {{ ja ? `${modelValue.people.length} 人を選択中` : `已选 ${modelValue.people.length} 位人物` }}
+        {{ ja ? `${modelValue.people.length}人を選択中` : `已选 ${modelValue.people.length} 位人物` }}
       </p>
       <n-radio-group
+        :class="{ 'person-match-ja': ja }"
         :aria-label="t('人物匹配方式')"
         v-if="modelValue.people.length > 1"
         :value="modelValue.match"
         @update:value="set('match', $event)"
-        ><n-radio-button value="any">{{ t("任一人物") }}</n-radio-button
-        ><n-radio-button value="all">{{ t("全部同框") }}</n-radio-button></n-radio-group
+        ><template v-if="ja">
+          <n-radio value="any">{{ t("任一人物") }}</n-radio>
+          <n-radio value="all">{{ t("全部同框") }}</n-radio>
+        </template><template v-else>
+          <n-radio-button value="any">{{ t("任一人物") }}</n-radio-button>
+          <n-radio-button value="all">{{ t("全部同框") }}</n-radio-button>
+        </template></n-radio-group
       >
     </fieldset>
     <fieldset>
@@ -122,11 +129,11 @@ function set(key: keyof Filter, value: any) {
   </div>
 </template>
 <style scoped>
-:global(html[lang="ja"]) .field-label.date-field { grid-template-columns: 2em minmax(0, 1fr); gap: 8px; }
-</style>
-<style scoped>
-:global(html[lang="ja"]) .field-label.date-field > :first-child { white-space: nowrap; }
-</style>
-<style scoped>
-:global(html[lang="ja"]) .field-label.date-field { grid-template-columns: max-content minmax(0, 1fr); }
+.filters-ja > .section-heading { min-height: 44px; gap: 8px; }
+.filters-ja .filter-clear { position: static; transform: none; flex-shrink: 0; }
+.filters-ja .field-label.date-field { grid-template-columns: 2em minmax(0, 1fr); gap: 8px; }
+.filters-ja .hint { overflow-wrap: anywhere; }
+.person-match-ja { display: flex; flex-direction: column; }
+.person-match-ja :deep(.n-radio) { min-height: 44px; align-items: center; margin: 0; }
+.person-match-ja :deep(.n-radio__label) { white-space: normal; }
 </style>
