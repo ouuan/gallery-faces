@@ -20,6 +20,7 @@ import PersonAvatar from "./PersonAvatar.vue";
 import { useLatestRequest } from "./use-latest-request";
 import { useImageDownloads } from "./use-review-images";
 import PersonDetailsFields from "./PersonDetailsFields.vue";
+import { emptyGroup, personGroupPayload, type SelectedGroup } from "./person-groups";
 import type { components } from "./schema";
 import { api, send, platformLabel, type Person } from "./api";
 const store = useLibrary(),
@@ -31,9 +32,9 @@ const store = useLibrary(),
   id = ref<number | null>(null),
   name = ref(""),
   nameJa = ref(""),
-  selectedGroups = ref<(number | string)[]>([]),
+  selectedGroups = ref<SelectedGroup[]>([]),
   accounts = ref<{ platform: string; username: string }[]>([]),
-  newGroup = ref(""),
+  newGroup = ref(emptyGroup()),
   baseline = ref("");
 const sortedPeople = computed(() => {
   const groupOrder = new Map(
@@ -136,7 +137,7 @@ function open(person?: Person) {
   nameJa.value = person?.name_ja || "";
   selectedGroups.value = person?.groups.map((g) => g.id) || [];
   accounts.value = person ? JSON.parse(JSON.stringify(person.accounts)) : [];
-  newGroup.value = "";
+  newGroup.value = emptyGroup();
   confirmedRequest++;
   confirmedLoading.value = false;
   references.value = [];
@@ -165,15 +166,7 @@ async function save() {
     const body: components["schemas"]["PersonInput"] = {
       name: name.value,
       name_ja: nameJa.value,
-      group_ids: selectedGroups.value.filter(
-        (g): g is number => typeof g === "number",
-      ),
-      new_groups: [
-        ...selectedGroups.value.filter(
-          (g): g is string => typeof g === "string",
-        ),
-        ...(newGroup.value.trim() ? [newGroup.value.trim()] : []),
-      ],
+      ...personGroupPayload(selectedGroups.value, newGroup.value),
       reference_face_ids: selectedReferenceFaces.value,
       removed_reference_ids: removedReferences.value,
       uploaded_references:
@@ -374,8 +367,8 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
             :disabled="saving"
             autofocus
         /></label>
-        <label class="field-label">日语名称（可选）<n-input v-model:value="nameJa" maxlength="100" placeholder="未填写时使用原名" /></label>
         <PersonDetailsFields
+          v-model:name-ja="nameJa"
           v-model:groups="selectedGroups"
           v-model:accounts="accounts"
           v-model:new-group="newGroup"
@@ -551,10 +544,11 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
     >
       <h2>编辑分组</h2>
       <template v-if="groupEdit">
-        <label class="field-label">日语名称（可选）<n-input v-model:value="groupEdit.name_ja" maxlength="100" placeholder="未填写时使用原名" /></label>
         <label class="field-label"
           >名称<n-input v-model:value="groupEdit.name" /></label
-        ><label class="field-label"
+        >
+        <label class="field-label">日语名称（可选）<n-input v-model:value="groupEdit.name_ja" maxlength="100" placeholder="未填写时使用原名" /></label>
+        <label class="field-label"
           >成员<n-select
             v-model:value="groupEdit.person_ids"
             multiple

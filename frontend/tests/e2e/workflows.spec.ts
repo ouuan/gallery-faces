@@ -37,12 +37,31 @@ test("gallery responsive states and transactional person groups", async ({
   await page.getByPlaceholder("输入主姓名").click();
   await expect(page.getByPlaceholder("输入主姓名")).toBeFocused();
   await page.getByPlaceholder("输入主姓名").fill("测试人物 " + Date.now());
+  await page.getByPlaceholder("未填写时使用原名").fill("テスト人物");
   await page.getByPlaceholder("新分组名称").fill("  测试分组  ");
+  await page.getByPlaceholder("新分组日语名称（可选）").fill("テスト組");
   await page.getByRole("button", { name: "新建分组", exact: true }).click();
+  await page.getByPlaceholder("新分组名称").fill("第二组");
+  await page.getByPlaceholder("新分组日语名称（可选）").fill("二組");
   await page.getByRole("button", { name: "保存人物", exact: true }).click();
   await expect(page.getByText("人物已保存", { exact: true })).toBeVisible();
   await expect(page.getByText("尚不能自动匹配").first()).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  const people = await (await page.request.get("/api/v1/people")).json();
+  expect(people).toContainEqual(expect.objectContaining({
+    name_ja: "テスト人物",
+    groups: expect.arrayContaining([
+      expect.objectContaining({ name: "测试分组", name_ja: "テスト組" }),
+      expect.objectContaining({ name: "第二组", name_ja: "二組" }),
+    ]),
+  }));
+  await page.getByRole("button", { name: "分组", exact: true }).click();
+  await page.locator(".person-row").filter({ hasText: "测试分组" }).getByRole("button", { name: "编辑成员" }).click();
+  const fields = page.getByRole("dialog").getByRole("textbox");
+  await expect(fields.nth(0)).toHaveValue("测试分组");
+  await expect(fields.nth(1)).toHaveValue("テスト組");
+  await page.getByRole("button", { name: "取消", exact: true }).click();
+  await page.getByRole("button", { name: "人物", exact: true }).click();
   await page.screenshot({
     path: "/tmp/gallery-faces/people-desktop.png",
     fullPage: true,

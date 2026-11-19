@@ -831,16 +831,17 @@ def test_person_from_face_groups_accounts_transaction(client):
         image(conn)
     face = client.get('/api/v1/admin/images').json()[0]['faces'][0]
     endpoint = f"/api/v1/admin/faces/{face['id']}/person"
-    body = {'name': 'New', 'revision': 0, 'group_ids': [group, 999], 'new_groups': ['New group'], 'accounts': [{'platform': 'x', 'username': 'alice'}]}
+    body = {'name': 'New', 'name_ja': ' 新人 ', 'revision': 0, 'group_ids': [group, 999], 'new_groups': [{'name': 'New group', 'name_ja': ' 新組 '}], 'accounts': [{'platform': 'x', 'username': 'alice'}]}
     assert client.post(endpoint, json=body).status_code == 400
     assert len(client.get('/api/v1/people').json()) == 1
     assert len(client.get('/api/v1/groups').json()) == 1
     body['group_ids'] = [group]
-    body['new_groups'] += [' Existing group ']
+    body['new_groups'] += [{'name': ' Existing group ', 'name_ja': '変更しない'}]
     result = client.post(endpoint, json=body)
     assert result.status_code == 200
     person = next(p for p in client.get('/api/v1/people').json() if p['id'] == result.json()['id'])
-    assert {g['name'] for g in person['groups']} == {'Existing group', 'New group'}
+    assert person['name_ja'] == '新人'
+    assert {g['name']: g['name_ja'] for g in person['groups']} == {'Existing group': None, 'New group': '新組'}
     assert person['accounts'][0]['username'] == 'alice'
     assert person['reference_count'] == 1
 

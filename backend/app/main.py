@@ -172,11 +172,16 @@ class UploadedReference(BaseModel):
     index: int = Field(ge=0)
 
 
+class GroupName(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    name_ja: str | None = Field(default=None, max_length=100)
+
+
 class PersonInput(BaseModel):
     name_ja: str | None = Field(default=None, max_length=100)
     name: str = Field(min_length=1, max_length=100)
     group_ids: list[int] = []
-    new_groups: list[str] = []
+    new_groups: list[str | GroupName] = []
     accounts: list[Account] = []
     reference_face_ids: list[int] = []
     removed_reference_ids: list[int] = []
@@ -200,11 +205,12 @@ def write_person(db, body, person_id=None):
     if 'name_ja' in body.model_fields_set:
         db.execute('UPDATE people SET name_ja=? WHERE id=?', ((body.name_ja or '').strip() or None, person_id))
     ids = set(body.group_ids)
-    for value in body.new_groups:
-        value = value.strip()
+    for group in body.new_groups:
+        value = (group if isinstance(group, str) else group.name).strip()
+        name_ja = None if isinstance(group, str) else (group.name_ja or '').strip() or None
         if not value or len(value) > 100:
             fail("分组名称不能为空且不能超过 100 字")
-        db.execute("INSERT OR IGNORE INTO groups(name) VALUES(?)", (value,))
+        db.execute("INSERT OR IGNORE INTO groups(name,name_ja) VALUES(?,?)", (value, name_ja))
         ids.add(
             db.execute("SELECT id FROM groups WHERE name=?", (value,)).fetchone()[0]
         )
@@ -387,9 +393,7 @@ def groups():
         ]
 
 
-class GroupInput(BaseModel):
-    name_ja: str | None = Field(default=None, max_length=100)
-    name: str = Field(min_length=1, max_length=100)
+class GroupInput(GroupName):
     person_ids: list[int] = []
 
 

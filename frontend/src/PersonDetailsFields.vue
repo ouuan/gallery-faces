@@ -3,33 +3,45 @@ import { computed } from "vue";
 import { NButton, NInput, NSelect } from "naive-ui";
 import { Trash2 } from "@lucide/vue";
 import { useLibrary } from "./store";
+import { emptyGroup, type SelectedGroup } from "./person-groups";
 defineProps<{ disabled?: boolean }>();
-const groups = defineModel<(number | string)[]>("groups", { required: true });
+const groups = defineModel<SelectedGroup[]>("groups", { required: true });
+const nameJa = defineModel<string>("nameJa", { required: true });
 const accounts = defineModel<{ platform: string; username: string }[]>(
   "accounts",
   { required: true },
 );
-const newGroup = defineModel<string>("newGroup", { required: true });
+const newGroup = defineModel<ReturnType<typeof emptyGroup>>("newGroup", { required: true });
 const store = useLibrary();
 const options = computed(() => [
   ...store.groups.map((g) => ({ label: g.name, value: g.id })),
   ...groups.value
-    .filter((g) => typeof g === "string")
-    .map((g) => ({ label: `${g}（新建）`, value: g })),
+    .filter((group) => typeof group !== "number")
+    .map((group) => ({ label: `${group.name}（新建）`, value: group.name })),
 ]);
+const selection = computed({
+  get: () => groups.value.map(group => typeof group === "number" ? group : group.name),
+  set: (values: (number | string)[]) => {
+    groups.value = values.map(value => typeof value === "number" ? value :
+      groups.value.find(group => typeof group !== "number" && group.name === value)!);
+  },
+});
 function addGroup() {
-  const value = newGroup.value.trim();
+  const value = newGroup.value.name.trim();
   if (!value) return;
   const key = store.groups.find((g) => g.name === value)?.id || value;
-  groups.value = [...new Set([...groups.value, key])];
-  newGroup.value = "";
+  if (!selection.value.includes(key)) {
+    groups.value = [...groups.value, typeof key === "number" ? key : { ...newGroup.value, name: value }];
+  }
+  newGroup.value = emptyGroup();
 }
 </script>
 <template>
+  <label class="field-label">日语名称（可选）<n-input v-model:value="nameJa" maxlength="100" placeholder="未填写时使用原名" :disabled="disabled" /></label>
   <label class="field-label"
     >分组
     <n-select
-      v-model:value="groups"
+      v-model:value="selection"
       multiple
       filterable
       :options="options"
@@ -37,15 +49,16 @@ function addGroup() {
       :disabled="disabled"
     />
   </label>
-  <div class="inline-form">
     <n-input
-      v-model:value="newGroup"
+      v-model:value="newGroup.name"
       placeholder="新分组名称"
       maxlength="100"
       :disabled="disabled"
       @keydown.enter.prevent="addGroup"
     />
-    <n-button :disabled="disabled || !newGroup.trim()" @click="addGroup"
+  <div class="inline-form">
+    <n-input v-model:value="newGroup.name_ja" placeholder="新分组日语名称（可选）" maxlength="100" :disabled="disabled" @keydown.enter.prevent="addGroup" />
+    <n-button :disabled="disabled || !newGroup.name.trim()" @click="addGroup"
       >新建分组</n-button
     >
   </div>

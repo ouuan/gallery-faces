@@ -3439,6 +3439,12 @@
       },
       "GroupInput": {
         "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
           "name_ja": {
             "anyOf": [
               {
@@ -3450,12 +3456,6 @@
               }
             ],
             "title": "Name Ja"
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Name"
           },
           "person_ids": {
             "items": {
@@ -3471,6 +3471,33 @@
           "name"
         ],
         "title": "GroupInput"
+      },
+      "GroupName": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "name_ja": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name Ja"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "GroupName"
       },
       "HTTPValidationError": {
         "properties": {
@@ -3769,7 +3796,14 @@
           },
           "new_groups": {
             "items": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/GroupName"
+                }
+              ]
             },
             "type": "array",
             "title": "New Groups",
@@ -3854,7 +3888,14 @@
           },
           "new_groups": {
             "items": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/GroupName"
+                }
+              ]
             },
             "type": "array",
             "title": "New Groups",

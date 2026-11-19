@@ -1177,15 +1177,22 @@ export interface components {
         };
         /** GroupInput */
         GroupInput: {
-            /** Name Ja */
-            name_ja?: string | null;
             /** Name */
             name: string;
+            /** Name Ja */
+            name_ja?: string | null;
             /**
              * Person Ids
              * @default []
              */
             person_ids: number[];
+        };
+        /** GroupName */
+        GroupName: {
+            /** Name */
+            name: string;
+            /** Name Ja */
+            name_ja?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1291,7 +1298,7 @@ export interface components {
              * New Groups
              * @default []
              */
-            new_groups: string[];
+            new_groups: (string | components["schemas"]["GroupName"])[];
             /**
              * Accounts
              * @default []
@@ -1335,7 +1342,7 @@ export interface components {
              * New Groups
              * @default []
              */
-            new_groups: string[];
+            new_groups: (string | components["schemas"]["GroupName"])[];
             /**
              * Accounts
              * @default []

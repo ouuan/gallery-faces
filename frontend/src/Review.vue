@@ -29,6 +29,7 @@ import { useStripThumbnails } from "./use-strip-thumbnails";
 import FeedbackPanel from "./FeedbackPanel.vue";
 import FaceBoxEditor from "./FaceBoxEditor.vue";
 import PersonDetailsFields from "./PersonDetailsFields.vue";
+import { emptyGroup, personGroupPayload, type SelectedGroup } from "./person-groups";
 import PersonSelect from "./PersonSelect.vue";
 const route = useRoute();
 const router = useRouter();
@@ -85,9 +86,10 @@ const store = useLibrary(),
   sourceEdit = ref<any>(null);
 const newPersonFace = ref<any>(null),
   newPersonName = ref(""),
-  newPersonGroups = ref<(number | string)[]>([]),
+  newPersonNameJa = ref(""),
+  newPersonGroups = ref<SelectedGroup[]>([]),
   newPersonAccounts = ref<{ platform: string; username: string }[]>([]),
-  newGroup = ref(""),
+  newGroup = ref(emptyGroup()),
   addReference = ref(true),
   creatingPerson = ref(false),
   createError = ref("");
@@ -97,9 +99,10 @@ const personDirty = computed(
   () =>
     !!(
       newPersonName.value ||
+      newPersonNameJa.value ||
       newPersonGroups.value.length ||
       newPersonAccounts.value.length ||
-      newGroup.value
+      newGroup.value.name || newGroup.value.name_ja
     ),
 );
 const dirty = computed(
@@ -111,9 +114,10 @@ const dirty = computed(
 function openNewPerson(face: any) {
   newPersonFace.value = { ...face };
   newPersonName.value = "";
+  newPersonNameJa.value = "";
   newPersonGroups.value = [];
   newPersonAccounts.value = [];
-  newGroup.value = "";
+  newGroup.value = emptyGroup();
   addReference.value = !!face.has_embedding;
   createError.value = "";
 }
@@ -136,11 +140,8 @@ async function createPerson() {
       `/admin/faces/${newPersonFace.value.id}/person`,
       {
         name: newPersonName.value.trim(),
-        group_ids: newPersonGroups.value.filter((g) => typeof g === "number"),
-        new_groups: [
-          ...newPersonGroups.value.filter((g) => typeof g === "string"),
-          ...(newGroup.value.trim() ? [newGroup.value.trim()] : []),
-        ],
+        name_ja: newPersonNameJa.value,
+        ...personGroupPayload(newPersonGroups.value, newGroup.value),
         accounts: newPersonAccounts.value.map((a) => ({
           ...a,
           username: a.username.trim(),
@@ -853,6 +854,7 @@ onMounted(load);
             />
           </label>
           <PersonDetailsFields
+            v-model:name-ja="newPersonNameJa"
             v-model:groups="newPersonGroups"
             v-model:accounts="newPersonAccounts"
             v-model:new-group="newGroup"
