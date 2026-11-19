@@ -9,7 +9,7 @@ import {
   darkTheme,
   NSelect,
 } from "naive-ui";
-import { Images, Settings } from "@lucide/vue";
+import { Code2, Images, Settings } from "@lucide/vue";
 import { useLibrary } from "./store";
 const store = useLibrary();
 onMounted(() => {
@@ -21,7 +21,7 @@ watchEffect(
 );
 </script>
 <template>
-  <n-config-provider :locale="zhCN" :date-locale="dateZhCN"
+  <n-config-provider class="site-layout" :locale="zhCN" :date-locale="dateZhCN"
     :theme="store.dark ? darkTheme : null"
     :theme-overrides="{
       common: {
@@ -62,6 +62,14 @@ watchEffect(
             >
           </div>
         </header>
-        <router-view /> </n-dialog-provider></n-message-provider
+        <router-view />
+        <footer class="site-footer">
+          <a href="https://github.com/ouuan/gallery-faces" target="_blank" rel="noopener noreferrer">
+            <Code2 :size="16" aria-hidden="true" />源代码
+          </a>
+          <span aria-hidden="true">·</span>
+          <span class="footer-credit">Made by <a href="https://ouuan.moe/about" target="_blank" rel="noopener noreferrer">ouuan</a></span>
+        </footer>
+      </n-dialog-provider></n-message-provider
   ></n-config-provider>
 </template>
