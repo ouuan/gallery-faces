@@ -374,3 +374,36 @@ def test_public_query_execution_budget(client, monkeypatch):
         assert error.value.status_code == 503
     finally:
         public_query.reset(marker)
+
+
+@pytest.mark.parametrize('host', ['x.com', 'twitter.com', 'www.x.com'])
+def test_list_urls(host):
+    assert download_url(f'https://{host}/i/lists/123/?s=20') == ('x', 'https://x.com/i/lists/123')
+
+
+@pytest.mark.parametrize('path', ['i/lists/abc', 'i/lists/123/members', 'i/lists/123/../bookmarks', 'i/lists/123%2Fmembers'])
+def test_invalid_list_urls(path):
+    with pytest.raises(ValueError):
+        download_url('https://x.com/' + path)
+
+
+def test_list_policy_checks_each_author_without_profile_lookup(monkeypatch):
+    from app.downloader import install_policy
+    from gallery_dl.extractor.common import Extractor
+    from gallery_dl.extractor.twitter import TwitterExtractor
+    from gallery_dl.extractor.instagram import InstagramExtractor
+    monkeypatch.setattr(Extractor, 'initialize', lambda self: None)
+    for name in ['_parse_post', 'items']:
+        monkeypatch.setattr(InstagramExtractor, name, getattr(InstagramExtractor, name))
+    monkeypatch.setattr(TwitterExtractor, '_transform_tweet', lambda self, raw: raw)
+    raw = {'user': {'protected': False}}
+    monkeypatch.setattr(TwitterExtractor, 'items', lambda self: iter([self._transform_tweet(raw)]))
+    state = install_policy()
+    from gallery_dl import extractor
+    instance = extractor.find('https://x.com/i/lists/123')
+    instance.initialize()
+    assert list(instance.items()) == [raw]
+    raw['user']['protected'] = True
+    with pytest.raises(ValueError):
+        list(instance.items())
+    assert state['denied']

@@ -150,3 +150,24 @@ def test_batch_interval_rejects_invalid_values(client, value):
     response = client.post('/api/v1/admin/monitors/batch', json=body)
     assert response.status_code == (400 if value is None else 422)
     assert monitors.listing()[0]['interval_minutes'] == 60
+
+
+@pytest.mark.parametrize('host', ['x.com', 'twitter.com', 'www.twitter.com'])
+def test_list_monitor_canonicalization_and_scheduling(client, monkeypatch, host):
+    item = create(client, username=f'https://{host}/i/lists/123456/?s=20')
+    assert monitors.listing()[0]['username'] == 'i/lists/123456'
+    assert json.loads(get_task(item['task_id'])['payload'])['url'] == 'https://x.com/i/lists/123456/'
+    assert client.post('/api/v1/admin/monitors', json={'platform': 'x', 'username': 'i/lists/123456'}).status_code == 409
+    run(monkeypatch)
+    result = monitors.batch(monitors.Batch(ids=[item['id']], action='backfill', start='2020-01-01T00:00:00Z'))[0]
+    assert json.loads(get_task(result['task_id'])['payload'])['url'] == 'https://x.com/i/lists/123456/'
+    run(monkeypatch)
+    monitors.edit(item['id'], monitors.Edit(paused=True))
+    resumed = monitors.resume(item['id'], monitors.Resume())
+    assert json.loads(get_task(resumed['task_id'])['payload'])['url'] == 'https://x.com/i/lists/123456/'
+
+
+@pytest.mark.parametrize('platform,username', [('instagram', 'i/lists/123'), ('x', 'i/lists/abc'), ('x', 'https://x.com/i/lists/123/members'), ('x', 'https://evil.com/i/lists/123'), ('x', 'https://x.com/alice/status/123')])
+def test_invalid_list_monitors(client, platform, username):
+    assert client.post('/api/v1/admin/monitors', json={'platform': platform, 'username': username}).status_code == 400
+    assert not monitors.listing()

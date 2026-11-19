@@ -16,6 +16,7 @@ test("monitor selection, partial batch results, resume and responsive themes", a
     return route.fulfill({ json: [] });
   });
   await page.goto("/admin/monitors");
+  await expect(page.getByRole("link", { name: "X @alice", exact: true })).toHaveAttribute("href", "https://x.com/alice/");
   await page.getByRole("checkbox", { name: "全选当前列表" }).check();
   await expect(page.locator(".monitor-manager")).toContainText("已选 2 项");
   await page.getByRole("button", { name: "补齐", exact: true }).first().click();
@@ -90,10 +91,10 @@ test("create monitors from publisher groups and independent manual accounts with
   await form.getByLabel("账号 1 用户名").fill("@ALICE");
   await form.getByRole("button", { name: "添加账号", exact: true }).click();
   await form.getByLabel("账号 2 用户名").fill("bob");
-  await form.getByRole("checkbox").check();
+  await form.getByRole("checkbox", { name: "指定起始时间，补拉历史" }).check();
   await form.getByLabel("起始时间", { exact: true }).fill("2020-01-01 12:34:56");
   await form.getByLabel("起始时间", { exact: true }).press("Enter");
-  await expect(form).toContainText("共 3 个账号");
+  await expect(form).toContainText("共 3 项监控");
   await form.getByRole("button", { name: "添加监控", exact: true }).click();
   await expect(form).toContainText("稍后重试");
   expect(calls).toHaveLength(3);
@@ -202,4 +203,60 @@ test("monitor layout preserves disclosure drafts and handles long content", asyn
   await expect(form).toBeHidden();
   await page.reload();
   await expect(form).toBeVisible();
+});
+
+
+test("shared platform filter and canonical List batch", async ({ page }) => {
+  const calls: any[] = [];
+  await page.route("**/api/v1/**", route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/monitors") && route.request().method() === "POST") {
+      calls.push(route.request().postDataJSON());
+      return route.fulfill({ json: { id: calls.length, task_id: calls.length } });
+    }
+    if (path.endsWith("/monitors")) return route.fulfill({ json: calls.map((call, i) => ({ ...call, id: i + 1, paused: 0 })) });
+    if (path.endsWith("/people")) return route.fulfill({ json: [1, 2].map(id => ({ id, name: `人物${id}`, groups: [], accounts: [{ platform: "x", username: `user${id}` }, { platform: "instagram", username: `user${id}` }] })) });
+    if (path.endsWith("/session")) return route.fulfill({ json: { admin: true } });
+    if (path.endsWith("/site")) return route.fulfill({ json: { site_title: "Gallery Faces" } });
+    return route.fulfill({ json: [] });
+  });
+  await page.goto("/admin/monitors");
+  const form = page.locator(".monitor-create");
+  const instagram = form.getByRole("checkbox", { name: "Instagram", exact: true });
+  const x = form.getByRole("checkbox", { name: "X", exact: true });
+  await expect(instagram).toBeChecked();
+  await expect(x).toBeChecked();
+  await form.locator(".publisher-cascader .n-base-selection").click();
+  await page.locator(".people-cascader-menu .n-cascader-option").filter({ has: page.locator(".n-cascader-option__label", { hasText: /^未分组$/ }) }).locator(".n-checkbox").click();
+  await form.getByRole("heading", { name: "添加发布者" }).click();
+  await expect(form).toContainText("共 4 项监控");
+  await instagram.uncheck();
+  await expect(form).toContainText("共 2 项监控");
+  await x.uncheck();
+  const submit = form.getByRole("button", { name: "添加监控", exact: true });
+  await expect(submit).toBeDisabled();
+  await expect(form).toContainText("所选人物在这些平台没有关联账号");
+  await x.check();
+  await form.getByLabel("Twitter List 链接").fill("https://x.com/i/lists/abc");
+  await expect(submit).toBeDisabled();
+  await form.getByLabel("Twitter List 链接").fill("https://twitter.com/i/lists/123?s=20\nhttps://x.com/i/lists/123/");
+  await expect(form).toContainText("共 3 项监控");
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const theme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: `/tmp/gallery-faces/list-platforms-${width}-${theme}.png`, fullPage: true });
+    }
+  }
+  await submit.click();
+  await expect(form.getByLabel("Twitter List 链接")).toHaveValue("");
+  expect(calls.map(({ platform, username }) => ({ platform, username }))).toEqual([
+    { platform: "x", username: "user1" }, { platform: "x", username: "user2" }, { platform: "x", username: "i/lists/123" },
+  ]);
+  expect(new Set(calls.map(call => call.start)).size).toBe(1);
+  await expect(form).toContainText("Twitter List 123：已添加监控");
+  await expect(page.getByRole("link", { name: "Twitter List 123", exact: true })).toHaveAttribute("href", "https://x.com/i/lists/123/");
 });

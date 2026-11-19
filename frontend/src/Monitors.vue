@@ -24,9 +24,28 @@ const batchInterval = ref<number | null>(60);
 const validInterval = computed(() => batchInterval.value !== null && Number.isInteger(batchInterval.value) && batchInterval.value >= 5);
 const intervals = ref<Record<number, number | null>>({});
 const { selected: publishers, accounts: publisherAccounts } = usePublisherSelection();
+const platforms = ref<string[]>(["instagram", "x"]);
+const listUrls = ref("");
 const manualAccounts = ref<PublisherAccount[]>([{ platform: "instagram", username: "" }]);
 const interval = ref(60), start = ref(""), history = ref(false);
-const accounts = computed(() => uniqueAccounts([...publisherAccounts.value, ...manualAccounts.value]));
+const accounts = computed(() => uniqueAccounts([...publisherAccounts.value.filter(account => platforms.value.includes(account.platform)), ...manualAccounts.value, ...listUrls.value.split("\n").map(username => ({ platform: "x", username: normalizeList(username) }))]));
+function normalizeList(value: string) {
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol === "https:" && /^(www\.)?(x|twitter)\.com$/.test(url.hostname) && !url.username && !url.password && !url.port && /^\/i\/lists\/[0-9]+\/?$/.test(url.pathname)) return url.pathname.replace(/^\/|\/$/g, "");
+  } catch { /* Keep invalid input so the API can report it. */ }
+  return value.trim();
+}
+const invalidList = computed(() => listUrls.value.split("\n").some(value => value.trim() && !/^i\/lists\/[0-9]+$/.test(normalizeList(value))));
+function monitorUrl(account: PublisherAccount) {
+  const path = account.username.split("/").map(encodeURIComponent).join("/");
+  return `https://${account.platform === "x" ? "x.com" : "www.instagram.com"}/${path}/`;
+}
+function monitorLabel(account: PublisherAccount) {
+  return account.platform === "x" && account.username.startsWith("i/lists/")
+    ? `Twitter List ${account.username.slice(8)}`
+    : `${platformLabel(account.platform)} @${account.username}`;
+}
 const createResults = ref<{ account: PublisherAccount; error?: string }[]>([]);
 const completedAccounts = ref<PublisherAccount[]>([]), batchDefaultStart = ref("");
 const pendingAccounts = computed(() => accounts.value.filter(account => !completedAccounts.value.some(done => done.platform === account.platform && done.username === account.username)));
@@ -53,7 +72,7 @@ async function perform(action: () => Promise<unknown>) {
   finally { busy.value = false; }
 }
 async function create() {
-  if (busy.value || !pendingAccounts.value.length || !interval.value || (history.value && !start.value)) return;
+  if (busy.value || invalidList.value || !pendingAccounts.value.length || !interval.value || (history.value && !start.value)) return;
   const batchAccounts = [...pendingAccounts.value];
   batchDefaultStart.value ||= new Date().toISOString();
   const batchStart = history.value ? start.value : batchDefaultStart.value;
@@ -69,7 +88,7 @@ async function create() {
     }
     if (createResults.value.every(result => !result.error)) {
       publishers.value = []; manualAccounts.value = [{ platform: "instagram", username: "" }];
-      start.value = ""; history.value = false;
+      start.value = ""; history.value = false; listUrls.value = "";
       completedAccounts.value = []; batchDefaultStart.value = "";
     }
   });
@@ -126,13 +145,22 @@ onUnmounted(() => { clearInterval(timer); });
         <label class="field-label">发布者
           <PublisherSelect v-model="publishers" :disabled="busy" />
         </label>
-        <p class="hint">监控所选人物的全部关联账号，可同时手动添加账号</p>
+        <div class="field-label" id="monitor-platforms-label">添加平台</div>
+        <div class="monitor-toolbar" role="group" aria-labelledby="monitor-platforms-label">
+          <n-checkbox v-for="platform in ['instagram', 'x']" :key="platform" :checked="platforms.includes(platform)" :disabled="busy" @update:checked="platforms = $event ? [...platforms, platform] : platforms.filter(value => value !== platform)">{{ platformLabel(platform) }}</n-checkbox>
+        </div>
+        <p class="hint">平台选择统一应用于所有所选人物，默认添加全部平台；手动账号和 List 单独添加</p>
+        <p v-if="publishers.length && !publisherAccounts.some(account => platforms.includes(account.platform))" class="hint" role="status">所选人物在这些平台没有关联账号，请调整平台或人物选择</p>
         <div class="section-heading"><h3>手动账号</h3><n-button :disabled="busy" @click="manualAccounts.push({ platform: 'instagram', username: '' })">添加账号</n-button></div>
         <div v-for="(account, i) in manualAccounts" :key="i" class="monitor-manual-account">
           <label class="field-label">平台<n-select v-model:value="account.platform" :aria-label="`账号 ${i + 1} 平台`" :disabled="busy" :options="[{ label: 'Instagram', value: 'instagram' }, { label: 'X', value: 'x' }]" /></label>
           <label class="field-label">用户名<n-input v-model:value="account.username" :aria-label="`账号 ${i + 1} 用户名`" :disabled="busy" placeholder="用户名，不含 @" /></label>
           <n-button :disabled="busy" :aria-label="`移除账号 ${i + 1}`" @click="manualAccounts.splice(i, 1)">移除</n-button>
         </div>
+        <label class="field-label">Twitter List
+          <n-input v-model:value="listUrls" :status="invalidList ? 'error' : undefined" aria-label="Twitter List 链接" type="textarea" :disabled="busy" :autosize="{ minRows: 2, maxRows: 5 }" placeholder="https://x.com/i/lists/123456789，每行一个链接" />
+        </label>
+        <p v-if="invalidList" class="error-text" role="alert">请输入有效的 x.com/i/lists/数字 或 twitter.com/i/lists/数字 HTTPS 链接，每行一个</p>
       </div>
       <div class="monitor-create-settings">
         <label class="field-label">检查间隔（分钟）<n-input-number v-model:value="interval" :disabled="busy" :min="5" :precision="0" /></label>
@@ -141,11 +169,11 @@ onUnmounted(() => { clearInterval(timer); });
         <p v-if="!history" class="hint">默认只收新增，以保存时刻为起点。</p>
       </div>
       <div class="monitor-create-footer">
-        <n-button type="primary" attr-type="submit" :loading="busy" :disabled="busy || !pendingAccounts.length || !interval || (history && !start)">添加监控</n-button>
-        <p v-if="accounts.length" class="hint">共 {{ accounts.length }} 个账号，统一使用以上间隔和起始时间</p>
+        <n-button type="primary" attr-type="submit" :loading="busy" :disabled="busy || invalidList || !pendingAccounts.length || !interval || (history && !start)">添加监控</n-button>
+        <p v-if="accounts.length" class="hint">共 {{ accounts.length }} 项监控，统一使用以上间隔和起始时间</p>
       </div>
       <div v-if="createResults.length" class="monitor-create-results" role="status">
-        <p v-for="result in createResults" :key="result.account.platform + ':' + result.account.username" :class="{ 'error-text': result.error }">{{ platformLabel(result.account.platform) }} @{{ result.account.username }}：{{ result.error || '已添加监控' }}</p>
+        <p v-for="result in createResults" :key="result.account.platform + ':' + result.account.username" :class="{ 'error-text': result.error }">{{ monitorLabel(result.account) }}：{{ result.error || '已添加监控' }}</p>
       </div>
     </form>
     <div class="monitor-toolbar monitor-selection">
@@ -171,7 +199,7 @@ onUnmounted(() => { clearInterval(timer); });
         <div class="monitor-summary">
           <div class="monitor-identity">
             <n-checkbox :aria-label="'选择 ' + item.username" :checked="selected.includes(item.id)" @update:checked="toggle(item.id, $event)" />
-            <div class="monitor-identity-text"><strong>{{ platformLabel(item.platform) }} @{{ item.username }}</strong>
+            <div class="monitor-identity-text"><strong><a :href="monitorUrl(item)" target="_blank" rel="noopener noreferrer">{{ monitorLabel(item) }}</a></strong>
             <span>{{ item.paused ? (item.active_task_id ? '已暂停，等待任务结束' : '已暂停') : item.active_task_id ? '检查中' : '监控中' }}</span></div>
           </div>
           <div class="monitor-dates hint"><span>上次检查：{{ item.last_checked_at ? dateLabel(item.last_checked_at) : '尚未检查' }}</span><span>下次检查：{{ item.paused ? '已暂停' : dateLabel(item.next_check_at) }}</span></div>

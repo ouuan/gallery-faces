@@ -133,8 +133,18 @@ def candidates(q: str = '') -> list[Candidate]:
 
 def create(body: Create) -> Created:
     username = body.username.strip().lstrip('@').lower()
+    # Lists use their canonical path as the monitor key, distinct from usernames.
+    if body.platform == 'x' and username.startswith('https://'):
+        try:
+            platform, url = download_url(username)
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from None
+        if platform != 'x' or not url.startswith('https://x.com/i/lists/'):
+            raise HTTPException(400, '请输入 Twitter List 链接或账号用户名')
+        username = url.removeprefix('https://x.com/')
     import re
-    if not re.fullmatch(r'[a-z0-9_.]{1,100}', username):
+    if not (re.fullmatch(r'[a-z0-9_.]{1,100}', username) or
+            (body.platform == 'x' and re.fullmatch(r'i/lists/[0-9]+', username))):
         raise HTTPException(400, '请输入有效用户名')
     try:
         download_url(f"https://{'x.com' if body.platform == 'x' else 'www.instagram.com'}/{username}/")

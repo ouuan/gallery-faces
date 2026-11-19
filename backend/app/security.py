@@ -14,6 +14,8 @@ def download_url(value):
         path = p.path.rstrip('/')
         if host in ('x.com', 'twitter.com'):
             platform = 'x'
+            if re.fullmatch(r'/i/lists/[0-9]+', path):
+                return platform, urlunsplit(('https', 'x.com', path, '', ''))
             match = re.fullmatch(r'/([A-Za-z0-9_]{1,15})(?:/(media|status/[0-9]+)(?:/photo/[1-4])?)?', path)
             reserved = {'i', 'home', 'search', 'explore', 'messages', 'settings', 'notifications', 'compose', 'intent', 'login', 'logout'}
         elif host == 'instagram.com':
@@ -28,7 +30,7 @@ def download_url(value):
             raise ValueError()
         return platform, urlunsplit(('https', host, path, '', ''))
     except (ValueError, AttributeError):
-        raise ValueError('仅支持平台账号主页、媒体页和单帖链接') from None
+        raise ValueError('仅支持平台账号主页、媒体页、单帖和 Twitter List 链接') from None
 
 
 def cookie_bytes(content, platform):

@@ -64,7 +64,7 @@ def install_policy():
 
     initialize = Extractor.initialize
     def guarded_initialize(self):
-        allowed = {"twitter": {"user", "tweets", "media", "tweet"},
+        allowed = {"twitter": {"user", "tweets", "media", "tweet", "list"},
                    "instagram": {"user", "posts", "photos", "reels", "post", "reel"}}
         if self.subcategory not in allowed.get(self.category, set()):
             state["denied"] = True
@@ -82,7 +82,7 @@ def install_policy():
     TwitterExtractor._transform_tweet = tweet
     items = TwitterExtractor.items
     def twitter_items(self):
-        if self.subcategory != "tweet":
+        if self.subcategory not in {"tweet", "list"}:
             self.login()
             check(public_user, check(self.api.user_by_screen_name, self.user), "x")
         yield from items(self)
