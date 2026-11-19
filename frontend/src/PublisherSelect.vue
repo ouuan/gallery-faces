@@ -25,7 +25,7 @@ const publisherOtherGroups = computed(() => {
     if (linkedAccounts.value.has(value.toLowerCase())) continue;
     options.set(value.toLowerCase(), {
       value,
-      label: `${platformLabel(candidate.platform)} · ${candidate.label || `@${candidate.username}`}`,
+      label: `${candidate.label || `@${candidate.username}`} · ${platformLabel(candidate.platform)}`,
     });
   }
   return options.size

@@ -45,6 +45,8 @@ function update(keys: (string | number)[] | null) {
     filterable
     clearable
     check-strategy="parent"
+    :show-path="false"
+    :virtual-scroll="false"
     expand-trigger="click"
     :options="options"
     :value="value"

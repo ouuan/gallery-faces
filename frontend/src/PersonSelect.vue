@@ -35,6 +35,7 @@ function update(key: string | number | (string | number)[] | null) {
     check-strategy="child"
     expand-trigger="click"
     :show-path="false"
+    :virtual-scroll="false"
     placeholder="未知人物"
     :menu-props="{ class: 'people-cascader-menu' }"
     :filter-menu-props="{ class: 'people-cascader-search' }"

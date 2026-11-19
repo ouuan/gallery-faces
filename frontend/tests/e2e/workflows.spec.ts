@@ -595,6 +595,7 @@ test("people cascader groups, shared members, search and mobile apply", async ({
   await page.reload();
   await expect(picker).toContainText("朋友甲");
   await expect(picker).toContainText("未分组");
+  await expect(picker.locator(".n-tag")).toHaveText(["朋友甲", "未分组"]);
   await picker.locator(".n-base-selection").click();
   await option("朋友").locator(".n-cascader-option__label").click();
   await expect(option("朋友甲").getByRole("checkbox")).toHaveAttribute(
@@ -609,7 +610,7 @@ test("people cascader groups, shared members, search and mobile apply", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "筛选", exact: true }).click();
   const mobile = page.locator(".n-drawer .people-cascader");
-  await mobile.locator(".n-base-selection").click();
+  await mobile.locator(".n-base-selection").click({ position: { x: 8, y: 8 } });
   await option("同事").locator(".n-checkbox").click();
   await option("同事").locator(".n-cascader-option__label").click();
   await expect
@@ -670,10 +671,10 @@ test("publisher cascader groups, unlinked accounts and mobile apply", async ({ p
   await option("朋友").locator(".n-checkbox").click();
   await expect.poll(selected).toEqual(["person:1", "person:2"]);
   await option("其他").locator(".n-cascader-option__label").click();
-  await expect(option("X · 未关联昵称")).toHaveCount(1);
+  await expect(option("未关联昵称 · X")).toHaveCount(1);
   await option("其他").locator(".n-checkbox").click();
   await expect.poll(selected).toEqual(["person:1", "person:2", "x:unlinked"]);
-  await expect(option("X · 不应重复显示")).toHaveCount(0);
+  await expect(option("不应重复显示 · X")).toHaveCount(0);
   await page.screenshot({ path: "/tmp/gallery-faces/publisher-other-desktop.png", animations: "disabled" });
   await option("同事").locator(".n-cascader-option__label").click();
   await expect(option("共同成员").getByRole("checkbox")).toHaveAttribute("aria-checked", "true");
