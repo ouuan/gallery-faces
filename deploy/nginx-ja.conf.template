@@ -12,7 +12,11 @@ server {
         try_files $uri =404;
     }
     location / {
-        add_header Cache-Control "no-cache";
+        ssi on;
+        etag off;
+        if_modified_since off;
+        add_header Cache-Control "no-store";
+        add_header Cloudflare-CDN-Cache-Control "no-store";
         try_files $uri /index.html;
     }
 }

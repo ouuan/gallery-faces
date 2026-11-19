@@ -4,7 +4,7 @@
 
 ## 构建
 
-在 `frontend` 目录运行 `pnpm build` 生成中文版 `dist`，运行 `pnpm build:ja` 生成日语版 `dist-ja`。开发使用 `pnpm dev:ja`。两个目录可独立发布，部署时将 `/api` 反向代理到升级后的同一个后端，SPA 路由回退到 `index.html`。
+在 `frontend` 目录运行 `pnpm build` 生成中文版 `dist`，运行 `pnpm build:ja` 生成日语版 `dist-ja`。开发使用 `pnpm dev:ja`。两个目录可独立发布，部署时将 `/api` 反向代理到升级后的同一个后端，SPA 路由回退到 `index.html`。日语版还须启用 SSI，在初始 HTML 中插入[可配置的 Open Graph 分享信息](open-graph.md)；附带 Nginx 配置已启用，普通静态托管不会解析这些标签。
 
 ## Docker Compose
 

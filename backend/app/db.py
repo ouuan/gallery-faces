@@ -16,6 +16,7 @@ INSERT INTO schema_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM schema_versio
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 INSERT OR IGNORE INTO settings VALUES('reference_version','0'),('threshold','0.5'),('margin','0.1'),('phash_distance','4'),('aspect_tolerance','0.01'),('ssim_threshold','0.98');
 INSERT OR IGNORE INTO settings VALUES('site_title','Gallery Faces');
+INSERT OR IGNORE INTO settings VALUES('og_title',''),('og_description',''),('og_image',''),('og_url',''),('og_title_ja',''),('og_description_ja',''),('og_image_ja',''),('og_url_ja','');
 INSERT OR IGNORE INTO settings VALUES('detection_threshold','0.5');
 INSERT OR IGNORE INTO settings SELECT 'review_ssim_threshold',CAST(min(0.5,CAST(value AS REAL)) AS TEXT) FROM settings WHERE key='ssim_threshold';
 CREATE TABLE IF NOT EXISTS people(id INTEGER PRIMARY KEY, name TEXT NOT NULL CHECK(length(trim(name))>0));

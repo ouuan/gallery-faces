@@ -7,7 +7,7 @@
 | 资源 | Cache-Control | Cloudflare-CDN-Cache-Control |
 | --- | --- | --- |
 | 成功的 hash 图片与 Vite `/assets/` 文件 | public, max-age=31536000, immutable | 遵循 Cache-Control |
-| SPA HTML 与前端路由回退 | no-cache | no-store |
+| SPA HTML 与前端路由回退 | no-store | no-store |
 | 其他 API、旧 ID 图片、后台/参考图、错误响应 | no-store | 错误响应显式 no-store |
 
 hash 图片支持 ETag、条件请求、HEAD 和 Range。源站先检查公开条件和文件存在性，再决定是否返回 304。If-None-Match 优先于 If-Modified-Since，支持弱 ETag、列表和 `*`。公开响应不因管理员 cookie 改变。原图作为附件返回，保留存储文件名；`download=true` 也可将展示图作为附件下载。原图缺失时下载 URL 改为展示图 hash URL 加 `?download=true`，原图 hash URL 返回 404。
@@ -39,4 +39,4 @@ ZIP 响应不缓存，并设置 `X-Accel-Buffering: no`。反向代理应保留�
 
 缺失或不可读的文件会记录日志，未完成字段会在后续启动重试。图库对缺失派生文件或未完成 hash 使用旧 ID URL（no-store）；文件确实缺失时返回 404。不要原地修改已发布文件；若运维工具替换派生文件，必须同步更新对应 hash，不能继续在旧 hash URL 下提供新字节。导入流程会保存实际输出 hash。
 
-部署后使用同一完整 URL 连续请求公开图片，确认 Cache-Control、ETag 和 Cloudflare `CF-Cache-Status: HIT`（首次可能 MISS），并在浏览器开发者工具确认后续访问直接复用缓存。分别检查普通展示和附件下载、登录前后访问、条件请求和 Range。确认图库、管理、参考图和错误响应不命中 CDN 缓存，HTML 使用 no-cache 且 CDN 不存储。隐藏或删除后直接访问源站应拒绝，已有边缘缓存可能仍可访问。
+部署后使用同一完整 URL 连续请求公开图片，确认 Cache-Control、ETag 和 Cloudflare `CF-Cache-Status: HIT`（首次可能 MISS），并在浏览器开发者工具确认后续访问直接复用缓存。分别检查普通展示和附件下载、登录前后访问、条件请求和 Range。确认图库、管理、参考图和错误响应不命中 CDN 缓存，HTML 使用 no-store 且 CDN 不存储，以便立即输出最新分享设置。隐藏或删除后直接访问源站应拒绝，已有边缘缓存可能仍可访问。

@@ -157,21 +157,23 @@ def test_static_cache(tmp_path):
     (tmp_path / 'index.html').write_text('<html>app</html>')
     subprocess.run([sys.executable, '-c', '''
 from app.main import app
+from app.db import init
 from fastapi.testclient import TestClient
+init()
 client = TestClient(app)
 for url in ('/', '/gallery/route'):
     response = client.get(url)
-    assert response.headers['cache-control'] == 'no-cache'
+    assert response.headers['cache-control'] == 'no-store'
     assert response.headers['cloudflare-cdn-cache-control'] == 'no-store'
     assert client.head(url).content == b''
-    assert client.get(url, headers={'If-None-Match': response.headers['etag']}).status_code == 304
-    assert client.get(url, headers={'If-None-Match': '"different"', 'If-Modified-Since': response.headers['last-modified']}).status_code == 200
+    assert 'etag' not in response.headers
+    assert client.get(url, headers={'If-None-Match': '*', 'If-Modified-Since': 'Wed, 01 Jan 2099 00:00:00 GMT'}).status_code == 200
 assert client.get('/assets/index-abc123.js').headers['cache-control'] == 'public, max-age=31536000, immutable'
 for url in ('/assets/missing.js', '/api/missing'):
     response = client.get(url)
     assert response.status_code == 404
     assert response.headers['cache-control'] == 'no-store'
-'''], check=True, env={**os.environ, 'FRONTEND_DIR': str(tmp_path)})
+'''], check=True, env={**os.environ, 'FRONTEND_DIR': str(tmp_path), 'DATA_DIR': str(tmp_path / 'data')})
 
 
 def test_uncaught_errors_never_cached(client, monkeypatch):

@@ -1,9 +1,18 @@
 import { defineConfig } from "vitest/config";
 import vue from "@vitejs/plugin-vue";
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode, command }) => ({
   plugins: [vue(), {
     name: 'edition-html',
-    transformIndexHtml: { order: "pre", handler(html) {
+    transformIndexHtml: { order: "pre", async handler(html) {
+      if (command === 'serve') {
+        try {
+          const origin = process.env.API_PROXY_TARGET || 'http://127.0.0.1:8000';
+          const response = await fetch(`${origin}/api/v1/site/open-graph?locale=${mode === 'ja' ? 'ja' : 'zh'}`, { signal: AbortSignal.timeout(2000) });
+          if (response.ok) html = html.replace('<!--open-graph-->', await response.text());
+        } catch { /* The UI can still load while the development API is offline. */ }
+      } else if (mode === 'ja') {
+        html = html.replace('<!--open-graph-->', '<!--# include virtual="/api/v1/site/open-graph?locale=ja" -->');
+      }
       if (mode !== 'ja') return html;
       return html.replace('lang="zh-CN"', 'lang="ja"').replace('照片库', '投稿一覧')
         .replace('/src/main.ts', '/src/main-ja.ts')

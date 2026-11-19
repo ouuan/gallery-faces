@@ -22,9 +22,10 @@ from fastapi import (
     File,
     Query,
 )
-from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, field_validator
+from .open_graph import render_open_graph
 from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, unknown_sql, cleanup_deleted_files
 from .security import download_url, cookie_bytes, save_cookie
 from .importer import validate_url, safe_directory
@@ -1785,6 +1786,14 @@ def get_settings(_: None = Depends(admin)):
 
 class SettingsInput(BaseModel):
     site_title: str = Field(default="Gallery Faces", min_length=1, max_length=100)
+    og_title: str = Field(default="", max_length=100)
+    og_description: str = Field(default="", max_length=500)
+    og_image: str = Field(default="", max_length=2048)
+    og_url: str = Field(default="", max_length=2048)
+    og_title_ja: str = Field(default="", max_length=100)
+    og_description_ja: str = Field(default="", max_length=500)
+    og_image_ja: str = Field(default="", max_length=2048)
+    og_url_ja: str = Field(default="", max_length=2048)
     detection_threshold: float = Field(default=0.5, ge=0, le=1)
     threshold: float = Field(ge=0, le=1)
     margin: float = Field(ge=0, le=2)
@@ -1792,6 +1801,22 @@ class SettingsInput(BaseModel):
     aspect_tolerance: float = Field(ge=0, le=1)
     ssim_threshold: float = Field(ge=0, le=1)
     review_ssim_threshold: float = Field(default=0.5, ge=0, le=1)
+
+    @field_validator("og_title", "og_description", "og_title_ja", "og_description_ja")
+    @classmethod
+    def trim_open_graph_text(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("og_image", "og_url", "og_image_ja", "og_url_ja")
+    @classmethod
+    def validate_open_graph_url(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            return ""
+        url = TypeAdapter(HttpUrl).validate_python(value)
+        if url.username or url.password or any(char.isspace() for char in value):
+            raise ValueError("请填写不含用户名、密码或空白字符的完整 HTTP(S) URL")
+        return str(url)
 
 
 @app.put("/api/v1/admin/settings")
@@ -1900,19 +1925,31 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/api/v1/site/open-graph", response_class=HTMLResponse)
+def site_open_graph(locale: Literal["zh", "ja"] = "zh"):
+    with connect() as db:
+        return HTMLResponse(render_open_graph(settings(db), locale))
+
+
 from .monitors import install as install_monitors
 install_monitors(app, admin)
 
 static = Path(os.environ.get("FRONTEND_DIR", "../frontend/dist"))
+
+
+def spa(request: Request, path: str):
+    if path.startswith("api/"):
+        fail("接口不存在", 404)
+    with connect() as db:
+        metadata = render_open_graph(settings(db))
+    html = (static / "index.html").read_text(encoding="utf-8")
+    html = html.replace("<!--open-graph-->", metadata)
+    return HTMLResponse(html, headers={"Cache-Control": "no-store", "Cloudflare-CDN-Cache-Control": "no-store"})
+
+
 if static.is_dir():
     app.mount("/assets", StaticFiles(directory=static / "assets"), name="assets")
-
-    @app.head("/{path:path}", include_in_schema=False)
-    @app.get("/{path:path}", include_in_schema=False)
-    def spa(request: Request, path: str):
-        if path.startswith("api/"):
-            fail("接口不存在", 404)
-        return conditional_file(request, static / "index.html", headers={"Cache-Control": "no-cache", "Cloudflare-CDN-Cache-Control": "no-store"})
+    app.add_api_route("/{path:path}", spa, methods=["GET", "HEAD"], include_in_schema=False)
 
 
 def require_embedding(embedding, version):

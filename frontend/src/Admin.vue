@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import OpenGraphSettings from "./OpenGraphSettings.vue";
 import LocalDateTime from "./LocalDateTime.vue";
 import LoadingOverlay from "./LoadingOverlay.vue";
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
@@ -485,6 +486,11 @@ onUnmounted(() => {
               :disabled="savingSettings"
           /></label>
           <p class="hint">显示在页面顶部和浏览器标签页，最多 100 个字符</p>
+          <h2>链接分享（Open Graph）</h2>
+          <p class="hint">分别设置两个前端的分享卡片。标题留空时使用站点标题，其余留空则不提供对应信息。</p>
+          <OpenGraphSettings v-model="settings" label="中文前端" suffix="" :disabled="savingSettings" />
+          <OpenGraphSettings v-model="settings" label="日语只读前端" suffix="_ja" :disabled="savingSettings" />
+          <p class="hint">URL 须以 https:// 或 http:// 开头。预览图须可公开访问；站点 URL 填写对应前端的公开地址。保存后生效，分享平台已有的缓存可能延迟更新。</p>
           <h2>人脸检测</h2>
           <label class="field-label"
             >人脸检测阈值<n-input-number

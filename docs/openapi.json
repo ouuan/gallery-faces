@@ -2443,6 +2443,50 @@
         }
       }
     },
+    "/api/v1/site/open-graph": {
+      "get": {
+        "summary": "Site Open Graph",
+        "operationId": "site_open_graph_api_v1_site_open_graph_get",
+        "parameters": [
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "zh",
+                "ja"
+              ],
+              "type": "string",
+              "default": "zh",
+              "title": "Locale"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/monitors": {
       "get": {
         "summary": "Listing",
@@ -4097,6 +4141,54 @@
             "minLength": 1,
             "title": "Site Title",
             "default": "Gallery Faces"
+          },
+          "og_title": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Og Title",
+            "default": ""
+          },
+          "og_description": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Og Description",
+            "default": ""
+          },
+          "og_image": {
+            "type": "string",
+            "maxLength": 2048,
+            "title": "Og Image",
+            "default": ""
+          },
+          "og_url": {
+            "type": "string",
+            "maxLength": 2048,
+            "title": "Og Url",
+            "default": ""
+          },
+          "og_title_ja": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Og Title Ja",
+            "default": ""
+          },
+          "og_description_ja": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Og Description Ja",
+            "default": ""
+          },
+          "og_image_ja": {
+            "type": "string",
+            "maxLength": 2048,
+            "title": "Og Image Ja",
+            "default": ""
+          },
+          "og_url_ja": {
+            "type": "string",
+            "maxLength": 2048,
+            "title": "Og Url Ja",
+            "default": ""
           },
           "detection_threshold": {
             "type": "number",

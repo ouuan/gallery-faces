@@ -794,6 +794,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/site/open-graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Site Open Graph */
+        get: operations["site_open_graph_api_v1_site_open_graph_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/monitors": {
         parameters: {
             query?: never;
@@ -1436,6 +1453,46 @@ export interface components {
              * @default Gallery Faces
              */
             site_title: string;
+            /**
+             * Og Title
+             * @default
+             */
+            og_title: string;
+            /**
+             * Og Description
+             * @default
+             */
+            og_description: string;
+            /**
+             * Og Image
+             * @default
+             */
+            og_image: string;
+            /**
+             * Og Url
+             * @default
+             */
+            og_url: string;
+            /**
+             * Og Title Ja
+             * @default
+             */
+            og_title_ja: string;
+            /**
+             * Og Description Ja
+             * @default
+             */
+            og_description_ja: string;
+            /**
+             * Og Image Ja
+             * @default
+             */
+            og_image_ja: string;
+            /**
+             * Og Url Ja
+             * @default
+             */
+            og_url_ja: string;
             /**
              * Detection Threshold
              * @default 0.5
@@ -3200,6 +3257,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    site_open_graph_api_v1_site_open_graph_get: {
+        parameters: {
+            query?: {
+                locale?: "zh" | "ja";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
