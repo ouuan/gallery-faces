@@ -21,7 +21,6 @@ import {
   ZoomOut,
   ExternalLink,
   Check,
-  ListChecks,
 } from "@lucide/vue";
 import { useLibrary } from "./store";
 import { usePageTitle } from "./page-title";
@@ -254,7 +253,6 @@ onUnmounted(() => {
       <LoadingOverlay :show="loading && !cursor" label="正在加载照片" />
       <div class="gallery-toolbar">
         <div class="gallery-heading">
-          <div>
           <h1>照片库</h1>
           <p class="muted">
             {{
@@ -263,31 +261,37 @@ onUnmounted(() => {
                 : "按人物、发布者和日期浏览"
             }}
           </p>
-          </div>
-          <n-button v-if="!selecting" :disabled="!photos.length || loading" @click="selecting = true">
-            <template #icon><ListChecks /></template>多选下载
-          </n-button>
         </div>
         <div class="toolbar-actions">
-          <n-button class="mobile-filter" @click="openFilters"
-            ><template #icon><SlidersHorizontal /></template>筛选</n-button
-          ><n-select
-            aria-label="排序"
-            :value="filter.sort"
-            :options="[
-              { label: '最新发布', value: 'newest' },
-              { label: '最早发布', value: 'oldest' },
-            ]"
-            @update:value="apply({ ...filter, sort: $event })"
-          /><n-select
-            aria-label="布局"
-            v-model:value="layout"
-            :options="[
-              { label: '等高排列', value: 'justified' },
-              { label: '瀑布流', value: 'masonry' },
-              { label: '方格', value: 'square' },
-            ]"
-          />
+          <div class="gallery-buttons">
+            <n-button v-if="!selecting" class="gallery-download" aria-label="下载" title="下载"
+              :disabled="!photos.length || loading" @click="selecting = true">
+              <Download :size="18" aria-hidden="true" />
+              <span class="gallery-download-label">下载</span>
+            </n-button>
+            <n-button class="mobile-filter" @click="openFilters"
+              ><template #icon><SlidersHorizontal /></template>筛选</n-button
+            >
+          </div>
+          <div class="gallery-view-controls">
+            <n-select
+              aria-label="排序"
+              :value="filter.sort"
+              :options="[
+                { label: '最新发布', value: 'newest' },
+                { label: '最早发布', value: 'oldest' },
+              ]"
+              @update:value="apply({ ...filter, sort: $event })"
+            /><n-select
+              aria-label="布局"
+              v-model:value="layout"
+              :options="[
+                { label: '等高排列', value: 'justified' },
+                { label: '瀑布流', value: 'masonry' },
+                { label: '方格', value: 'square' },
+              ]"
+            />
+          </div>
         </div>
       </div>
       <section v-if="selecting" class="gallery-selection" aria-label="批量下载">

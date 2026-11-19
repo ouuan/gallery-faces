@@ -301,14 +301,6 @@ svg {
 .gallery-toolbar p {
   margin-top: 4px;
 }
-.gallery-heading {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-.gallery-heading > .n-button {
-  flex-shrink: 0;
-}
 .gallery-selection {
   position: sticky;
   top: 64px;
@@ -367,9 +359,20 @@ svg {
   background: var(--accent);
   border-color: var(--accent);
 }
-.toolbar-actions {
+.toolbar-actions,
+.gallery-buttons,
+.gallery-view-controls {
   display: flex;
   gap: 10px;
+}
+.toolbar-actions {
+  margin-left: auto;
+}
+.gallery-buttons {
+  flex-shrink: 0;
+}
+.gallery-download .n-button__content {
+  gap: 6px;
 }
 .toolbar-actions .n-select {
   width: 116px;
@@ -999,7 +1002,17 @@ td:first-child {
   }
   .toolbar-actions {
     width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 8px;
+  }
+  .gallery-buttons,
+  .gallery-view-controls {
+    gap: 8px;
+  }
+  .gallery-view-controls {
+    flex: 1;
+    min-width: 208px;
   }
   .toolbar-actions .n-select {
     flex: 1;
@@ -1194,6 +1207,16 @@ td:first-child {
   }
   .lightbox-tool-group {
     gap: 4px;
+  }
+}
+
+@media (max-width: 480px) {
+  .gallery-download {
+    width: 44px;
+    padding: 0;
+  }
+  .gallery-download-label {
+    display: none;
   }
 }
 

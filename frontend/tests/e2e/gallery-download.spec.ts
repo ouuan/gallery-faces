@@ -64,7 +64,7 @@ for (const width of [390, 1280]) {
     const errors: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
     const selections = await setup(page, archiveUrl);
-    await page.getByRole("button", { name: "多选下载" }).click();
+    await page.getByRole("button", { name: "下载", exact: true }).click();
     const download = page.getByRole("button", { name: "下载 ZIP", exact: true });
     await expect(download).toBeDisabled();
     const first = page.getByRole("button", { name: "选择 人物 1 的照片" });
@@ -105,7 +105,7 @@ for (const width of [390, 1280]) {
       await page.screenshot({ path: `../.impeccable/review/download-${width}-${theme}.png`, fullPage: true });
     }
     await page.getByRole("button", { name: "取消", exact: true }).click();
-    await expect(page.getByRole("button", { name: "多选下载" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "下载", exact: true })).toBeVisible();
     await expect(first).toHaveCount(0);
     expect(errors).toEqual([]);
   });
@@ -114,7 +114,7 @@ for (const width of [390, 1280]) {
 test("download error keeps selection for retry; filter changes clear it", async ({ page, archiveUrl }) => {
   const options = { fail: true };
   const selections = await setup(page, archiveUrl, options);
-  await page.getByRole("button", { name: "多选下载" }).click();
+  await page.getByRole("button", { name: "下载", exact: true }).click();
   await page.getByRole("button", { name: "选择 人物 1 的照片" }).click();
   await page.getByRole("button", { name: "下载 ZIP" }).click();
   await expect(page.getByText("部分照片已不可用，请刷新后重新选择")).toBeVisible();
@@ -126,11 +126,11 @@ test("download error keeps selection for retry; filter changes clear it", async 
   expect(selections).toEqual([[1], [1]]);
   await page.locator('[aria-label="排序"]').click();
   await page.locator(".n-base-select-option").filter({ hasText: /^最早发布$/ }).click();
-  await expect(page.getByRole("button", { name: "多选下载" })).toBeVisible();
-  await page.getByRole("button", { name: "多选下载" }).click();
+  await expect(page.getByRole("button", { name: "下载", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "下载", exact: true }).click();
   await expect(page.getByText("已选 0 组", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: "多选下载" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "下载", exact: true })).toBeVisible();
 });
 
 test("cancelling preparation prevents a late download", async ({ page, archiveUrl }) => {
@@ -143,20 +143,20 @@ test("cancelling preparation prevents a late download", async ({ page, archiveUr
   });
   const downloads: string[] = [];
   page.on("download", file => downloads.push(file.url()));
-  await page.getByRole("button", { name: "多选下载" }).click();
+  await page.getByRole("button", { name: "下载", exact: true }).click();
   await page.getByRole("button", { name: "选择 人物 1 的照片" }).click();
   await page.getByRole("button", { name: "下载 ZIP" }).click();
   await expect(page.getByRole("button", { name: "下载 ZIP" })).toHaveClass(/n-button--loading/);
   await page.getByRole("button", { name: "取消", exact: true }).click();
   release();
-  await page.getByRole("button", { name: "多选下载" }).click();
+  await page.getByRole("button", { name: "下载", exact: true }).click();
   await expect(page.getByText("已选 0 组", { exact: true })).toBeVisible();
   expect(downloads).toEqual([]);
 });
 
 test("large selections explain the per-download limit", async ({ page, archiveUrl }) => {
   await setup(page, archiveUrl, { count: 201 });
-  await page.getByRole("button", { name: "多选下载" }).click();
+  await page.getByRole("button", { name: "下载", exact: true }).click();
   await page.getByRole("button", { name: "全选已加载" }).click();
   await expect(page.getByText("已选 201 组", { exact: true })).toBeVisible();
   await expect(page.getByText(/每次最多 200 组/)).toBeVisible();
