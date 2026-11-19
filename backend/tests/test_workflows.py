@@ -95,6 +95,16 @@ def test_detection_tracks_image_speed_even_without_faces(client, monkeypatch):
         task = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
         assert task["status"] == "done"
         assert (task["done"], task["total"], task["speed"]) == (1, 1, 0.5)
+        assert conn.execute("SELECT count(*) FROM tasks WHERE kind='rematch'").fetchone()[0] == 0
+
+
+def test_recycle_unrelated_image_does_not_schedule_rematch(client):
+    with db.connect(True) as conn:
+        image(conn)
+        other = image(conn, faces=False)
+    assert recycle(client, [other]).status_code == 200
+    with db.connect() as conn:
+        assert conn.execute("SELECT count(*) FROM tasks WHERE kind='rematch'").fetchone()[0] == 0
 
 
 @pytest.mark.parametrize("face_count", [0, 2])

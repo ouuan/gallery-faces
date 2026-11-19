@@ -238,7 +238,7 @@ def schedule_rematch(db):
         "UPDATE settings SET value=? WHERE key='reference_version'", (str(version),)
     )
     for row in db.execute(
-        f"SELECT DISTINCT image_id FROM faces WHERE {unknown_sql()} AND embedding IS NOT NULL AND EXISTS(SELECT 1 FROM images i WHERE i.id=faces.image_id AND i.hidden=0)"
+        f"SELECT DISTINCT image_id FROM faces WHERE {unknown_sql()} AND embedding IS NOT NULL AND length(embedding)>0 AND EXISTS(SELECT 1 FROM images i WHERE i.id=faces.image_id AND i.hidden=0)"
     ).fetchall():
         active = db.execute(
             "SELECT id FROM tasks WHERE kind='rematch' AND image_id=? AND status IN ('queued','running')",

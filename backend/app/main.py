@@ -228,7 +228,7 @@ def write_person(db, body, person_id=None):
         "INSERT OR IGNORE INTO accounts(person_id,platform,username) VALUES(?,?,?)",
         [(person_id, a.platform, a.username) for a in body.accounts],
     )
-    added_reference = False
+    reference_changed = False
     for reference_id in set(body.removed_reference_ids):
         reference = db.execute(
             "SELECT person_id FROM reference_images WHERE id=?", (reference_id,)
@@ -236,11 +236,15 @@ def write_person(db, body, person_id=None):
         if reference and reference["person_id"] != person_id:
             fail("参考图不属于该人物", 409)
         if reference:
+            was_active = db.execute(
+                f"SELECT 1 FROM reference_images WHERE id=? AND {ACTIVE_REFERENCE}",
+                (reference_id,),
+            ).fetchone()
             db.execute("DELETE FROM reference_images WHERE id=?", (reference_id,))
-            added_reference = True
+            reference_changed = reference_changed or bool(was_active)
     for uploaded in body.uploaded_references:
         write_uploaded_reference(db, person_id, uploaded)
-        added_reference = True
+        reference_changed = True
     for face_id in set(body.reference_face_ids):
         face = db.execute(
             "SELECT * FROM faces WHERE id=? AND person_id=? AND locked=1 AND ignored=0",
@@ -259,8 +263,8 @@ def write_person(db, body, person_id=None):
             "INSERT INTO reference_images(person_id,image_id,face_id,embedding,model_version) VALUES(?,?,?,?,?)",
             (person_id, face["image_id"], face_id, face["embedding"], face["model_version"]),
         )
-        added_reference = True
-    if added_reference:
+        reference_changed = True
+    if reference_changed:
         schedule_rematch(db)
     return person_id
 
@@ -638,9 +642,13 @@ def reference_media(filename: str, _: None = Depends(admin)):
 @app.delete("/api/v1/admin/references/{reference_id}")
 def reference_delete(reference_id: int, _: None = Depends(admin)):
     with connect(True) as db:
+        was_active = db.execute(
+            f"SELECT 1 FROM reference_images WHERE id=? AND {ACTIVE_REFERENCE}",
+            (reference_id,),
+        ).fetchone()
         if db.execute(
             "DELETE FROM reference_images WHERE id=?", (reference_id,)
-        ).rowcount:
+        ).rowcount and was_active:
             schedule_rematch(db)
     return {"ok": True}
 

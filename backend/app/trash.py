@@ -45,6 +45,16 @@ def preview(db, ids):
     }
 
 
+def has_references(db, image_ids):
+    if not image_ids:
+        return False
+    marks = ",".join("?" for _ in image_ids)
+    return bool(db.execute(
+        f"SELECT 1 FROM reference_images WHERE image_id IN ({marks}) LIMIT 1",
+        image_ids,
+    ).fetchone())
+
+
 def recycle(ids, token):
     with storage.connect(True) as db:
         rows, actual = scope(db, ids)
@@ -56,12 +66,13 @@ def recycle(ids, token):
             if db.execute("SELECT 1 FROM tasks WHERE image_id=? AND status='running'", (row["id"],)).fetchone():
                 raise HTTPException(409, "组内图片正在处理，请等待完成或取消后重试")
         changed = [r for r in rows if not r["hidden"]]
+        references_changed = has_references(db, [row["id"] for row in changed])
         for row in rows:
             db.execute("UPDATE tasks SET status='cancelled',stage='已取消',cancel_requested=1,finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE image_id=? AND status='queued'", (row["id"],))
         for row in changed:
             db.execute("UPDATE images SET hidden=1,trashed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?", (row["id"],))
             storage.queue_image_cleanup(db, row)
-        if changed:
+        if references_changed:
             storage.schedule_rematch(db)
     pending = storage.cleanup_deleted_files()
     return {"ok": True, "deleted": len(changed), "ids": [r["id"] for r in rows], "cleanup_pending": pending}
@@ -104,6 +115,7 @@ def restore_file(task, path):
             return True
         if not path.is_file() or storage.file_hash(path) != row["sha256"]:
             return False
+        references_changed = has_references(db, [row["id"]])
         filename, width, height, original = write_assets(path, row["sha256"], refresh=True)
         db.execute(
             "UPDATE images SET hidden=0,trashed_at=NULL,filename=?,width=?,height=?,original_filename=?,image_sha256=?,thumbnail_sha256=?,file_size=? WHERE id=?",
@@ -114,7 +126,8 @@ def restore_file(task, path):
         record_location(db, row["id"], path)
         if row["detection"] != "done":
             storage.schedule_detection(db, row["id"])
-        storage.schedule_rematch(db)
+        if references_changed:
+            storage.schedule_rematch(db)
         # Commit completion with activation: a late cancellation cannot report a
         # successful restore as cancelled, or let a retry reapply old intent.
         db.execute("UPDATE tasks SET status='done',stage='已恢复',done=1,total=1,finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=?", (task["id"],))

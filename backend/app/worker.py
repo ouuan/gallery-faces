@@ -156,9 +156,18 @@ def detect(task):
             "UPDATE images SET detection='done',error=NULL WHERE id=?", (row["id"],)
         )
         version = int(settings(db)["reference_version"])
+        scope = (
+            "ignored=0 AND embedding IS NOT NULL AND length(embedding)>0"
+            if mode == "highres"
+            else f"{unknown_sql()} AND embedding IS NOT NULL AND length(embedding)>0"
+        )
         db.execute(
-            "INSERT OR IGNORE INTO tasks(kind,image_id,target_version) VALUES('rematch',?,?)",
-            (row["id"], version),
+            f"""
+            INSERT OR IGNORE INTO tasks(kind,image_id,target_version)
+            SELECT 'rematch', ?, ?
+            WHERE EXISTS(SELECT 1 FROM faces WHERE image_id=? AND {scope})
+            """,
+            (row["id"], version, row["id"]),
         )
         if mode == "highres":
             # Detection and matching are serialized per image. Upgrade any queued
