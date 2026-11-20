@@ -1,5 +1,33 @@
 from app import db
-from test_workflows import client
+from test_workflows import client, image
+
+
+def test_large_selections_match_linked_and_explicit_publishers(client):
+    with db.connect(True) as conn:
+        conn.executemany('INSERT INTO people(id,name) VALUES(?,?)', [(identifier, str(identifier)) for identifier in range(1, 101)])
+        conn.execute("INSERT INTO accounts(person_id,platform,username) VALUES(100,'x','linked')")
+        linked = image(conn, author='LINKED')
+        explicit = image(conn, author='manual')
+        unrelated = image(conn, author='unrelated')
+        conn.execute('UPDATE faces SET person_id=100 WHERE image_id IN (?,?)', (linked, explicit))
+        conn.execute('UPDATE faces SET person_id=1 WHERE image_id=?', (unrelated,))
+    params = {
+        'people': ','.join(str(identifier) for identifier in range(1, 101)),
+        'publishers': ','.join([*(f'person:{identifier}' for identifier in range(1, 101)), 'x:MANUAL', 'instagram:unrelated']),
+    }
+    for path in ('/gallery', '/posts', '/admin/images'):
+        response = client.get('/api/v1' + path, params={**params, 'state': 'all'})
+        assert response.status_code == 200
+        rows = response.json() if path == '/admin/images' else response.json()['items']
+        assert {row['id'] for row in rows} == {linked, explicit}
+
+
+def test_invalid_filter_explains_what_to_reselect(client):
+    for params, detail in [({'people': 'bad'}, '人物编号无效，请重新选择人物'),
+                           ({'publishers': 'group:1'}, '发布者格式无效，请重新选择发布者')]:
+        response = client.get('/api/v1/gallery', params=params)
+        assert response.status_code == 400
+        assert response.json()['detail'] == detail
 
 
 def test_all_unlinked_publishers_use_nicknames_and_account_fallback(client):

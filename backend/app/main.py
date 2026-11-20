@@ -662,6 +662,22 @@ def date_bounds(start, end):
     return lower, upper
 
 
+def publisher_condition(publishers):
+    clauses, args = [], []
+    person_ids = [int(author) for platform, author in publishers if platform == 'person']
+    if person_ids:
+        marks = ','.join('?' for _ in person_ids)
+        clauses.append(f'(p.platform, lower(p.author)) IN (SELECT platform, lower(username) FROM accounts WHERE person_id IN ({marks}))')
+        args.extend(person_ids)
+    for platform in ('x', 'instagram'):
+        usernames = [author for kind, author in publishers if kind == platform]
+        if usernames:
+            marks = ','.join('lower(?)' for _ in usernames)
+            clauses.append(f'(p.platform=? AND lower(p.author) IN ({marks}))')
+            args.extend([platform, *usernames])
+    return '(' + ' OR '.join(clauses) + ')', args
+
+
 def source_conditions(people_ids, match, publishers, start, end, include_no_faces):
     # Source filters share one post row; identity filters use the public representative.
     conditions = [
@@ -679,17 +695,9 @@ def source_conditions(people_ids, match, publishers, start, end, include_no_face
         conditions.append("p.published_at<?")
         args.append(end)
     if publishers:
-        publisher_conditions = []
-        for platform, author in publishers:
-            if platform == "person":
-                publisher_conditions.append(
-                    "EXISTS(SELECT 1 FROM accounts a WHERE a.person_id=? AND a.platform=p.platform AND lower(a.username)=lower(p.author))"
-                )
-                args.append(int(author))
-            else:
-                publisher_conditions.append("(p.platform=? AND lower(p.author)=lower(?))")
-                args.extend((platform, author))
-        conditions.append("(" + " OR ".join(publisher_conditions) + ")")
+        clause, publisher_args = publisher_condition(publishers)
+        conditions.append(clause)
+        args.extend(publisher_args)
     eligible = f"m.id={representative_sql('i.group_id', public=True)}"
     if people_ids:
         marks = ",".join("?" for _ in people_ids)
@@ -812,18 +820,19 @@ def source_record(row):
 
 def parse_people_publishers(people, publishers):
     try:
-        if len(people.split(",")) > 50 or len(publishers.split(",")) > 50:
-            raise ValueError()
         ids = sorted(set(int(i) for i in people.split(",") if i))
         if any(not 0 < i <= 9223372036854775807 for i in ids):
             raise ValueError()
+    except ValueError:
+        fail("人物编号无效，请重新选择人物")
+    try:
         accounts = [a.split(":", 1) for a in publishers.split(",") if a]
         if any(len(a) != 2 or a[0] not in ("x", "instagram", "person") or not a[1] for a in accounts):
             raise ValueError()
         if any(platform == "person" and (not author.isascii() or not author.isdigit() or not 0 < int(author) <= 9223372036854775807) for platform, author in accounts):
             raise ValueError()
-    except (ValueError, OverflowError):
-        fail("筛选条件无效")
+    except ValueError:
+        fail("发布者格式无效，请重新选择发布者")
     return ids, accounts
 
 
@@ -908,7 +917,7 @@ def gallery(
 ):
     ids, accounts = parse_people_publishers(people, publishers)
     if len(cursor) > 1024:
-        fail("筛选条件无效")
+        fail("分页游标无效")
     with connect() as db:
         db.execute("BEGIN")
         lower, upper = date_bounds(start, end)
@@ -1369,15 +1378,9 @@ def admin_images(
                 source_conditions.append("p.published_at<?")
                 params.append(upper)
             if accounts:
-                publisher_conditions = []
-                for platform, author in accounts:
-                    if platform == "person":
-                        publisher_conditions.append("EXISTS(SELECT 1 FROM accounts a WHERE a.person_id=? AND a.platform=p.platform AND lower(a.username)=lower(p.author))")
-                        params.append(int(author))
-                    else:
-                        publisher_conditions.append("(p.platform=? AND lower(p.author)=lower(?))")
-                        params.extend((platform, author))
-                source_conditions.append("(" + " OR ".join(publisher_conditions) + ")")
+                clause, publisher_args = publisher_condition(accounts)
+                source_conditions.append(clause)
+                params.extend(publisher_args)
             condition = f"({condition}) AND EXISTS(SELECT 1 FROM images m JOIN sources s ON s.image_id=m.id JOIN posts p ON p.id=s.post_id WHERE {' AND '.join(source_conditions)})"
         if ids:
             marks = ",".join("?" for _ in ids)

@@ -18,10 +18,11 @@ export async function api<T = any>(
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
+    const fallback = ja ? `リクエストに失敗しました (${response.status})` : `请求失败 (${response.status})`;
+    const detail = response.status === 414 && /^\/(gallery|posts|admin\/images)\?/.test(path)
+      ? '筛选链接过长，请减少选中的人物或发布者' : error.detail;
     throw new ApiError(
-      ja ? `リクエストに失敗しました (${response.status})` : typeof error.detail === "string"
-        ? error.detail
-        : `请求失败 (${response.status})`,
+      typeof detail === 'string' ? t(detail, fallback) : fallback,
       response.status,
       Number(response.headers.get("Retry-After")) || 0,
     );

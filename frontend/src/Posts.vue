@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { NButton, NSelect, NDrawer, NDrawerContent, NAlert } from 'naive-ui';
 import Filters from './Filters.vue';
 import PostEmbed, { type Post } from './PostEmbed.vue';
-import { api } from './api';
+import { api, ApiError } from './api';
 import { useLibrary } from './store';
 import { usePageTitle } from './page-title';
 import { emptyFilter, fromQuery, toQuery, clearFilters, type Filter } from './filters';
@@ -28,7 +28,10 @@ async function load(more = false) {
     const result = await api<{ items: Post[]; next_cursor: string | null }>('/posts?' + q, { signal: controller.signal });
     if (current !== version) return;
     items.value = [...new Map([...(more ? items.value : []), ...result.items].map(p => [p.key, p])).values()]; cursor.value = result.next_cursor;
-  } catch { if (current === version) error.value = '投稿を読み込めませんでした。もう一度お試しください'; }
+  } catch (err) {
+    if (current === version) error.value = err instanceof ApiError && [400, 414].includes(err.status)
+      ? err.message : '投稿を読み込めませんでした。もう一度お試しください';
+  }
   finally { if (current === version) loading.value = false; }
 }
 watch(() => JSON.stringify(toQuery(filter.value)), () => load(), { immediate: true });
