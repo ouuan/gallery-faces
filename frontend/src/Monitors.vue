@@ -5,6 +5,7 @@ import { api, send, dateLabel, platformLabel } from "./api";
 import PublisherSelect from "./PublisherSelect.vue";
 import { usePublisherSelection, uniqueAccounts, type PublisherAccount } from "./publisher-selection";
 import LocalDateTime from "./LocalDateTime.vue";
+import HashtagField, { splitHashtags, formatHashtags } from "./HashtagField.vue";
 import type { components } from "./schema";
 type Monitor = components["schemas"]["Monitor"];
 const items = ref<Monitor[]>([]), selected = ref<number[]>([]), error = ref(""), busy = ref(false), loading = ref(false);
@@ -28,6 +29,7 @@ const platforms = ref<string[]>(["x", "instagram"]);
 const listUrls = ref("");
 const manualAccounts = ref<PublisherAccount[]>([{ platform: "x", username: "" }]);
 const interval = ref(60), start = ref(""), history = ref(false);
+const hashtags = ref(""), editHashtags = ref("");
 const accounts = computed(() => uniqueAccounts([...publisherAccounts.value.filter(account => platforms.value.includes(account.platform)), ...manualAccounts.value, ...listUrls.value.split("\n").map(username => ({ platform: "x", username: normalizeList(username) }))]));
 function normalizeList(value: string) {
   try {
@@ -49,10 +51,11 @@ function monitorLabel(account: PublisherAccount) {
 const createResults = ref<{ account: PublisherAccount; error?: string }[]>([]);
 const completedAccounts = ref<PublisherAccount[]>([]), batchDefaultStart = ref("");
 const pendingAccounts = computed(() => accounts.value.filter(account => !completedAccounts.value.some(done => done.platform === account.platform && done.username === account.username)));
-const dialog = ref<"delete" | "backfill" | "resume" | "interval" | null>(null), targets = ref<number[]>([]), since = ref(""), mode = ref("catch_up");
+type Dialog = "delete" | "backfill" | "resume" | "interval" | "hashtags";
+const dialog = ref<Dialog | null>(null), targets = ref<number[]>([]), since = ref(""), mode = ref("catch_up");
 const results = ref<{ id: number; status: string; task_id?: number; error?: string }[]>([]);
 const all = computed(() => items.value.length > 0 && selected.value.length === items.value.length);
-const dialogTitle = computed(() => dialog.value === "interval" ? "修改 " + targets.value.length + " 项监控的间隔" : dialog.value === "delete" ? "删除 " + targets.value.length + " 项监控" : dialog.value === "resume" ? "恢复监控" : "补齐 " + targets.value.length + " 位发布者");
+const dialogTitle = computed(() => dialog.value === "hashtags" ? "修改话题标签" : dialog.value === "interval" ? "修改 " + targets.value.length + " 项监控的间隔" : dialog.value === "delete" ? "删除 " + targets.value.length + " 项监控" : dialog.value === "resume" ? "恢复监控" : "补齐 " + targets.value.length + " 位发布者");
 const validSince = computed(() => !!since.value && Date.parse(since.value) < Date.now());
 let timer: ReturnType<typeof setInterval> | undefined;
 async function load() {
@@ -77,24 +80,27 @@ async function create() {
   batchDefaultStart.value ||= new Date().toISOString();
   const batchStart = history.value ? start.value : batchDefaultStart.value;
   const batchInterval = interval.value;
+  const batchHashtags = splitHashtags(hashtags.value);
   await perform(async () => {
     createResults.value = completedAccounts.value.map(account => ({ account }));
     for (const account of batchAccounts) {
       try {
-        await send("/admin/monitors", { ...account, interval_minutes: batchInterval, start: batchStart });
+        await send("/admin/monitors", { ...account, interval_minutes: batchInterval, start: batchStart, hashtags: batchHashtags });
         createResults.value.push({ account });
         completedAccounts.value.push(account);
       } catch (e) { createResults.value.push({ account, error: (e as Error).message }); }
     }
     if (createResults.value.every(result => !result.error)) {
       publishers.value = []; manualAccounts.value = [{ platform: "x", username: "" }];
-      start.value = ""; history.value = false; listUrls.value = "";
+      start.value = ""; history.value = false; listUrls.value = ""; hashtags.value = "";
       completedAccounts.value = []; batchDefaultStart.value = "";
     }
   });
 }
-function open(action: "delete" | "backfill" | "resume" | "interval", ids: number[]) {
-  batchInterval.value = items.value.find(item => item.id === ids[0])?.interval_minutes ?? 60;
+function open(action: Dialog, ids: number[]) {
+  const item = items.value.find(item => item.id === ids[0]);
+  batchInterval.value = item?.interval_minutes ?? 60;
+  editHashtags.value = formatHashtags(item?.hashtags ?? []);
   error.value = ""; targets.value = [...ids]; since.value = ""; mode.value = "catch_up"; dialog.value = action;
 }
 async function batch(action: "delete" | "backfill" | "update" | "interval", ids: number[]) {
@@ -114,6 +120,11 @@ async function confirm() {
   if (dialog.value === "resume") {
     await perform(async () => {
       await send("/admin/monitors/" + targets.value[0] + "/resume", { mode: mode.value, start: since.value });
+      dialog.value = null;
+    });
+  } else if (dialog.value === "hashtags") {
+    await perform(async () => {
+      await send("/admin/monitors/" + targets.value[0], { hashtags: splitHashtags(editHashtags.value) }, "PATCH");
       dialog.value = null;
     });
   } else if (dialog.value) await batch(dialog.value, targets.value);
@@ -163,6 +174,7 @@ onUnmounted(() => { clearInterval(timer); });
         <p v-if="invalidList" class="error-text" role="alert">请输入有效的 x.com/i/lists/数字 或 twitter.com/i/lists/数字 HTTPS 链接，每行一个</p>
       </div>
       <div class="monitor-create-settings">
+        <HashtagField v-model="hashtags" :disabled="busy" />
         <label class="field-label">检查间隔（分钟）<n-input-number v-model:value="interval" :disabled="busy" :min="5" :precision="0" /></label>
         <n-checkbox v-model:checked="history" :disabled="busy">指定起始时间，补拉历史</n-checkbox>
         <label v-if="history" class="field-label">起始时间<LocalDateTime aria-label="起始时间" v-model="start" :disabled="busy" /></label>
@@ -205,6 +217,7 @@ onUnmounted(() => { clearInterval(timer); });
           <div class="monitor-dates hint"><span>上次检查：{{ item.last_checked_at ? dateLabel(item.last_checked_at) : '尚未检查' }}</span><span>下次检查：{{ item.paused ? '已暂停' : dateLabel(item.next_check_at) }}</span></div>
           <p class="hint">{{ resultLabel(item.last_result) }}<template v-if="item.last_status"> · {{ ({ done: '已完成', failed: '失败', cancelled: '已取消' } as Record<string, string>)[item.last_status] || item.last_status }}</template></p>
           <p v-if="item.last_error" class="error-text">{{ item.last_error }}</p>
+          <p v-if="item.hashtags?.length" class="hint">{{ formatHashtags(item.hashtags) }}</p>
         </div>
         <div class="monitor-controls">
           <div class="monitor-fields">
@@ -218,6 +231,7 @@ onUnmounted(() => { clearInterval(timer); });
             <n-button v-else :disabled="busy || !!item.active_task_id" @click="open('resume', [item.id])">恢复</n-button>
             <n-button :disabled="busy" @click="batch('update', [item.id])">立刻更新</n-button>
             <n-button :disabled="busy" @click="open('backfill', [item.id])">补齐</n-button>
+            <n-button :disabled="busy" @click="open('hashtags', [item.id])">修改标签</n-button>
             <n-button :disabled="busy" @click="open('delete', [item.id])">删除</n-button>
           </div>
         </div>
@@ -227,6 +241,10 @@ onUnmounted(() => { clearInterval(timer); });
       <n-card class="monitor-dialog" role="dialog" aria-modal="true" :title="dialogTitle" :aria-label="dialogTitle">
         <n-alert v-if="error" type="error">{{ error }}</n-alert>
         <p v-if="dialog === 'delete'">将删除监控配置并取消未完成任务，已导入照片会保留。</p>
+        <template v-else-if="dialog === 'hashtags'">
+          <HashtagField v-model="editHashtags" :disabled="busy" />
+          <p class="hint">仅影响新建任务。要按新标签检查历史帖子，请使用「补齐」。</p>
+        </template>
         <label v-else-if="dialog === 'interval'" class="field-label">检查间隔（分钟）
           <n-input-number v-model:value="batchInterval" aria-label="检查间隔（分钟）" :disabled="busy" :min="5" :precision="0" />
           <span class="hint">统一应用于所选 {{ targets.length }} 项监控，最少 5 分钟</span>
@@ -242,7 +260,7 @@ onUnmounted(() => { clearInterval(timer); });
         </template>
         <div class="monitor-toolbar">
           <n-button :disabled="busy" @click="dialog = null">取消</n-button>
-          <n-button type="primary" :loading="busy" :disabled="busy || (dialog === 'interval' && !validInterval) || ((dialog === 'backfill' || (dialog === 'resume' && mode === 'start')) && !validSince)" @click="confirm">确认{{ dialog === 'interval' ? '修改' : dialog === 'delete' ? '删除' : dialog === 'resume' ? '恢复' : '补齐' }}</n-button>
+          <n-button type="primary" :loading="busy" :disabled="busy || (dialog === 'interval' && !validInterval) || ((dialog === 'backfill' || (dialog === 'resume' && mode === 'start')) && !validSince)" @click="confirm">确认{{ dialog === 'interval' || dialog === 'hashtags' ? '修改' : dialog === 'delete' ? '删除' : dialog === 'resume' ? '恢复' : '补齐' }}</n-button>
         </div>
       </n-card>
     </n-modal>

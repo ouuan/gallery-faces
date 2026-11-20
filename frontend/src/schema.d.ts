@@ -1021,6 +1021,8 @@ export interface components {
         };
         /** Create */
         Create: {
+            /** Hashtags */
+            hashtags?: string[];
             /**
              * Platform
              * @enum {string}
@@ -1060,6 +1062,8 @@ export interface components {
         };
         /** Edit */
         Edit: {
+            /** Hashtags */
+            hashtags?: string[] | null;
             /** Interval Minutes */
             interval_minutes?: number | null;
             /** Paused */
@@ -1232,6 +1236,8 @@ export interface components {
              * @default []
              */
             urls: string[];
+            /** Hashtags */
+            hashtags?: string[];
             /** Directory */
             directory?: string | null;
             /**
@@ -1252,6 +1258,8 @@ export interface components {
         };
         /** Monitor */
         Monitor: {
+            /** Hashtags */
+            hashtags: string[];
             /** Id */
             id: number;
             /** Platform */

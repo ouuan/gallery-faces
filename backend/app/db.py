@@ -104,6 +104,8 @@ def init():
         db.execute("PRAGMA journal_mode=WAL")
         db.executescript(SCHEMA)
     with connect(True) as db:
+        if 'hashtags' not in {row[1] for row in db.execute('PRAGMA table_info(monitors)')}:
+            db.execute("ALTER TABLE monitors ADD COLUMN hashtags TEXT NOT NULL DEFAULT '[]'")
         for table in ('people', 'groups'):
             if 'name_ja' not in {row[1] for row in db.execute(f'PRAGMA table_info({table})')}:
                 db.execute(f'ALTER TABLE {table} ADD COLUMN name_ja TEXT')

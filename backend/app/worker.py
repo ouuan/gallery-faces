@@ -236,6 +236,7 @@ def download_media(task, payload, attempt, restore_id=None):
             "DATA_DIR": str(DATA),
             "GALLERY_FACES_POLICY_REPORT": str(policy_report),
             "GALLERY_FACES_SKIPPED_REPORT": str(attempt / "skipped.jsonl"),
+            "GALLERY_FACES_HASHTAGS": json.dumps(payload.get("hashtags", [])),
             "GALLERY_FACES_RESTORE_IMAGE": str(restore_id) if restore_id is not None else "",
         },
     ) as process:

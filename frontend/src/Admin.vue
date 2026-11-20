@@ -21,6 +21,7 @@ import { usePageTitle } from "./page-title";
 import PublisherSelect from "./PublisherSelect.vue";
 import { usePublisherSelection, mergeImportUrls } from "./publisher-selection";
 import Monitors from "./Monitors.vue";
+import HashtagField, { splitHashtags, formatHashtags } from "./HashtagField.vue";
 import People from "./People.vue";
 import Review from "./Review.vue";
 import DuplicateReview from "./DuplicateReview.vue";
@@ -39,6 +40,7 @@ const route = useRoute(),
   error = ref(""),
   busy = ref(false),
   urls = ref(""),
+  hashtags = ref(""),
   directory = ref<string | null>(null),
   directories = ref<string[]>([]),
   tasks = ref<any[]>([]),
@@ -166,6 +168,7 @@ async function submitImport() {
   try {
     results.value = await send("/admin/import", {
       urls: importUrls.value,
+      hashtags: importUrls.value.length ? splitHashtags(hashtags.value) : [],
       directory: directory.value,
       start: start.value,
       end: end.value,
@@ -309,7 +312,9 @@ onUnmounted(() => {
               type="textarea"
               :autosize="{ minRows: 4, maxRows: 8 }"
               placeholder="https://www.instagram.com/p/…&#10;https://x.com/username/status/…" /></label
-          ><label class="field-label"
+          >
+          <HashtagField v-model="hashtags" :disabled="busy || !importUrls.length" />
+          <label class="field-label"
             >或选择导入目录<n-select
               v-model:value="directory"
               clearable
@@ -408,6 +413,7 @@ onUnmounted(() => {
                       (task.image_id ? "图片 #" + task.image_id : "")
                     }}
                   </p>
+                  <p v-if="task.payload.hashtags?.length" class="task-target hint">{{ formatHashtags(task.payload.hashtags) }}</p>
                   <div v-if="['download', 'monitor'].includes(task.kind) && (task.payload.start || task.payload.end)" class="task-dates hint">
                     <span>下载范围：<template v-if="task.payload.start && !task.payload.end">自 </template><time v-if="task.payload.start" :datetime="task.payload.start">{{ dateLabel(task.payload.start) }}</time><template v-else>截至 </template><template v-if="task.payload.start && task.payload.end"> 至 </template><template v-if="task.payload.end"><time :datetime="task.payload.end">{{ dateLabel(task.payload.end) }}</time>（不含）</template><template v-else> 起</template></span>
                   </div>

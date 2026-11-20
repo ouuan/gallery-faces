@@ -34,6 +34,7 @@ from .db import schedule_detection, ACTIVE_REFERENCE
 from .trash import require_active, require_active_face
 from .representatives import complete_source_sql, representative_sql, require_representative, require_representative_face
 from .archives import stream_zip
+from .hashtags import Hashtags
 
 
 @asynccontextmanager
@@ -1688,6 +1689,7 @@ def directories(_: None = Depends(admin)):
 
 class ImportInput(BaseModel):
     urls: list[str] = []
+    hashtags: Hashtags = Field(default_factory=list)
     directory: str | None = None
     start: str = ""
     end: str = ""
@@ -1729,8 +1731,8 @@ def import_create(body: ImportInput, _: None = Depends(admin)):
                 continue
             seen.add(url)
             active = db.execute(
-                "SELECT id FROM tasks WHERE kind='download' AND json_extract(payload,'$.url')=? AND json_extract(payload,'$.start') IS ? AND json_extract(payload,'$.end') IS ? AND status IN ('queued','running')",
-                (url, start, end),
+                "SELECT id FROM tasks WHERE kind='download' AND json_extract(payload,'$.url')=? AND json_extract(payload,'$.start') IS ? AND json_extract(payload,'$.end') IS ? AND coalesce(json_extract(payload,'$.hashtags'),'[]')=json(?) AND status IN ('queued','running')",
+                (url, start, end, json.dumps(body.hashtags, ensure_ascii=False)),
             ).fetchone()
             if active:
                 results.append(
@@ -1739,7 +1741,7 @@ def import_create(body: ImportInput, _: None = Depends(admin)):
                 continue
             task = db.execute(
                 "INSERT INTO tasks(kind,payload) VALUES('download',?)",
-                (json.dumps({"url": url, "start": start, "end": end}),),
+                (json.dumps({"url": url, "start": start, "end": end, "hashtags": body.hashtags}, ensure_ascii=False),),
             ).lastrowid
             results.append({"value": url, "status": "queued", "task_id": task})
     return results

@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from typing import Literal
 from .db import connect
+from .hashtags import Hashtags
 from .security import download_url
 
 def now():
@@ -41,6 +42,7 @@ def enqueue(db, mid, start=None, end=None, retry=None):
             overlap = (datetime.fromisoformat(row['progress_at'].replace('Z', '+00:00')) - timedelta(minutes=5)).isoformat().replace('+00:00', 'Z')
             lower = max(lower, overlap)
         payload = dict(monitor_id=mid, generation=row['generation'], mode='backfill' if start else 'incremental', start=lower, end=end or now(),
+                       hashtags=json.loads(row['hashtags']),
                        url=f"https://{'x.com' if row['platform'] == 'x' else 'www.instagram.com'}/{row['username']}/")
     return db.execute("INSERT INTO tasks(kind,payload) VALUES('monitor',?)", (json.dumps(payload),)).lastrowid
 
@@ -65,12 +67,14 @@ def schedule_due():
             enqueue(db, row['id'])
 
 class Create(BaseModel):
+    hashtags: Hashtags = Field(default_factory=list)
     platform: Literal['instagram', 'x']
     username: str = Field(min_length=1, max_length=100)
     interval_minutes: int = Field(default=60, ge=5)
     start: str = ''
 
 class Edit(BaseModel):
+    hashtags: Hashtags | None = None
     interval_minutes: int | None = Field(default=None, ge=5)
     paused: bool | None = None
 
@@ -102,6 +106,7 @@ class Candidate(BaseModel):
     label: str | None
 
 class Monitor(BaseModel):
+    hashtags: list[str]
     id: int
     platform: str
     username: str
@@ -120,7 +125,7 @@ class Monitor(BaseModel):
 
 def listing() -> list[Monitor]:
     with connect() as db:
-        return [dict(row) for row in db.execute("SELECT m.*,t.status AS last_status,t.result AS last_result,t.error AS last_error,(SELECT id FROM tasks WHERE kind='monitor' AND json_extract(payload,'$.monitor_id')=m.id AND status IN ('queued','running')) AS active_task_id FROM monitors m LEFT JOIN tasks t ON t.id=m.last_task_id ORDER BY m.id DESC")]
+        return [{**row, 'hashtags': json.loads(row['hashtags'])} for row in db.execute("SELECT m.*,t.status AS last_status,t.result AS last_result,t.error AS last_error,(SELECT id FROM tasks WHERE kind='monitor' AND json_extract(payload,'$.monitor_id')=m.id AND status IN ('queued','running')) AS active_task_id FROM monitors m LEFT JOIN tasks t ON t.id=m.last_task_id ORDER BY m.id DESC")]
 
 def candidates(q: str = '') -> list[Candidate]:
     with connect() as db:
@@ -157,7 +162,7 @@ def create(body: Create) -> Created:
     with connect(True) as db:
         if db.execute('SELECT 1 FROM monitors WHERE platform=? AND username=? COLLATE NOCASE', (body.platform, username)).fetchone():
             raise HTTPException(409, '该发布者已在监控列表中')
-        mid = db.execute('INSERT INTO monitors(platform,username,interval_minutes,start_at,next_check_at) VALUES(?,?,?,?,?)', (body.platform, username, body.interval_minutes, start, timestamp)).lastrowid
+        mid = db.execute('INSERT INTO monitors(platform,username,interval_minutes,start_at,next_check_at,hashtags) VALUES(?,?,?,?,?,?)', (body.platform, username, body.interval_minutes, start, timestamp, json.dumps(body.hashtags))).lastrowid
         tid = enqueue(db, mid, end=timestamp)
     return {'id': mid, 'task_id': tid}
 
@@ -167,6 +172,8 @@ def edit(monitor_id: int, body: Edit):
             raise HTTPException(404, '监控不存在')
         if body.paused is False:
             raise HTTPException(400, '请选择恢复方式')
+        if body.hashtags is not None:
+            db.execute('UPDATE monitors SET hashtags=? WHERE id=?', (json.dumps(body.hashtags), monitor_id))
         if body.interval_minutes is not None:
             db.execute('UPDATE monitors SET interval_minutes=? WHERE id=?', (body.interval_minutes, monitor_id))
         if body.paused:

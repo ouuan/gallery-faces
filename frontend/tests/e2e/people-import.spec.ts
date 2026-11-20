@@ -73,6 +73,7 @@ test("batch imports associated accounts and preserves input on failure", async (
   const links = page.getByRole("textbox", { name: "链接，每行一个" });
   await expect(links).toHaveValue("");
   await links.fill("https://www.twitter.com/Alice/\nhttps://x.com/bob");
+  await page.getByRole("textbox", { name: "话题标签" }).fill("#摄影，Live");
   await page.getByLabel("开始时间", { exact: true }).fill("2026-11-18 00:00:00");
   await page.getByLabel("开始时间", { exact: true }).press("Enter");
   await page.getByLabel("结束时间（不含）").fill("2026-11-17 00:00:00");
@@ -101,6 +102,7 @@ test("batch imports associated accounts and preserves input on failure", async (
   expect(requests[1]).toEqual({
     urls: ["https://x.com/alice", "https://instagram.com/alice", "https://x.com/bob"],
     directory: null,
+    hashtags: ["#摄影", "Live"],
     start: "2026-11-18T00:00:00Z",
     end: "2026-11-19T00:00:00Z",
   });

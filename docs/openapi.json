@@ -3039,6 +3039,14 @@
       },
       "Create": {
         "properties": {
+          "hashtags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 32,
+            "title": "Hashtags"
+          },
           "platform": {
             "type": "string",
             "enum": [
@@ -3119,6 +3127,21 @@
       },
       "Edit": {
         "properties": {
+          "hashtags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hashtags"
+          },
           "interval_minutes": {
             "anyOf": [
               {
@@ -3595,6 +3618,14 @@
             "title": "Urls",
             "default": []
           },
+          "hashtags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 32,
+            "title": "Hashtags"
+          },
           "directory": {
             "anyOf": [
               {
@@ -3636,6 +3667,13 @@
       },
       "Monitor": {
         "properties": {
+          "hashtags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Hashtags"
+          },
           "id": {
             "type": "integer",
             "title": "Id"
@@ -3748,6 +3786,7 @@
         },
         "type": "object",
         "required": [
+          "hashtags",
           "id",
           "platform",
           "username",

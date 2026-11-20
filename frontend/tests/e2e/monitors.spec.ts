@@ -240,6 +240,7 @@ test("shared platform filter and canonical List batch", async ({ page }) => {
   await form.getByLabel("Twitter List 链接").fill("https://x.com/i/lists/abc");
   await expect(submit).toBeDisabled();
   await form.getByLabel("Twitter List 链接").fill("https://twitter.com/i/lists/123?s=20\nhttps://x.com/i/lists/123/");
+  await form.getByLabel("话题标签").fill("摄影 Live");
   await expect(form).toContainText("共 3 项监控");
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
@@ -258,5 +259,13 @@ test("shared platform filter and canonical List batch", async ({ page }) => {
   ]);
   expect(new Set(calls.map(call => call.start)).size).toBe(1);
   await expect(form).toContainText("Twitter List 123：已添加监控");
+  expect(calls.map(call => call.hashtags)).toEqual(Array(3).fill(["摄影", "Live"]));
+  await page.getByRole("button", { name: "修改标签" }).first().click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("话题标签")).toHaveValue("#摄影 #Live");
+  await dialog.getByLabel("话题标签").fill("");
+  const saved = page.waitForRequest(request => request.method() === "PATCH");
+  await dialog.getByRole("button", { name: "确认修改" }).click();
+  expect((await saved).postDataJSON()).toEqual({ hashtags: [] });
   await expect(page.getByRole("link", { name: "Twitter List 123", exact: true })).toHaveAttribute("href", "https://x.com/i/lists/123/");
 });
