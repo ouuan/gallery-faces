@@ -1149,6 +1149,8 @@ export interface components {
             items: components["schemas"]["GalleryPhoto"][];
             /** Next Cursor */
             next_cursor: string | null;
+            /** Total */
+            total: number;
         };
         /** GalleryPhoto */
         GalleryPhoto: {

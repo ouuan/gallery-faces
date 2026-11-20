@@ -721,10 +721,9 @@ def source_conditions(people_ids, match, publishers, start, end, include_no_face
 
 def gallery_rows(db, people_ids, match, publishers, start, end, include_no_faces, sort, cursor, limit):
     conditions, args = source_conditions(people_ids, match, publishers, start, end, include_no_faces)
-    ranked = (
-        "SELECT i.group_id,p.id AS post_id,p.platform,p.author,p.author_name,p.published_at,p.url,ROW_NUMBER() OVER(PARTITION BY i.group_id ORDER BY p.published_at,p.id) AS rank FROM images i JOIN sources s ON s.image_id=i.id JOIN posts p ON p.id=s.post_id WHERE "
-        + " AND ".join(conditions)
-    )
+    sources = " FROM images i JOIN sources s ON s.image_id=i.id JOIN posts p ON p.id=s.post_id WHERE " + " AND ".join(conditions)
+    ranked = "SELECT i.group_id,p.id AS post_id,p.platform,p.author,p.author_name,p.published_at,p.url,ROW_NUMBER() OVER(PARTITION BY i.group_id ORDER BY p.published_at,p.id) AS rank" + sources
+    page_args = args.copy()
     sql = (
         "WITH ranked AS ("
         + ranked
@@ -743,11 +742,14 @@ def gallery_rows(db, people_ids, match, publishers, start, end, include_no_faces
             + ("<" if sort == "newest" else ">")
             + " (?,?)"
         )
-        args.extend((stamp, identifier))
+        page_args.extend((stamp, identifier))
     direction = "DESC" if sort == "newest" else "ASC"
     sql += f" ORDER BY published_at {direction},group_id {direction} LIMIT ?"
-    args.append(limit + 1)
-    return [dict(row) for row in db.execute(sql, args)]
+    rows = [dict(row) for row in db.execute(sql, [*page_args, limit + 1])]
+    total = len(rows)
+    if cursor or total > limit:
+        total = db.execute("SELECT COUNT(DISTINCT i.group_id)" + sources, args).fetchone()[0]
+    return rows, total
 
 
 def visible_members(db, group_id):
@@ -806,6 +808,7 @@ class GalleryPhoto(BaseModel):
 class GalleryPage(BaseModel):
     items: list[GalleryPhoto]
     next_cursor: str | None
+    total: int
 
 
 def source_record(row):
@@ -921,7 +924,7 @@ def gallery(
     with connect() as db:
         db.execute("BEGIN")
         lower, upper = date_bounds(start, end)
-        rows = gallery_rows(
+        rows, total = gallery_rows(
             db,
             ids,
             match,
@@ -941,7 +944,7 @@ def gallery(
             if len(rows) > limit
             else None
         )
-        return {"items": [summary(db, r) for r in page], "next_cursor": next_cursor}
+        return {"items": [summary(db, r) for r in page], "next_cursor": next_cursor, "total": total}
 
 
 class GalleryDownloadInput(BaseModel):

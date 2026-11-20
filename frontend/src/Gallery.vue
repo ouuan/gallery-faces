@@ -41,6 +41,7 @@ const filter = computed(() => fromQuery(route.query)),
   drawer = ref(false),
   layout = ref(localStorage.getItem("layout") || "justified");
 const photos = ref<Photo[]>([]),
+  total = ref<number | null>(null),
   cursor = ref<string | null>(null),
   loading = ref(false),
   error = ref(""),
@@ -130,18 +131,20 @@ async function load(more = false) {
   galleryController?.abort();
   galleryController = new AbortController();
   const version = ++requestVersion;
+  if (!more) total.value = null;
   loading.value = true;
   error.value = "";
   try {
     const q = new URLSearchParams(toQuery(filter.value));
     if (more && cursor.value) q.set("cursor", cursor.value);
-    const result = await api<{ items: Photo[]; next_cursor: string | null }>(
+    const result = await api<{ items: Photo[]; next_cursor: string | null; total: number }>(
       "/gallery?" + q,
       { signal: galleryController.signal },
     );
     if (version !== requestVersion) return;
     photos.value = more ? [...photos.value, ...result.items] : result.items;
     cursor.value = result.next_cursor;
+    total.value = result.total;
   } catch (e) {
     if (version === requestVersion) error.value = (e as Error).message;
   } finally {
@@ -262,9 +265,9 @@ onUnmounted(() => {
           <h1>照片库</h1>
           <p class="muted">
             {{
-              photos.length
-                ? `已展示 ${photos.length} 张照片`
-                : "按人物、发布者和日期浏览"
+              total == null
+                ? "按人物、发布者和日期浏览"
+                : `共 ${total} 张照片${cursor ? `，已展示 ${photos.length} 张` : ""}`
             }}
           </p>
         </div>

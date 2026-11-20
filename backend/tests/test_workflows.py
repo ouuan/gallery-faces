@@ -524,6 +524,7 @@ def test_source_filters_and_all_same_image(client):
         == 1
     )
     assert not client.get(f"/api/v1/gallery?people={a},{b}&match=all").json()["items"]
+    assert client.get(f"/api/v1/gallery?people={a},{b}&match=all").json()["total"] == 0
     result = client.get("/api/v1/gallery?publishers=x:bob").json()["items"][0]
     detail = client.get(
         f"/api/v1/gallery/{first}?matched_post={result['matched_source']['post_id']}"
@@ -622,11 +623,14 @@ def test_review_undo_and_ignored_no_faces(client):
 def test_stable_pagination(client):
     with db.connect(True) as conn:
         for _ in range(5):
-            image(conn)
+            group = image(conn)
+        image(conn, group=group)
+        image(conn, False)
     first = client.get("/api/v1/gallery?limit=2").json()
     second = client.get(
         "/api/v1/gallery", params={"limit": 2, "cursor": first["next_cursor"]}
     ).json()
+    assert first["total"] == second["total"] == 5
     assert not set(p["id"] for p in first["items"]) & set(
         p["id"] for p in second["items"]
     )
