@@ -1483,6 +1483,17 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** ReviewPage */
+        ReviewPage: {
+            /** Items */
+            items: components["schemas"]["ReviewImage"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
         /** ReviewSource */
         ReviewSource: {
             /** Id */
@@ -2659,6 +2670,9 @@ export interface operations {
                 people?: string;
                 match?: "any" | "all";
                 publishers?: string;
+                /** @description Request a page instead of the legacy list. */
+                page?: number | null;
+                page_size?: number;
             };
             header?: never;
             path?: never;
@@ -2672,7 +2686,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ReviewImage"][];
+                    "application/json": components["schemas"]["ReviewImage"][] | components["schemas"]["ReviewPage"];
                 };
             };
             /** @description Validation Error */

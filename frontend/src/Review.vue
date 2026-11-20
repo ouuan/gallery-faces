@@ -45,12 +45,19 @@ const state = computed({
     return "review";
   },
   set: (value: string) => {
-    void router.replace({ query: { ...route.query, state: value, image: undefined } });
+    void router.replace({ query: { ...route.query, state: value, page: undefined, image: undefined } });
   },
 });
 const filter = computed(() => ({ ...fromQuery(route.query), include_no_faces: false, sort: "newest" as const }));
 const filterQuery = computed(() => toQuery(filter.value));
-const queryKey = computed(() => JSON.stringify([state.value, filterQuery.value]));
+const page = computed(() => {
+  const value = typeof route.query.page === "string" ? Number(route.query.page) : 1;
+  return Number.isSafeInteger(value) && value > 0 ? value : 1;
+});
+const pageCount = ref(1);
+const total = ref(0);
+const pageKey = (number: number) => JSON.stringify([state.value, filterQuery.value, number]);
+const queryKey = computed(() => pageKey(page.value));
 const showFilters = ref(false);
 const draftFilter = ref(emptyFilter());
 function openFilters() {
@@ -64,7 +71,7 @@ async function applyFilters() {
   newPersonFace.value = null;
   const query = { ...route.query };
   for (const key of ["people", "match", "publishers", "start", "end"]) delete query[key];
-  await router.replace({ query: { ...query, ...toQuery(draftFilter.value),
+  await router.replace({ query: { ...query, ...toQuery(draftFilter.value), page: undefined,
     image: state.value === "image" ? route.query.image : undefined,
   } });
   showFilters.value = false;
@@ -180,7 +187,7 @@ const actionIds = computed(() =>
   selected.value.length ? selected.value : active.value ? [active.value.id] : [],
 );
 const actionsDisabled = computed(() =>
-  !actionIds.value.length || loading.value || deleting.value || acting.value || savingBox.value || savingFaces.value,
+  !actionIds.value.length || !!error.value || loading.value || deleting.value || acting.value || savingBox.value || savingFaces.value,
 );
 const navigationDisabled = computed(() =>
   loading.value || deleting.value || acting.value || savingBox.value || savingFaces.value,
@@ -188,6 +195,11 @@ const navigationDisabled = computed(() =>
 function moveImage(index: number) {
   if (navigationDisabled.value || index < 0 || index >= images.value.length) return;
   current.value = index;
+}
+async function changePage(number: number) {
+  if (navigationDisabled.value || number < 1 || number > pageCount.value) return;
+  if ((dirty.value || Object.keys(facePeople.value).length) && !await confirm("有未保存的修改，确定翻页并放弃吗？")) return;
+  await router.replace({ query: { ...route.query, page: number > 1 ? String(number) : undefined, image: undefined } });
 }
 useReviewShortcuts({
   arrowleft: { run: () => moveImage(current.value - 1), enabled: () => current.value > 0 },
@@ -241,13 +253,15 @@ watch(
 let loadVersion = 0;
 const imageRequest = useLatestRequest();
 let loadedQuery: string | null = null;
-function syncQuery() {
+function syncQuery(actualPage = page.value) {
   if (state.value === "trash" || loading.value || error.value || loadedQuery !== queryKey.value) return;
   const image = active.value ? String(active.value.id) : undefined;
-  if (route.query.state === state.value && route.query.image === image) return;
-  void router.replace({ query: { ...route.query, state: state.value, image } });
+  const pageParam = actualPage > 1 ? String(actualPage) : undefined;
+  if (route.query.state === state.value && route.query.image === image && route.query.page === pageParam) return;
+  loadedQuery = pageKey(actualPage);
+  void router.replace({ query: { ...route.query, state: state.value, image, page: pageParam } });
 }
-watch(() => active.value?.id, syncQuery);
+watch(() => active.value?.id, () => syncQuery());
 async function load() {
   await loadImages(false);
 }
@@ -260,6 +274,7 @@ async function loadImages(currentOnly: boolean) {
   const version = ++loadVersion;
   const requestedState = state.value;
   const requestedKey = queryKey.value;
+  let actualPage = page.value;
   const filters = new URLSearchParams(filterQuery.value);
   const filtersQuery = filters.size ? `&${filters}` : "";
   const requestedImage = targetImage.value;
@@ -274,19 +289,26 @@ async function loadImages(currentOnly: boolean) {
       loadedQuery = requestedKey;
       return;
     }
-    let result = requestedState === "image" && !requestedImage ? [] : await api(
-      requestedState === "image"
-        ? `/admin/images?state=all&image_id=${requestedImage}${filtersQuery}`
-        : "/admin/images?state=" + requestedState + filtersQuery + (refreshedImage ? `&image_id=${refreshedImage.id}` : ""),
-      { signal },
-    );
-    if (version !== loadVersion) return;
-    // Refill the server-capped queue before publishing an empty intermediate state.
-    // Keeping one request lifecycle also avoids a route sync starting another load.
-    if (refreshedImage && !result.length && images.value.length === 1 && requestedState !== "image") {
-      result = await api("/admin/images?state=" + requestedState + filtersQuery, { signal });
+    const listPath = `/admin/images?state=${requestedState === "image" ? "all" : requestedState}${filtersQuery}`;
+    let result: any[] = [];
+    if (requestedState === "image" || refreshedImage) {
+      const id = refreshedImage?.id ?? requestedImage;
+      if (id) result = await api(`${listPath}&image_id=${id}`, { signal });
       if (version !== loadVersion) return;
-      refreshedImage = null;
+      if (requestedState === "image") {
+        actualPage = 1;
+        pageCount.value = 1;
+      } else if (!result.length && (pageCount.value > 1 || images.value.length === 1)) {
+        refreshedImage = null;
+      } else if (!result.length) total.value--;
+    }
+    if (requestedState !== "image" && !refreshedImage) {
+      const response = await api(`${listPath}&page=${actualPage}`, { signal });
+      if (version !== loadVersion) return;
+      result = Array.isArray(response) ? response : response.items;
+      total.value = response.total ?? result.length;
+      pageCount.value = Array.isArray(response) ? 1 : Math.max(1, Math.ceil(response.total / response.page_size));
+      actualPage = response.page ?? 1;
     }
     if (refreshedImage) {
       const index = images.value.indexOf(refreshedImage);
@@ -309,7 +331,7 @@ async function loadImages(currentOnly: boolean) {
   } finally {
     if (version === loadVersion) {
       loading.value = false;
-      syncQuery();
+      syncQuery(actualPage);
     }
   }
 }
@@ -577,7 +599,7 @@ onMounted(load);
     <div v-if="state !== 'trash'" class="review-actions">
       <n-button :disabled="navigationDisabled" @click="refresh">刷新</n-button>
       <n-button :disabled="actionsDisabled" @click="selected = selected.length === images.length ? [] : images.map(image => image.id)">
-        {{ images.length && selected.length === images.length ? "取消全选" : "全选" }}
+        {{ images.length && selected.length === images.length ? "取消全选" : pageCount > 1 ? "全选本页" : "全选" }}
       </n-button>
       <n-button :disabled="actionsDisabled" @click="action('redetect')"
         >重新检测</n-button
@@ -614,8 +636,13 @@ onMounted(load);
     <h2>没有需要处理的照片</h2>
     <p>{{ hasFilters(filter) ? "没有符合当前筛选条件的照片，可调整或清空筛选" : "此分类中的项目已处理完毕，也可以切换其他状态" }}</p>
   </div>
-  <div v-if="images.length" class="review-workspace">
-    <div ref="thumbnailStrip" class="review-strip">
+  <div v-if="images.length && !error" class="review-workspace">
+    <nav v-if="state !== 'image' && pageCount > 1" class="review-navigation review-pagination" aria-label="审核分页">
+      <n-button :disabled="navigationDisabled || page <= 1" @click="changePage(page - 1)">上一页</n-button>
+      <span class="muted">第 {{ page }} / {{ pageCount }} 页 · 共 {{ total }} 组</span>
+      <n-button :disabled="navigationDisabled || page >= pageCount" @click="changePage(page + 1)">下一页</n-button>
+    </nav>
+    <div :key="page" ref="thumbnailStrip" class="review-strip">
       <div
         v-for="(image, i) in images"
         :key="image.group_id ?? image.id"
@@ -937,6 +964,10 @@ onMounted(load);
 .review-filter > span {
   color: var(--muted);
   font-size: 13px;
+}
+.review-pagination {
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
 }
 .review-workspace {
   display: flex;

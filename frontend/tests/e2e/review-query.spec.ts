@@ -40,6 +40,38 @@ test("restores category and image and updates navigation without refetching", as
   await expect(page.locator('[aria-label="审核状态"]')).toContainText("未知人物");
 });
 
+test("pages through filtered groups, scopes selection and restores the last available page", async ({ page }) => {
+  let total = 51;
+  await page.route("**/api/v1/admin/images?**", route => {
+    const params = new URL(route.request().url()).searchParams;
+    const number = Math.min(Number(params.get("page")), Math.ceil(total / 50));
+    const items = Array.from({ length: Math.min(50, total - (number - 1) * 50) }, (_, index) => ({
+      id: (number - 1) * 50 + index + 1, width: 800, height: 600, faces: [], sources: [],
+    }));
+    return route.fulfill({ json: { items, total, page: number, page_size: 50 } });
+  });
+  await page.goto("/admin/review?state=unknown&people=7");
+  const nav = page.getByRole("navigation", { name: "审核分页" });
+  await expect(nav.getByRole("button", { name: "上一页" })).toBeDisabled();
+  await page.getByRole("button", { name: "全选本页" }).click();
+  await expect(page.getByText("已选 50 张")).toBeVisible();
+  await nav.getByRole("button", { name: "下一页" }).click();
+  await expect(page).toHaveURL(/page=2.*image=51/);
+  await expect(nav).toContainText("第 2 / 2 页 · 共 51 组");
+  await expect(page.getByText(/已选 \d+ 张/)).toHaveCount(0);
+  await expect(nav.getByRole("button", { name: "下一页" })).toBeDisabled();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: /图片 #51/ })).toBeVisible();
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await nav.screenshot({ path: `/tmp/gallery-faces/review-pagination-${width}.png` });
+  }
+  total = 50;
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(nav).toHaveCount(0);
+  await expect(page).toHaveURL(/state=unknown&people=7&image=1$/);
+});
+
 test("opens explicit single-image links and records category changes and empty lists", async ({ page }) => {
   await page.goto("/admin/review?state=image&image=22");
   await expect(page.locator('[aria-label="审核状态"]')).toContainText("当前图片");

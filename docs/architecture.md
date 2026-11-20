@@ -51,7 +51,7 @@ References owned by trashed images are retained but excluded from matching, refe
 
 ## Representative review
 
-Active review lists contain one entry per duplicate group, selected by original `file_size DESC, id ASC` before applying the review filter or the 500-group limit. `id` is the representative image ID; `group_id` identifies the group. `member_ids`, `member_count`, and `incomplete_image_ids` describe all active members. `sources` deduplicates posts and includes their owning `image_ids`; pending feedback counts include every active member. An `image_id` lookup resolves any active member to its group's representative. Hidden/recycle-bin reads retain individual records.
+Active review lists contain one entry per duplicate group, selected by original `file_size DESC, id ASC` before filtering and pagination. The review workspace requests 50 matching groups per page in group ID order; legacy requests without `page` still return up to 500 entries. `id` is the representative image ID; `group_id` identifies the group. `member_ids`, `member_count`, and `incomplete_image_ids` describe all active members. `sources` deduplicates posts and includes their owning `image_ids`; pending feedback counts include every active member. An `image_id` lookup resolves any active member to its group's representative. Hidden/recycle-bin reads retain individual records.
 
 Face, unknown/no-face, and detection review reasons depend only on the review representative. Source incompleteness and pending feedback depend on every active member. Human face edits, undo, create-from-face, manual boxes and redetection recheck representative ownership in their write transaction and return 409 if it changed. Face revisions still guard concurrent edits; batch face saves retain per-face failures. No decisions, boxes, embeddings, history or references are copied between images. Background detection and matching remain per-image.
 
@@ -59,7 +59,7 @@ Public representatives use the same size/ID ordering among members that are acti
 
 `GET /api/v1/admin/images/{image_id}/feedback?scope=group` paginates feedback from all active members in the image's current group and retains each feedback record's original `image_id`. The default `scope=image` remains a single-image read, including recycle-bin records. Source and feedback edits retain their existing record IDs and ownership.
 
-Recognition review reuses the gallery filters in a draft modal (people with any/all matching, publishers and publication dates; no no-face toggle). Applying saves the filters in the URL; canceling discards the draft. People match non-ignored faces on the review representative. Publisher and date conditions must match the same source on an active group member, before the 500-group limit. Partial group refreshes retain the filters.
+Recognition review reuses the gallery filters in a draft modal (people with any/all matching, publishers and publication dates; no no-face toggle). Applying saves the filters in the URL and resets the page; canceling discards the draft. People match non-ignored faces on the review representative. Publisher and date conditions must match the same source on an active group member, before pagination. Partial group refreshes retain the filters.
 
 ## Publisher monitoring
 

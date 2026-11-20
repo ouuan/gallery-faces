@@ -1603,6 +1603,37 @@
               "default": "",
               "title": "Publishers"
             }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Request a page instead of the legacy list.",
+              "title": "Page"
+            },
+            "description": "Request a page instead of the legacy list."
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -1611,10 +1642,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ReviewImage"
-                  },
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ReviewImage"
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/ReviewPage"
+                    }
+                  ],
                   "title": "Response Admin Images Api V1 Admin Images Get"
                 }
               }
@@ -4245,6 +4283,37 @@
           "pending_feedback_count"
         ],
         "title": "ReviewImage"
+      },
+      "ReviewPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewImage"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "ReviewPage"
       },
       "ReviewSource": {
         "properties": {

@@ -192,6 +192,11 @@ def test_large_group_not_truncated_before_group_limit(client):
     assert len(rows[0]['sources']) == len(rows[0]['member_ids']) == 507
     assert rows[0]['id'] == large
     assert len(listing(client)) == 500
+    last = listing(client, 'all', page=11)
+    assert (last['total'], last['page'], last['page_size']) == (501, 11, 50)
+    assert len(last['items']) == 1 and last['items'][0]['group_id'] > rows[-1]['group_id']
+    assert listing(client, page=11)['page'] == 10
+    assert listing(client, 'failed', page=2) == {'items': [], 'total': 0, 'page': 1, 'page_size': 50}
 
 
 def test_import_new_copy_and_selective_restore(client, tmp_path, monkeypatch):

@@ -1337,11 +1337,20 @@ class ReviewImage(BaseModel):
     pending_feedback_count: int = Field(description="Pending feedback across active group members; single-image count for hidden entries.")
 
 
-@app.get("/api/v1/admin/images", response_model=list[ReviewImage])
+class ReviewPage(BaseModel):
+    items: list[ReviewImage]
+    total: int
+    page: int
+    page_size: int
+
+
+@app.get("/api/v1/admin/images", response_model=list[ReviewImage] | ReviewPage)
 def admin_images(
     state: str = "review", image_id: int | None = None,
     start: str = "", end: str = "", people: str = "",
-    match: Literal["any", "all"] = "any", publishers: str = "", _: None = Depends(admin)
+    match: Literal["any", "all"] = "any", publishers: str = "",
+    page: int | None = Query(None, ge=1, description="Request a page instead of the legacy list."),
+    page_size: int = Query(50, ge=1, le=100), _: None = Depends(admin)
 ):
     ids, accounts = parse_people_publishers(people, publishers)
     with connect() as db:
@@ -1395,9 +1404,17 @@ def admin_images(
                 condition = f"({condition}) AND EXISTS(SELECT 1 FROM faces f WHERE f.image_id=i.id AND f.ignored=0 AND f.person_id IN ({marks}))"
                 params.extend(ids)
         order = "i.group_id" if grouped else "i.id"
-        return [review_image(db, row, grouped=grouped) for row in db.execute(
-            "SELECT i.* FROM images i WHERE " + condition + f" ORDER BY {order} LIMIT 500", params,
-        )]
+        matching = " FROM images i WHERE " + condition
+        limit, offset = 500, 0
+        if page is not None:
+            total = db.execute("SELECT count(*)" + matching, params).fetchone()[0]
+            page = min(page, max(1, (total + page_size - 1) // page_size))
+            limit, offset = page_size, (page - 1) * page_size
+        rows = db.execute("SELECT i.*" + matching + f" ORDER BY {order} LIMIT ? OFFSET ?", [*params, limit, offset])
+        items = [review_image(db, row, grouped=grouped) for row in rows]
+        if page is None:
+            return items
+        return ReviewPage(items=items, total=total, page=page, page_size=page_size)
 
 
 @app.get("/api/v1/admin/trash")
