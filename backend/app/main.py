@@ -387,28 +387,18 @@ def publisher_candidates() -> list[PublisherCandidate]:
     with connect() as db:
         rows = db.execute(
             """
-            WITH ranked AS (
-                SELECT p.platform, p.author AS username,
-                    COALESCE(NULLIF(TRIM(p.author_name), ''), p.author) AS label,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY p.platform, lower(p.author)
-                        ORDER BY CASE WHEN TRIM(COALESCE(p.author_name, '')) = '' THEN 1 ELSE 0 END,
-                                 p.id DESC
-                    ) AS rank
+            WITH candidates AS (
+                SELECT COALESCE(MAX(p.id) FILTER (WHERE TRIM(p.author_name) <> ''), MAX(p.id)) AS post_id
                 FROM posts p
                 WHERE p.platform IN ('x', 'instagram')
                   AND p.author IS NOT NULL
                   AND TRIM(p.author) <> ''
-                  AND NOT EXISTS (
-                      SELECT 1 FROM accounts a
-                      WHERE a.platform = p.platform
-                        AND lower(a.username) = lower(p.author)
-                  )
+                GROUP BY p.platform, lower(p.author)
             )
-            SELECT platform, username, label
-            FROM ranked
-            WHERE rank = 1
-            ORDER BY lower(label), lower(username), platform
+            SELECT p.platform, p.author AS username, COALESCE(NULLIF(TRIM(p.author_name), ''), p.author) AS label
+            FROM candidates JOIN posts p ON p.id=candidates.post_id
+            WHERE NOT EXISTS (SELECT 1 FROM accounts a WHERE a.platform=p.platform AND lower(a.username)=lower(p.author))
+            ORDER BY lower(label), lower(username), p.platform
             """
         ).fetchall()
         return [dict(row) for row in rows]
@@ -724,8 +714,7 @@ def people_condition(image_id, people_ids, match: PeopleMatch):
     return clause, args
 
 
-def source_conditions(people_ids, match, publishers, start, end, include_no_faces):
-    # Source filters share one post row; identity filters use the public representative.
+def source_conditions(publishers, start, end):
     conditions = [
         "i.hidden=0",
         "i.detection='done'",
@@ -744,28 +733,26 @@ def source_conditions(people_ids, match, publishers, start, end, include_no_face
         clause, publisher_args = publisher_condition(publishers)
         conditions.append(clause)
         args.extend(publisher_args)
-    eligible = f"m.id={representative_sql('i.group_id', public=True)}"
-    if people_ids:
-        clause, people_args = people_condition("m.id", people_ids, match)
-        conditions.append(f"EXISTS(SELECT 1 FROM images m WHERE {eligible} AND {clause})")
-        args.extend(people_args)
-    if not include_no_faces:
-        conditions.append(
-            f"EXISTS(SELECT 1 FROM images m JOIN faces f ON f.image_id=m.id WHERE {eligible} AND f.ignored=0)"
-        )
     return conditions, args
 
 
+def group_condition(group, people_ids, match, include_no_faces):
+    representative = representative_sql(group, public=True)
+    if people_ids:
+        clause, args = people_condition("m.id", people_ids, match)
+        return f"EXISTS(SELECT 1 FROM images m WHERE m.id={representative} AND {clause})", args
+    if not include_no_faces:
+        return f"EXISTS(SELECT 1 FROM faces f WHERE f.image_id={representative} AND f.ignored=0)", []
+    return '1', []
+
+
 def gallery_rows(db, people_ids, match, publishers, start, end, include_no_faces, sort, cursor, limit):
-    conditions, args = source_conditions(people_ids, match, publishers, start, end, include_no_faces)
-    sources = " FROM images i JOIN sources s ON s.image_id=i.id JOIN posts p ON p.id=s.post_id WHERE " + " AND ".join(conditions)
-    ranked = "SELECT i.group_id,p.id AS post_id,p.platform,p.author,p.author_name,p.published_at,p.url,ROW_NUMBER() OVER(PARTITION BY i.group_id ORDER BY p.published_at,p.id) AS rank" + sources
-    page_args = args.copy()
-    sql = (
-        "WITH ranked AS ("
-        + ranked
-        + ") SELECT group_id,post_id,platform,author,author_name,published_at,url FROM ranked WHERE rank=1"
-    )
+    conditions, args = source_conditions(publishers, start, end)
+    joined = "images i JOIN sources s ON s.image_id=i.id JOIN posts p ON p.id=s.post_id"
+    where = ' AND '.join(conditions)
+    eligible, group_args = group_condition('i.group_id', people_ids, match, include_no_faces)
+    cursor_filter = ''
+    page_args = []
     if cursor:
         try:
             stamp, identifier = json.loads(base64.urlsafe_b64decode(cursor))
@@ -774,18 +761,28 @@ def gallery_rows(db, people_ids, match, publishers, start, end, include_no_faces
                 raise ValueError()
         except Exception:
             fail("分页游标无效")
-        sql += (
-            " AND (published_at,group_id) "
+        cursor_filter = (
+            " WHERE (published_at,group_id) "
             + ("<" if sort == "newest" else ">")
             + " (?,?)"
         )
         page_args.extend((stamp, identifier))
     direction = "DESC" if sort == "newest" else "ASC"
-    sql += f" ORDER BY published_at {direction},group_id {direction} LIMIT ?"
-    rows = [dict(row) for row in db.execute(sql, [*page_args, limit + 1])]
-    total = len(rows)
-    if cursor or total > limit:
-        total = db.execute("SELECT COUNT(DISTINCT i.group_id)" + sources, args).fetchone()[0]
+    sql = f"""WITH matches AS MATERIALIZED (
+        SELECT i.group_id, MIN(p.published_at) AS published_at FROM {joined} WHERE {where}
+        GROUP BY i.group_id HAVING {eligible}
+    ), page AS (
+        SELECT * FROM matches {cursor_filter} ORDER BY published_at {direction},group_id {direction} LIMIT ?
+    ) SELECT page.group_id,p.id AS post_id,p.platform,p.author,p.author_name,p.published_at,p.url,counts.total
+      FROM (SELECT count(*) AS total FROM matches) counts LEFT JOIN page ON true
+      LEFT JOIN posts p ON p.id=(SELECT MIN(p.id) FROM images i CROSS JOIN sources s ON s.image_id=i.id
+          CROSS JOIN posts p ON p.id=s.post_id WHERE i.group_id=page.group_id AND p.published_at=page.published_at AND {where})
+      ORDER BY page.published_at {direction},page.group_id {direction}"""
+    result = db.execute(sql, [*args, *group_args, *page_args, limit + 1, *args]).fetchall()
+    total = result[0]['total']
+    rows = [dict(row) for row in result if row['group_id'] is not None]
+    for row in rows:
+        del row['total']
     return rows, total
 
 
@@ -796,26 +793,19 @@ def visible_members(db, group_id):
     ).fetchall()
 
 
-def summary(db, row):
-    members = visible_members(db, row["group_id"])
-    ids = [m["id"] for m in members]
-    marks = ",".join("?" for _ in ids)
-    representative_id = db.execute(f"SELECT {representative_sql('?', public=True)}", (row["group_id"],)).fetchone()[0]
-    image = next(member for member in members if member["id"] == representative_id)
-    labels = []
-    seen = set()
+def gallery_labels(db, ids):
+    marks = ','.join('?' for _ in ids)
+    labels = {identifier: {} for identifier in ids}
     for face in db.execute(
-        "SELECT p.id,p.name FROM people p JOIN faces f ON f.person_id=p.id "
-        "WHERE f.ignored=0 AND f.image_id=? "
-        "ORDER BY json_extract(f.box,'$[0]') + json_extract(f.box,'$[2]') / 2.0,f.id",
-        (image["id"],),
+        "SELECT f.image_id,p.id,p.name FROM people p JOIN faces f ON f.person_id=p.id "
+        f"WHERE f.ignored=0 AND f.image_id IN ({marks}) "
+        "ORDER BY f.image_id,json_extract(f.box,'$[0]') + json_extract(f.box,'$[2]') / 2.0,f.id", ids,
     ):
-        if face["id"] not in seen:
-            labels.append(dict(face))
-            seen.add(face["id"])
-    count = db.execute(
-        f"SELECT count(DISTINCT post_id) FROM sources WHERE image_id IN ({marks})", ids
-    ).fetchone()[0]
+        labels[face['image_id']][face['id']] = dict(id=face['id'], name=face['name'])
+    return {identifier: list(people.values()) for identifier, people in labels.items()}
+
+
+def summary(row, image, labels, count):
     return dict(
         id=row["group_id"],
         image_id=image["id"],
@@ -826,6 +816,28 @@ def summary(db, row):
         source_count=count,
         matched_source={k: v for k, v in row.items() if k != "group_id"},
     )
+
+
+def gallery_summaries(db, page):
+    if not page:
+        return []
+    groups = [row['group_id'] for row in page]
+    marks = ','.join('?' for _ in groups)
+    images = {row['group_id']: row for row in db.execute(
+        f"SELECT i.* FROM duplicate_groups g JOIN images i ON i.id={representative_sql('g.id', public=True)} "
+        f"WHERE g.id IN ({marks})", groups,
+    )}
+    labels = gallery_labels(db, [image['id'] for image in images.values()])
+    counts = dict(db.execute(
+        f"SELECT i.group_id,count(DISTINCT s.post_id) FROM images i JOIN sources s ON s.image_id=i.id "
+        f"WHERE i.group_id IN ({marks}) AND i.hidden=0 AND i.detection='done' AND {complete_source_sql('i')} "
+        "GROUP BY i.group_id", groups,
+    ))
+    items = []
+    for row in page:
+        image = images[row['group_id']]
+        items.append(summary(row, image, labels[image['id']], counts[row['group_id']]))
+    return items
 
 
 class GalleryPhoto(BaseModel):
@@ -912,7 +924,10 @@ def posts(people: str = '', match: PeopleMatch = 'any', publishers: str = '',
           limit: int = Query(default=20, ge=1, le=100)):
     ids, accounts = parse_people_publishers(people, publishers)
     lower, upper = date_bounds(start, end)
-    conditions, args = source_conditions(ids, match, accounts, lower, upper, include_no_faces)
+    conditions, args = source_conditions(accounts, lower, upper)
+    eligible, group_args = group_condition('i.group_id', ids, match, include_no_faces)
+    conditions.append(eligible)
+    args.extend(group_args)
     conditions.append("p.platform IN ('x','instagram')")
     with connect() as db:
         db.create_function('post_identity', 2, post_identity, deterministic=True)
@@ -981,7 +996,7 @@ def gallery(
             if len(rows) > limit
             else None
         )
-        return {"items": [summary(db, r) for r in page], "next_cursor": next_cursor, "total": total}
+        return {"items": gallery_summaries(db, page), "next_cursor": next_cursor, "total": total}
 
 
 class GalleryDownloadInput(BaseModel):
@@ -1090,26 +1105,27 @@ def detail(group_id: int, matched_post: int | None = None):
         members = visible_members(db, group_id)
         if not members:
             fail("图片不存在", 404)
-        ids = [m["id"] for m in members]
-        marks = ",".join("?" for _ in ids)
         sources = [
             source_record(r)
             for r in db.execute(
-                f"SELECT DISTINCT p.* FROM posts p JOIN sources s ON s.post_id=p.id WHERE s.image_id IN ({marks}) AND p.author IS NOT NULL AND p.published_at IS NOT NULL AND p.url IS NOT NULL ORDER BY published_at,p.id",
-                ids,
+                "SELECT DISTINCT p.* FROM images i JOIN sources s ON s.image_id=i.id JOIN posts p ON p.id=s.post_id "
+                "WHERE i.group_id=? AND i.hidden=0 AND i.detection='done' AND p.author IS NOT NULL "
+                "AND p.published_at IS NOT NULL AND p.url IS NOT NULL ORDER BY p.published_at,p.id", (group_id,),
             )
         ]
+        by_post = {source['id']: source for source in sources}
         for source in sources:
-            source["images"] = [
-                dict(row) for row in db.execute(
-                    f"SELECT DISTINCT i.id AS image_id,i.width,i.height FROM images i "
-                    f"JOIN sources s ON s.image_id=i.id WHERE s.post_id=? AND i.id IN ({marks}) ORDER BY i.id",
-                    [source["id"], *ids],
-                )
-            ]
+            source['images'] = []
+        post_ids = set()
+        for link in db.execute(
+            "SELECT DISTINCT s.post_id,i.id AS image_id,i.width,i.height FROM images i JOIN sources s ON s.image_id=i.id "
+            f"WHERE i.group_id=? AND i.hidden=0 AND i.detection='done' AND {complete_source_sql('i')} ORDER BY i.id", (group_id,),
+        ):
+            post_ids.add(link['post_id'])
+            if source := by_post.get(link['post_id']):
+                source['images'].append({key: link[key] for key in ('image_id', 'width', 'height')})
         matched = next((s for s in sources if s["id"] == matched_post), sources[0])
         result = summary(
-            db,
             dict(
                 group_id=group_id,
                 post_id=matched["id"],
@@ -1118,6 +1134,7 @@ def detail(group_id: int, matched_post: int | None = None):
                 published_at=matched["published_at"],
                 url=matched["url"],
             ),
+            members[0], gallery_labels(db, [members[0]['id']])[members[0]['id']], len(post_ids),
         )
         result.update(
             sources=sources,
@@ -1125,7 +1142,8 @@ def detail(group_id: int, matched_post: int | None = None):
             matched_source=matched,
             members=[{**{key: member[key] for key in member.keys() if key not in media_cache.PRIVATE_FIELDS}, **media_urls(member)} for member in members],
             pending_feedback_count=db.execute(
-                f"SELECT count(*) FROM feedback WHERE image_id IN ({marks}) AND status='pending'", ids
+                "SELECT count(*) FROM images i JOIN feedback f ON f.image_id=i.id WHERE i.group_id=? AND i.hidden=0 "
+                f"AND i.detection='done' AND {complete_source_sql('i')} AND f.status='pending'", (group_id,),
             ).fetchone()[0],
         )
         return result

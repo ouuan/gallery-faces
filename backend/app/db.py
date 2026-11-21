@@ -118,6 +118,7 @@ def init():
                 db.execute(f"ALTER TABLE tasks ADD COLUMN {column} TEXT")
         if "author_name" not in {row[1] for row in db.execute("PRAGMA table_info(posts)")}:
             db.execute("ALTER TABLE posts ADD COLUMN author_name TEXT")
+        db.execute("CREATE INDEX IF NOT EXISTS post_publisher ON posts(platform,lower(author),author_name) WHERE author IS NOT NULL AND TRIM(author) <> ''")
         if "coauthors" not in {row[1] for row in db.execute("PRAGMA table_info(posts)")}:
             db.execute("ALTER TABLE posts ADD COLUMN coauthors TEXT")
         if "box" not in {row[1] for row in db.execute("PRAGMA table_info(reference_images)")}:
@@ -135,6 +136,7 @@ def init():
                 if not size:
                     logging.getLogger(__name__).warning("Original unavailable for image %s", image["id"])
                 db.execute("UPDATE images SET file_size=? WHERE id=?", (size, image["id"]))
+        db.execute("CREATE INDEX IF NOT EXISTS image_public_group ON images(group_id,file_size DESC,id) WHERE hidden=0 AND detection='done'")
         columns = {row[1] for row in db.execute("PRAGMA table_info(images)")}
         for variant in ('image', 'original'):
             for suffix, definition in [('used', 'REAL'), ('evicted', 'INTEGER NOT NULL DEFAULT 0')]:

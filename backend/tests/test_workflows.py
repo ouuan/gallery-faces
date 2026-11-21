@@ -1009,6 +1009,7 @@ def test_instagram_coauthor_keeps_primary_nickname_and_detail_authors(client, tm
 def test_nickname_schema_upgrade_preserves_existing_posts(client):
     with db.connect(True) as conn:
         image(conn)
+        conn.execute('DROP INDEX post_publisher')
         conn.execute('ALTER TABLE posts DROP COLUMN author_name')
         conn.execute('ALTER TABLE reference_images DROP COLUMN box')
         conn.execute('UPDATE schema_version SET version=1')
@@ -1467,6 +1468,7 @@ def test_original_size_migration(client, caplog):
     with db.connect(True) as conn:
         first = image(conn)
         image(conn)
+        conn.execute('DROP INDEX image_public_group')
         conn.execute("ALTER TABLE images DROP COLUMN file_size")
         conn.execute("UPDATE schema_version SET version=5")
     (db.DATA / "originals" / "0.png").write_bytes(b"original")
