@@ -184,10 +184,13 @@ class Vision:
 
     def _detect(self, image, size, threshold=0.5):
         height, width = image.shape[:2]
-        scale = size / max(height, width)
-        rw, rh = max(1, int(width * scale)), max(1, int(height * scale))
+        rw, rh = width, height
+        if max(height, width) > size:
+            scale = size / max(height, width)
+            rw, rh = max(1, int(width * scale)), max(1, int(height * scale))
+            image = cv2.resize(image, (rw, rh))
         padded = np.zeros((size, size, 3), dtype=np.uint8)
-        padded[:rh, :rw] = cv2.resize(image, (rw, rh))
+        padded[:rh, :rw] = image
         blob = cv2.dnn.blobFromImage(
             padded, 1 / 128, (size, size), (127.5, 127.5, 127.5), swapRB=True
         )

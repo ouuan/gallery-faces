@@ -102,42 +102,48 @@ def test_highres_failure_and_cancellation(monkeypatch):
     assert calls == [640]
 
 
-def test_decode_padding_nms_and_coordinates():
+@pytest.mark.parametrize(
+    "size,height,width,rh,rw,ratio",
+    [(640, 160, 320, 160, 320, 1), (1280, 960, 480, 960, 480, 1),
+     (640, 1280, 640, 640, 320, 2)],
+)
+def test_decode_padding_nms_and_coordinates(size, height, width, rh, rw, ratio):
     model = vision.Vision.__new__(vision.Vision)
     outputs = []
     for channels in (1, 4, 10):
         for stride in (8, 16, 32):
-            outputs.append(np.zeros(((640 // stride) ** 2 * 2, channels), np.float32))
+            outputs.append(np.zeros(((size // stride) ** 2 * 2, channels), np.float32))
     # Two identical anchors; NMS keeps one. A third box lies fully in padding.
-    index = (10 * 80 + 10) * 2
+    index = (10 * (size // 8) + 10) * 2
     outputs[0][index : index + 2] = 0.9
     outputs[3][index : index + 2] = [2, 3, 4, 5]
-    outputs[0][(60 * 80 + 10) * 2] = 0.9
-    outputs[3][(60 * 80 + 10) * 2] = 1
+    outputs[0][-1] = 0.9
+    outputs[3][-1] = 1
 
     def run(_, inputs):
         tensor = inputs["input"]
-        assert tensor.shape == (1, 3, 640, 640)
+        assert tensor.shape == (1, 3, size, size)
         np.testing.assert_allclose(
-            tensor[0, :, 0, 0], (np.array([30, 20, 10]) - 127.5) / 128
+            tensor[0, :, rh - 1, rw - 1], (np.array([30, 20, 10]) - 127.5) / 128
         )
-        assert np.all(tensor[:, :, 320:] == -127.5 / 128)
+        assert np.all(tensor[:, :, rh:] == -127.5 / 128)
+        assert np.all(tensor[:, :, :, rw:] == -127.5 / 128)
         return outputs
 
     model.detector = SimpleNamespace(
         run=run, get_inputs=lambda: [SimpleNamespace(name="input")]
     )
-    image = np.full((160, 320, 3), [10, 20, 30], dtype=np.uint8)
-    result = model._detect(image, 640)
+    image = np.full((height, width, 3), [10, 20, 30], dtype=np.uint8)
+    result = model._detect(image, size)
     assert len(result) == 1
     box, points, short = result[0]
-    np.testing.assert_allclose(box, [32, 28, 56, 60])
-    np.testing.assert_allclose(points, np.full((5, 2), 40))
+    np.testing.assert_allclose(box, np.array([64, 56, 112, 120]) * ratio)
+    np.testing.assert_allclose(points, np.full((5, 2), 80 * ratio))
     assert short == 48
-    assert model._detect(image, 640, threshold=0.95) == []
+    assert model._detect(image, size, threshold=0.95) == []
     outputs[0][index : index + 2] = 0.3
-    assert model._detect(image, 640) == []
-    assert len(model._detect(image, 640, threshold=0.3)) == 1
+    assert model._detect(image, size) == []
+    assert len(model._detect(image, size, threshold=0.3)) == 1
 
 
 def test_recognition_rgb_normalization_and_alignment(monkeypatch):
