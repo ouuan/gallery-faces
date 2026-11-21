@@ -1309,6 +1309,22 @@ def test_detection_upgrade_append_retry(client):
     assert worker.claim(('detect',)) is None
 
 
+@pytest.mark.parametrize('kinds', [(('detect', 'rematch'),), ()], ids=['compute', 'all'])
+def test_claim_prioritizes_ready_rematches(client, kinds):
+    with db.connect(True) as conn:
+        first_image = image(conn)
+        first_detect = db.schedule_detection(conn, first_image)
+        blocked = conn.execute("INSERT INTO tasks(kind,image_id) VALUES('rematch',?)", (first_image,)).lastrowid
+        second_detect = db.schedule_detection(conn, image(conn))
+        ready = [conn.execute("INSERT INTO tasks(kind,image_id) VALUES('rematch',?)", (image(conn),)).lastrowid for _ in range(2)]
+
+    assert [worker.claim(*kinds)['id'] for _ in range(4)] == [*ready, first_detect, second_detect]
+    assert worker.claim(*kinds) is None
+    with db.connect(True) as conn:
+        conn.execute("UPDATE tasks SET status='done' WHERE id=?", (first_detect,))
+    assert worker.claim(*kinds)['id'] == blocked
+
+
 def test_worker_parallel_slots_and_order(client, monkeypatch):
     monkeypatch.setenv('WORKER_CONCURRENCY', '2')
     stop, release = threading.Event(), threading.Event()

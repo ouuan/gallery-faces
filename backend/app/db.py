@@ -123,6 +123,7 @@ def init():
         db.execute('''CREATE TRIGGER IF NOT EXISTS task_queue_rank AFTER INSERT ON tasks
             WHEN NEW.queue_rank_at IS NULL BEGIN UPDATE tasks SET queue_rank_at=unixepoch() WHERE id=NEW.id; END''')
         db.execute("CREATE INDEX IF NOT EXISTS task_queue ON tasks(queue_rank_at,rounds,id) WHERE status='queued'")
+        db.execute("CREATE INDEX IF NOT EXISTS task_compute_queue ON tasks((kind='rematch') DESC,id) WHERE status='queued'")
         db.execute('CREATE TABLE IF NOT EXISTS download_cursors(task_id INTEGER PRIMARY KEY REFERENCES tasks ON DELETE CASCADE, cursor TEXT NOT NULL)')
         db.execute('''CREATE TABLE IF NOT EXISTS download_items(task_id INTEGER REFERENCES tasks ON DELETE CASCADE,
             platform TEXT, post_key TEXT, media TEXT, image_id INTEGER REFERENCES images,

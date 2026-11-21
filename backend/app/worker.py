@@ -421,6 +421,8 @@ def claim(kinds=("detect", "rematch", "import", "download", "restore", "monitor"
     with connect(True) as db:
         placeholders = ",".join("?" for _ in kinds)
         ordering = 't.id' if set(kinds) <= {'detect', 'rematch'} else 't.queue_rank_at,t.rounds,t.id'
+        if 'rematch' in kinds and 'detect' in kinds:
+            ordering = "(t.kind='rematch') DESC," + ordering
         task = db.execute(
             f"""
             SELECT t.* FROM tasks t WHERE t.status='queued' AND t.kind IN ({placeholders})
