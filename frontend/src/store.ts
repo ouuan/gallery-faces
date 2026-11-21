@@ -30,6 +30,12 @@ export const useLibrary = defineStore("library", () => {
   let siteLoaded = false;
   let siteRequest: Promise<void> | null = null;
   let libraryRequest: Promise<void> | null = null;
+  let candidatesRequest: Promise<void> | null = null;
+  function loadPublisherCandidates() {
+    return candidatesRequest ??= api<PublisherCandidate[]>("/publisher-candidates")
+      .then(result => { publisherCandidates.value = result; })
+      .finally(() => { candidatesRequest = null; });
+  }
   async function loadSite(force = false): Promise<void> {
     if (force && siteRequest) await siteRequest;
     if (siteRequest) return siteRequest;
@@ -44,14 +50,12 @@ export const useLibrary = defineStore("library", () => {
   async function load(): Promise<void> {
     if (libraryRequest) return libraryRequest;
     libraryRequest = (async () => {
-      const [persons, collections, candidates] = await Promise.all([
+      const [persons, collections] = await Promise.all([
         api("/people"),
         api("/groups"),
-        api<PublisherCandidate[]>("/publisher-candidates"),
       ]);
       people.value = persons.map((p: Person) => ({ ...p, name: ja ? p.name_ja || p.name : p.name }));
       groups.value = collections.map((g: { name: string; name_ja?: string | null }) => ({ ...g, name: ja ? g.name_ja || g.name : g.name }));
-      publisherCandidates.value = Array.isArray(candidates) ? candidates : [];
     })();
     try { await libraryRequest; } finally { libraryRequest = null; }
   }
@@ -71,6 +75,7 @@ export const useLibrary = defineStore("library", () => {
     dark,
     load,
     loadSite,
+    loadPublisherCandidates,
     setTheme,
     publisherName,
   };

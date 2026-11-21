@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { t } from "./locale";
 import { computed } from "vue";
+import { useMessage } from "naive-ui";
 import { useLibrary } from "./store";
 import { platformLabel } from "./api";
 import PeopleMultiSelect from "./PeopleMultiSelect.vue";
 const props = defineProps<{ modelValue: string[]; includeOther?: boolean }>();
 const emit = defineEmits<{ "update:modelValue": [value: string[]] }>();
 const store = useLibrary();
+const message = useMessage();
+function toggle(show: boolean) {
+  if (show && props.includeOther) store.loadPublisherCandidates().catch(error => message.error(error.message));
+}
 const publisherPeople = computed(() =>
   store.people.filter(
     (person) => person.accounts.length,
@@ -20,6 +25,11 @@ const linkedAccounts = computed(() => new Set(
 const publisherOtherGroups = computed(() => {
   if (!props.includeOther) return [];
   const options = new Map<string, { label: string; value: string }>();
+  for (const value of props.modelValue) {
+    const [platform, username] = value.split(":");
+    if (["x", "instagram"].includes(platform) && username)
+      options.set(value.toLowerCase(), { label: `@${username} · ${platformLabel(platform)}`, value });
+  }
   for (const candidate of store.publisherCandidates) {
     const value = `${candidate.platform}:${candidate.username}`;
     if (linkedAccounts.value.has(value.toLowerCase())) continue;
@@ -41,6 +51,7 @@ const publisherOtherGroups = computed(() => {
     :groups="store.groups"
     :model-value="modelValue"
     :extra-groups="publisherOtherGroups"
+    @update:show="toggle"
     :placeholder="t('选择分组或搜索发布者')"
     @update:model-value="emit('update:modelValue', $event)"
   >

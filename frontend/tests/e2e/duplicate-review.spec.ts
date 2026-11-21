@@ -1,5 +1,31 @@
 import { test, expect } from '@playwright/test';
 
+test('duplicate navigation fetches only the destination page', async ({ page }) => {
+  const requested: number[] = [];
+  await page.route('**/api/v1/**', route => {
+    const url = new URL(route.request().url());
+    if (!url.pathname.endsWith('/duplicates')) return route.fulfill({ json: /\/(session|site)$/.test(url.pathname) ? {} : [] });
+    const number = Number(url.searchParams.get('page'));
+    expect(url.searchParams.get('page_size')).toBe('50');
+    requested.push(number);
+    const items = Array.from({ length: number === 1 ? 50 : 1 }, (_, index) => ({
+      a: 2 * (index + (number - 1) * 50) + 1, b: 2 * (index + (number - 1) * 50) + 2, decision: 'pending', score: .9, images: [],
+    }));
+    return route.fulfill({ json: { items, total: 51, page: number, page_size: 50 } });
+  });
+  await page.goto('/admin/duplicates');
+  const nav = page.locator('.duplicate-navigation');
+  await expect(nav).toContainText('第 1 / 51 组');
+  for (let step = 0; step < 49; step++) await page.keyboard.press('ArrowRight');
+  await expect(nav).toContainText('第 50 / 51 组');
+  expect(requested).toEqual([1]);
+  await page.keyboard.press('ArrowRight');
+  await expect(nav).toContainText('第 51 / 51 组');
+  await page.getByRole('button', { name: '上一组' }).click();
+  await expect(nav).toContainText('第 50 / 51 组');
+  expect(requested).toEqual([1, 2, 1]);
+});
+
 test('switching duplicate groups cancels unfinished image downloads', async ({ page }) => {
   const started = new Set<number>(), cancelled = new Set<number>();
   page.on('requestfailed', request => {

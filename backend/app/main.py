@@ -346,33 +346,17 @@ def delete_person(person_id: int, _: None = Depends(admin)):
 @app.get("/api/v1/people")
 def people():
     with connect() as db:
-        result = []
-        for row in db.execute("SELECT * FROM people ORDER BY id"):
-            person = dict(row)
-            person["groups"] = [
-                dict(g)
-                for g in db.execute(
-                    "SELECT g.* FROM groups g JOIN person_groups pg ON pg.group_id=g.id WHERE person_id=? ORDER BY g.id",
-                    (row["id"],),
-                )
-            ]
-            person["accounts"] = [
-                dict(a)
-                for a in db.execute(
-                    "SELECT platform,username FROM accounts WHERE person_id=?",
-                    (row["id"],),
-                )
-            ]
-            person["reference_count"] = db.execute(
-                f"SELECT count(*) FROM reference_images WHERE person_id=? AND {ACTIVE_REFERENCE}", (row["id"],)
-            ).fetchone()[0]
-            avatar = db.execute(
-                f"SELECT id FROM reference_images WHERE person_id=? AND {ACTIVE_REFERENCE} ORDER BY id LIMIT 1",
-                (row["id"],),
-            ).fetchone()
-            person["avatar_reference_id"] = avatar[0] if avatar else None
-            result.append(person)
-        return result
+        db.execute('BEGIN')
+        result = {row['id']: dict(row, groups=[], accounts=[], reference_count=0, avatar_reference_id=None)
+                  for row in db.execute('SELECT * FROM people ORDER BY id')}
+        for row in db.execute('SELECT pg.person_id,g.* FROM person_groups pg JOIN groups g ON g.id=pg.group_id ORDER BY pg.person_id,g.id'):
+            group = dict(row)
+            result[group.pop('person_id')]['groups'].append(group)
+        for person_id, platform, username in db.execute('SELECT person_id,platform,username FROM accounts ORDER BY person_id,platform,username'):
+            result[person_id]['accounts'].append(dict(platform=platform, username=username))
+        for person_id, count, avatar in db.execute(f'SELECT person_id,count(*),min(id) FROM reference_images WHERE {ACTIVE_REFERENCE} GROUP BY person_id'):
+            result[person_id].update(reference_count=count, avatar_reference_id=avatar)
+        return list(result.values())
 
 
 class PublisherCandidate(BaseModel):
@@ -410,7 +394,8 @@ def groups():
         return [
             dict(r)
             for r in db.execute(
-                "SELECT g.*, (SELECT count(*) FROM person_groups WHERE group_id=g.id) AS members FROM groups g ORDER BY g.id"
+                "SELECT g.*,coalesce(pg.members,0) AS members FROM groups g LEFT JOIN "
+                "(SELECT group_id,count(*) AS members FROM person_groups GROUP BY group_id) pg ON pg.group_id=g.id ORDER BY g.id"
             )
         ]
 
@@ -679,18 +664,18 @@ def date_bounds(start, end):
     return lower, upper
 
 
-def publisher_condition(publishers):
+def publisher_condition(publishers, post='p'):
     clauses, args = [], []
     person_ids = [int(author) for platform, author in publishers if platform == 'person']
     if person_ids:
         marks = ','.join('?' for _ in person_ids)
-        clauses.append(f'(p.platform, lower(p.author)) IN (SELECT platform, lower(username) FROM accounts WHERE person_id IN ({marks}))')
+        clauses.append(f'({post}.platform, lower({post}.author)) IN (SELECT platform, lower(username) FROM accounts WHERE person_id IN ({marks}))')
         args.extend(person_ids)
     for platform in ('x', 'instagram'):
         usernames = [author for kind, author in publishers if kind == platform]
         if usernames:
             marks = ','.join('lower(?)' for _ in usernames)
-            clauses.append(f'(p.platform=? AND lower(p.author) IN ({marks}))')
+            clauses.append(f'({post}.platform=? AND lower({post}.author) IN ({marks}))')
             args.extend([platform, *usernames])
     return '(' + ' OR '.join(clauses) + ')', args
 
@@ -714,23 +699,21 @@ def people_condition(image_id, people_ids, match: PeopleMatch):
     return clause, args
 
 
-def source_conditions(publishers, start, end):
+def post_conditions(publishers, start, end, post='p'):
     conditions = [
-        "i.hidden=0",
-        "i.detection='done'",
-        "p.author IS NOT NULL",
-        "p.published_at IS NOT NULL",
-        "p.url IS NOT NULL",
+        f"{post}.author IS NOT NULL",
+        f"{post}.published_at IS NOT NULL",
+        f"{post}.url IS NOT NULL",
     ]
     args = []
     if start:
-        conditions.append("p.published_at>=?")
+        conditions.append(f"{post}.published_at>=?")
         args.append(start)
     if end:
-        conditions.append("p.published_at<?")
+        conditions.append(f"{post}.published_at<?")
         args.append(end)
     if publishers:
-        clause, publisher_args = publisher_condition(publishers)
+        clause, publisher_args = publisher_condition(publishers, post)
         conditions.append(clause)
         args.extend(publisher_args)
     return conditions, args
@@ -746,10 +729,10 @@ def group_condition(group, people_ids, match, include_no_faces):
     return '1', []
 
 
-def gallery_rows(db, people_ids, match, publishers, start, end, include_no_faces, sort, cursor, limit):
-    conditions, args = source_conditions(publishers, start, end)
+def gallery_rows(db, people_ids, match, publishers, start, end, include_no_faces, sort, cursor, limit, include_total):
+    conditions, args = post_conditions(publishers, start, end)
     joined = "images i JOIN sources s ON s.image_id=i.id JOIN posts p ON p.id=s.post_id"
-    where = ' AND '.join(conditions)
+    where = "i.hidden=0 AND i.detection='done' AND " + ' AND '.join(conditions)
     eligible, group_args = group_condition('i.group_id', people_ids, match, include_no_faces)
     cursor_filter = ''
     page_args = []
@@ -768,6 +751,31 @@ def gallery_rows(db, people_ids, match, publishers, start, end, include_no_faces
         )
         page_args.extend((stamp, identifier))
     direction = "DESC" if sort == "newest" else "ASC"
+    if not include_total:
+        comparison = '<' if sort == 'newest' else '>'
+        probe_size = 4 * (limit + 1)
+        if cursor and db.execute('SELECT 1 FROM posts WHERE published_at=? LIMIT 1 OFFSET ?', (stamp, probe_size)).fetchone():
+            group_filter, filter_args = group_condition('nearby.id', people_ids, match, include_no_faces)
+            # A full page inside the cursor's timestamp precedes every later timestamp in this direction.
+            tied = db.execute(f'''WITH nearby AS MATERIALIZED (SELECT id FROM duplicate_groups
+                WHERE id {comparison} ? ORDER BY id {direction} LIMIT ?)
+                SELECT nearby.id AS group_id,p.id AS post_id,p.platform,p.author,p.author_name,p.published_at,p.url
+                FROM nearby CROSS JOIN posts p ON p.id=(SELECT p.id FROM images i CROSS JOIN sources s ON s.image_id=i.id
+                    CROSS JOIN posts p ON p.id=s.post_id WHERE i.group_id=nearby.id AND {where}
+                    ORDER BY p.published_at,p.id LIMIT 1)
+                WHERE p.published_at=? AND {group_filter} ORDER BY nearby.id {direction} LIMIT ?''',
+                [identifier, probe_size, *args, stamp, *filter_args, limit + 1]).fetchall()
+            if len(tied) == limit + 1:
+                return [dict(row) for row in tied], None
+        boundary = f'AND (p.published_at,i.group_id) {comparison} (?,?)' if cursor else ''
+        sql = f'''SELECT i.group_id,p.id AS post_id,p.platform,p.author,p.author_name,p.published_at,p.url
+            FROM posts p INDEXED BY post_date CROSS JOIN sources s ON s.post_id=p.id CROSS JOIN images i ON i.id=s.image_id
+            WHERE {where} {boundary} AND {eligible} AND s.id=(
+                SELECT link.id FROM images member CROSS JOIN sources link ON link.image_id=member.id
+                CROSS JOIN posts p ON p.id=link.post_id WHERE member.group_id=i.group_id AND member.hidden=0
+                AND member.detection='done' AND {' AND '.join(conditions)} ORDER BY p.published_at,p.id,link.id LIMIT 1)
+            ORDER BY p.published_at {direction},i.group_id {direction} LIMIT ?'''
+        return [dict(row) for row in db.execute(sql, [*args, *page_args, *group_args, *args, limit + 1])], None
     sql = f"""WITH matches AS MATERIALIZED (
         SELECT i.group_id, MIN(p.published_at) AS published_at FROM {joined} WHERE {where}
         GROUP BY i.group_id HAVING {eligible}
@@ -857,11 +865,12 @@ class GalleryPhoto(BaseModel):
 class GalleryPage(BaseModel):
     items: list[GalleryPhoto]
     next_cursor: str | None
-    total: int
+    total: int | None
 
 
 def source_record(row):
     source = dict(row)
+    source.pop('embed_id')
     try:
         coauthors = json.loads(source.get("coauthors") or "[]")
     except (TypeError, ValueError):
@@ -904,19 +913,6 @@ class PostPage(BaseModel):
     next_cursor: str | None
 
 
-def post_identity(platform, url):
-    from urllib.parse import urlparse
-    if not validate_url(url or ''):
-        return None
-    parsed = urlparse(url)
-    host = parsed.hostname.removeprefix('www.')
-    pattern = r'/(?:[^/]+/status|i/web/status)/(\d+)(?:/.*)?' if platform == 'x' else r'/(?:p|reel|tv)/([A-Za-z0-9_-]+)(?:/.*)?'
-    if host not in ({'x.com', 'twitter.com'} if platform == 'x' else {'instagram.com'}):
-        return None
-    match = re.fullmatch(pattern, parsed.path)
-    return match[1] if match else None
-
-
 @app.get('/api/v1/posts', response_model=PostPage)
 def posts(people: str = '', match: PeopleMatch = 'any', publishers: str = '',
           start: str = '', end: str = '', include_no_faces: bool = False,
@@ -924,23 +920,22 @@ def posts(people: str = '', match: PeopleMatch = 'any', publishers: str = '',
           limit: int = Query(default=20, ge=1, le=100)):
     ids, accounts = parse_people_publishers(people, publishers)
     lower, upper = date_bounds(start, end)
-    conditions, args = source_conditions(accounts, lower, upper)
     eligible, group_args = group_condition('i.group_id', ids, match, include_no_faces)
-    conditions.append(eligible)
-    args.extend(group_args)
-    conditions.append("p.platform IN ('x','instagram')")
+    def eligible_post(post):
+        conditions, params = post_conditions(accounts, lower, upper, post)
+        conditions.append(f"""EXISTS(SELECT 1 FROM sources s JOIN images i ON i.id=s.image_id WHERE s.post_id={post}.id
+            AND i.hidden=0 AND i.detection='done' AND {eligible})""")
+        return ' AND '.join(conditions), [*params, *group_args]
+
+    current, args = eligible_post('p')
+    earlier, earlier_args = eligible_post('other')
+    args.extend(earlier_args)
     with connect() as db:
-        db.create_function('post_identity', 2, post_identity, deterministic=True)
-        sql = """WITH eligible AS (
-            SELECT DISTINCT p.id FROM images i JOIN sources s ON s.image_id=i.id
-            JOIN posts p ON p.id=s.post_id WHERE """ + ' AND '.join(conditions) + """),
-            normalized AS (SELECT p.*, post_identity(platform,url) AS embed_id,
-                platform || ':' || COALESCE(post_identity(platform,url),'record:' || id) AS key
-                FROM posts p WHERE p.platform IN ('x','instagram')),
-            ranked AS (SELECT *, ROW_NUMBER() OVER(PARTITION BY key ORDER BY id) AS rank
-                FROM normalized JOIN eligible USING(id))
-            SELECT id,key,platform,url,embed_id,author,author_name,published_at FROM ranked WHERE rank=1
-            AND author IS NOT NULL AND published_at IS NOT NULL AND url IS NOT NULL"""
+        sql = f"""SELECT p.id,p.platform || ':' || coalesce(p.embed_id,'record:' || p.id) AS key,
+            p.platform,p.url,p.embed_id,p.author,p.author_name,p.published_at FROM posts p INDEXED BY post_date
+            WHERE p.platform IN ('x','instagram') AND {current} AND (p.embed_id IS NULL OR NOT EXISTS(
+            SELECT 1 FROM posts other WHERE other.platform=p.platform AND other.embed_id=p.embed_id
+            AND other.id<p.id AND {earlier}))"""
         if cursor:
             try:
                 if len(cursor) > 1024: raise ValueError()
@@ -969,6 +964,7 @@ def gallery(
     sort: Literal["newest", "oldest"] = "newest",
     cursor: str = "",
     limit: int = Query(default=40, ge=1, le=100),
+    include_total: bool = Query(default=True, description='Return the exact matching group count; false skips counting and returns null.'),
 ):
     ids, accounts = parse_people_publishers(people, publishers)
     if len(cursor) > 1024:
@@ -987,6 +983,7 @@ def gallery(
             sort,
             cursor,
             limit,
+            include_total,
         )
         page = rows[:limit]
         next_cursor = (
@@ -1443,51 +1440,52 @@ def admin_media(image_id: int, reads: MediaReads, thumbnail: bool = False, _: No
     return FileResponse(path, media_type='image/jpeg')
 
 
-def review_image(db, row, *, grouped=False):
-    item = dict(row)
-    item["pending_feedback_count"] = db.execute("SELECT count(*) FROM feedback WHERE image_id=? AND status='pending'", (row["id"],)).fetchone()[0]
-    item["faces"] = [
-        {
-            **dict(f),
-            "box": json.loads(f["box"]),
-            "candidates": json.loads(f["candidates"]),
-        }
-        for f in db.execute(
-            "SELECT id,image_id,box,person_id,locked,ignored,candidates,revision, (embedding IS NOT NULL AND length(embedding)>0) AS has_embedding FROM faces WHERE image_id=? "
-            "ORDER BY json_extract(box,'$[0]') + json_extract(box,'$[2]') / 2.0,id",
-            (row["id"],),
-        )
-    ]
-    item["sources"] = [
-        dict(s)
-        for s in db.execute(
-            "SELECT p.* FROM posts p JOIN sources s ON s.post_id=p.id WHERE s.image_id=?",
-            (row["id"],),
-        )
-    ]
+def placeholders(values):
+    return ','.join('?' for _ in values)
+
+
+def review_images(db, rows, *, grouped=False):
+    items = {row['id']: dict(row, faces=[], sources=[], pending_feedback_count=0) for row in rows}
+    if not items:
+        return []
+    for row in db.execute(f'''SELECT id,image_id,box,person_id,locked,ignored,candidates,revision,
+            (embedding IS NOT NULL AND length(embedding)>0) AS has_embedding FROM faces
+            WHERE image_id IN ({placeholders(items)}) ORDER BY image_id,json_extract(box,'$[0]') + json_extract(box,'$[2]') / 2.0,id''', list(items)):
+        items[row['image_id']]['faces'].append(dict(row, box=json.loads(row['box']), candidates=json.loads(row['candidates'])))
+
+    by_owner = {item['group_id']: item for item in items.values()} if grouped else items
+    owner = 'i.group_id' if grouped else 'i.id'
+    scope = f'{owner} IN ({placeholders(by_owner)})' + (' AND i.hidden=0' if grouped else '')
+    owners = list(by_owner)
     if grouped:
-        members = db.execute(
-            f"SELECT i.id, NOT {complete_source_sql('i')} AS incomplete FROM images i WHERE i.group_id=? AND i.hidden=0 ORDER BY i.id",
-            (row["group_id"],),
-        ).fetchall()
-        item["member_ids"] = [m["id"] for m in members]
-        item["member_count"] = len(members)
-        item["incomplete_image_ids"] = [m["id"] for m in members if m["incomplete"]]
-        sources = {}
-        for source in db.execute(
-            "SELECT DISTINCT p.*,i.id AS image_id FROM posts p JOIN sources s ON s.post_id=p.id "
-            "JOIN images i ON i.id=s.image_id WHERE i.group_id=? AND i.hidden=0 ORDER BY p.id,i.id",
-            (row["group_id"],),
-        ):
-            post = dict(source)
-            image_id = post.pop("image_id")
-            sources.setdefault(post["id"], dict(post, image_ids=[]))["image_ids"].append(image_id)
-        item["sources"] = list(sources.values())
-        item["pending_feedback_count"] = db.execute(
-            "SELECT count(*) FROM feedback f JOIN images i ON i.id=f.image_id "
-            "WHERE i.group_id=? AND i.hidden=0 AND f.status='pending'", (row["group_id"],),
-        ).fetchone()[0]
-    return item
+        for item in items.values():
+            item.update(member_ids=[], member_count=0, incomplete_image_ids=[])
+    incomplete = f'NOT {complete_source_sql("i")}' if grouped else '0'
+    for owner_id, image_id, missing, pending in db.execute(f'''SELECT {owner},i.id,{incomplete},
+            (SELECT count(*) FROM feedback WHERE image_id=i.id AND status='pending')
+            FROM images i WHERE {scope} ORDER BY {owner},i.id''', owners):
+        item = by_owner[owner_id]
+        item['pending_feedback_count'] += pending
+        if grouped:
+            item['member_ids'].append(image_id)
+            item['member_count'] += 1
+            if missing:
+                item['incomplete_image_ids'].append(image_id)
+
+    for row in db.execute(f'''SELECT {'DISTINCT' if grouped else ''} {owner} AS owner,i.id AS image_id,p.* FROM images i
+            CROSS JOIN sources s ON s.image_id=i.id CROSS JOIN posts p ON p.id=s.post_id WHERE {scope}
+            ORDER BY {owner},p.id,i.id''', owners):
+        post = dict(row)
+        sources = by_owner[post.pop('owner')]['sources']
+        image_id = post.pop('image_id')
+        del post['embed_id']
+        if grouped:
+            if not sources or sources[-1]['id'] != post['id']:
+                sources.append(dict(post, image_ids=[]))
+            sources[-1]['image_ids'].append(image_id)
+        else:
+            sources.append(post)
+    return list(items.values())
 
 
 class ReviewSource(BaseModel):
@@ -1542,12 +1540,10 @@ def admin_images(
         if not condition:
             fail("状态无效")
         grouped = state != "hidden"
-        if grouped:
-            condition = f"i.id={representative_sql('i.group_id')} AND ({condition})"
         params = []
         if image_id is not None:
             if grouped:
-                condition = f"({condition}) AND i.group_id=(SELECT group_id FROM images WHERE id=? AND hidden=0)"
+                condition = f"({condition}) AND g.id=(SELECT group_id FROM images WHERE id=? AND hidden=0)"
             else:
                 condition = f"({condition}) AND i.id=?"
             params.append(image_id)
@@ -1569,15 +1565,16 @@ def admin_images(
             clause, people_args = people_condition("i.id", ids, match)
             condition = f"({condition}) AND {clause}"
             params.extend(people_args)
-        order = "i.group_id" if grouped else "i.id"
-        matching = " FROM images i WHERE " + condition
+        order = 'g.id' if grouped else 'i.id'
+        base = f"duplicate_groups g CROSS JOIN images i ON i.id={representative_sql('g.id')}" if grouped else 'images i'
+        matching = f' FROM {base} WHERE ({condition})'
         limit, offset = 500, 0
         if page is not None:
             total = db.execute("SELECT count(*)" + matching, params).fetchone()[0]
             page = min(page, max(1, (total + page_size - 1) // page_size))
             limit, offset = page_size, (page - 1) * page_size
         rows = db.execute("SELECT i.*" + matching + f" ORDER BY {order} LIMIT ? OFFSET ?", [*params, limit, offset])
-        items = [review_image(db, row, grouped=grouped) for row in rows]
+        items = review_images(db, rows, grouped=grouped)
         if page is None:
             return items
         return ReviewPage(items=items, total=total, page=page, page_size=page_size)
@@ -1590,14 +1587,18 @@ def trash_list(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=1
         total = db.execute("SELECT count(*) FROM images WHERE hidden=1").fetchone()[0]
         page = min(page, max(1, (total + page_size - 1) // page_size))
         rows = db.execute("SELECT * FROM images WHERE hidden=1 ORDER BY trashed_at DESC,id DESC LIMIT ? OFFSET ?", (page_size, (page - 1) * page_size)).fetchall()
-        items = []
-        for row in rows:
-            item = review_image(db, row)
-            task = db.execute("SELECT id,status,error,stage FROM tasks WHERE image_id=? AND kind='restore' ORDER BY status IN ('queued','running') DESC,id DESC LIMIT 1", (row["id"],)).fetchone()
-            item["restore_task"] = dict(task) if task else None
-            item["has_references"] = bool(db.execute("SELECT 1 FROM reference_images WHERE image_id=? LIMIT 1", (row["id"],)).fetchone())
-            item["cleanup_pending"] = bool(db.execute("SELECT 1 FROM pending_file_deletions WHERE sha256=?", (row["sha256"],)).fetchone())
-            items.append(item)
+        items = review_images(db, rows)
+        if items:
+            ids = [item['id'] for item in items]
+            marks = placeholders(ids)
+            tasks = {row['image_id']: {key: row[key] for key in ('id','status','error','stage')} for row in db.execute(
+                f"""SELECT i.id AS image_id,t.id,t.status,t.error,t.stage FROM images i JOIN tasks t ON t.id=(
+                    SELECT id FROM tasks WHERE kind='restore' AND image_id=i.id ORDER BY status IN ('queued','running') DESC,id DESC LIMIT 1)
+                    WHERE i.id IN ({marks})""", ids)}
+            references = {row[0] for row in db.execute(f'SELECT DISTINCT image_id FROM reference_images WHERE image_id IN ({marks})', ids)}
+            pending = {row[0] for row in db.execute(f'SELECT DISTINCT sha256 FROM pending_file_deletions WHERE sha256 IN ({marks})', [item['sha256'] for item in items])}
+            for item in items:
+                item.update(restore_task=tasks.get(item['id']), has_references=item['id'] in references, cleanup_pending=item['sha256'] in pending)
         return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
@@ -2092,45 +2093,49 @@ def settings_update(body: SettingsInput, _: None = Depends(admin)):
     return {"ok": True}
 
 
-@app.get("/api/v1/admin/duplicates")
+class DuplicatePage(BaseModel):
+    items: list[dict]
+    total: int
+    page: int
+    page_size: int
+
+
+@app.get("/api/v1/admin/duplicates", response_model=list[dict] | DuplicatePage)
 def duplicates(
     decision: list[Literal["pending", "auto", "merge", "separate"]] = Query(default=[]),
+    page: int | None = Query(None, ge=1), page_size: int = Query(50, ge=1, le=100),
     _: None = Depends(admin),
 ):
     with connect() as db:
+        db.execute('BEGIN')
         conditions = "(decision<>'pending' OR score IS NULL OR score>=?) AND EXISTS(SELECT 1 FROM images WHERE id=a AND hidden=0) AND EXISTS(SELECT 1 FROM images WHERE id=b AND hidden=0)"
         params = [float(settings(db)["review_ssim_threshold"])]
         if decision:
             conditions += f" AND decision IN ({','.join('?' for _ in decision)})"
             params.extend(decision)
-        result = []
-        for row in db.execute(
-            "SELECT * FROM duplicate_decisions WHERE " + conditions
-            + " ORDER BY decision='pending' DESC,a,b LIMIT 500", params
-        ):
-            item = dict(row)
-            item["images"] = []
-            for i in (row["a"], row["b"]):
-                image = dict(
-                    db.execute("SELECT * FROM images WHERE id=?", (i,)).fetchone()
-                )
-                image["people"] = [
-                    dict(p)
-                    for p in db.execute(
-                        "SELECT DISTINCT p.* FROM people p JOIN faces f ON f.person_id=p.id WHERE f.image_id=? AND f.ignored=0",
-                        (i,),
-                    )
-                ]
-                image["sources"] = [
-                    dict(p)
-                    for p in db.execute(
-                        "SELECT p.* FROM posts p JOIN sources s ON s.post_id=p.id WHERE s.image_id=?",
-                        (i,),
-                    )
-                ]
-                item["images"].append(image)
-            result.append(item)
-        return result
+        matching = ' FROM duplicate_decisions WHERE ' + conditions
+        limit, offset = 500, 0
+        if page is not None:
+            total = db.execute('SELECT count(*)' + matching, params).fetchone()[0]
+            page = min(page, max(1, (total + page_size - 1) // page_size))
+            limit, offset = page_size, (page - 1) * page_size
+        result = [dict(row) for row in db.execute('SELECT *' + matching + " ORDER BY decision='pending' DESC,a,b LIMIT ? OFFSET ?", [*params, limit, offset])]
+        ids = sorted({pair[key] for pair in result for key in ('a', 'b')})
+        if ids:
+            marks = placeholders(ids)
+            images = {row['id']: dict(row, people=[], sources=[]) for row in db.execute(f'SELECT * FROM images WHERE id IN ({marks})', ids)}
+            for row in db.execute(f'SELECT DISTINCT f.image_id,p.* FROM faces f JOIN people p ON p.id=f.person_id WHERE f.image_id IN ({marks}) AND f.ignored=0 ORDER BY f.image_id,p.id', ids):
+                person = dict(row)
+                images[person.pop('image_id')]['people'].append(person)
+            for row in db.execute(f'SELECT s.image_id,p.* FROM sources s JOIN posts p ON p.id=s.post_id WHERE s.image_id IN ({marks}) ORDER BY s.image_id,s.id', ids):
+                post = dict(row)
+                del post['embed_id']
+                images[post.pop('image_id')]['sources'].append(post)
+            for pair in result:
+                pair['images'] = [images[pair['a']], images[pair['b']]]
+        if page is None:
+            return result
+        return DuplicatePage(items=result, total=total, page=page, page_size=page_size)
 
 
 class DuplicateInput(BaseModel):

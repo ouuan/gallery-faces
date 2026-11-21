@@ -1,6 +1,7 @@
 """Lightweight metadata shared by extraction and import."""
 from datetime import datetime, timezone
 import json
+import re
 from urllib.parse import urlparse
 
 
@@ -21,6 +22,18 @@ def validate_url(value):
         "twitter.com",
         "www.twitter.com",
     ) and bool(parsed.path.strip("/"))
+
+
+def post_identity(platform, url):
+    if platform not in ('x', 'instagram') or not validate_url(url or ''):
+        return None
+    parsed = urlparse(url)
+    host = parsed.hostname.removeprefix('www.')
+    pattern = r'/(?:[^/]+/status|i/web/status)/(\d+)(?:/.*)?' if platform == 'x' else r'/(?:p|reel|tv)/([A-Za-z0-9_-]+)(?:/.*)?'
+    if host not in ({'x.com', 'twitter.com'} if platform == 'x' else {'instagram.com'}):
+        return None
+    match = re.fullmatch(pattern, parsed.path)
+    return match[1] if match else None
 
 
 def metadata(raw, filename):

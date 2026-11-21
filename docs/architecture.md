@@ -51,6 +51,10 @@ References owned by trashed images are retained but excluded from matching, refe
 
 ## Representative review
 
+Public gallery reads return an exact `total` by default. The browser retains the first page's count while appending pages with `include_total=false` (`total: null`); a fresh query or filter change recounts. Continuations use the publication-date index, with the earliest matching source and group ID determining order. For densely tied dates a bounded group-ID probe can supply the entire next page; otherwise the date index handles the remaining groups. Visibility is always checked in the current read transaction.
+
+Schema version 11 stores the canonical embed ID on posts and indexes it by platform. The startup migration backfills existing URLs without reading media. Insert and URL/platform update triggers use the application's `post_identity` SQLite function, so writers to `posts` must use an application connection. Plain SQLite integrity checks and backups do not need that function. The post feed uses the existing date index and excludes a duplicate only when a smaller record ID also satisfies the same visibility and request filters. Unrecognized URLs keep their per-record keys.
+
 Active review lists contain one entry per duplicate group, selected by original `file_size DESC, id ASC` before filtering and pagination. The review workspace requests 50 matching groups per page in group ID order; legacy requests without `page` still return up to 500 entries. `id` is the representative image ID; `group_id` identifies the group. `member_ids`, `member_count`, and `incomplete_image_ids` describe all active members. `sources` deduplicates posts and includes their owning `image_ids`; pending feedback counts include every active member. An `image_id` lookup resolves any active member to its group's representative. Hidden/recycle-bin reads retain individual records.
 
 Face, unknown/no-face, and detection review reasons depend only on the review representative. Source incompleteness and pending feedback depend on every active member. Human face edits, undo, create-from-face, manual boxes and redetection recheck representative ownership in their write transaction and return 409 if it changed. Face revisions still guard concurrent edits; batch face saves retain per-face failures. No decisions, boxes, embeddings, history or references are copied between images. Background detection and matching remain per-image.
@@ -60,6 +64,8 @@ Public representatives use the same size/ID ordering among members that are acti
 `GET /api/v1/admin/images/{image_id}/feedback?scope=group` paginates feedback from all active members in the image's current group and retains each feedback record's original `image_id`. The default `scope=image` remains a single-image read, including recycle-bin records. Source and feedback edits retain their existing record IDs and ownership.
 
 Recognition review reuses the gallery filters in a draft modal (people with any/all matching, publishers and publication dates; no no-face toggle). Applying saves the filters in the URL and resets the page; canceling discards the draft. People match non-ignored faces on the review representative. Publisher and date conditions must match the same source on an active group member, before pagination. Partial group refreshes retain the filters.
+
+`GET /api/v1/admin/duplicates` accepts `page` and `page_size` (default 50, maximum 100) and returns `items`, `total`, `page`, and `page_size`. Without `page` it still returns the legacy array of up to 500 pairs. Related data for review, trash, and duplicate lists is loaded in batches for the requested page.
 
 ## Publisher monitoring
 

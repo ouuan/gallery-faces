@@ -21,6 +21,8 @@ const statusOptions = [
   { value: "merge", label: "人工合并" }, { value: "separate", label: "不是重复／已拆分" },
 ];
 const current = ref(0), saving = ref(false), loading = ref(false), error = ref("");
+const pageSize = 50, page = ref(1), total = ref(0);
+const position = computed(() => (page.value - 1) * pageSize + current.value);
 const details = ref<CandidateImage | null>(null);
 const row = computed(() => rows.value[current.value]);
 const blocked = computed(() => saving.value || loading.value || !!error.value);
@@ -35,35 +37,51 @@ function publishers(image: CandidateImage) {
 let request = 0;
 const listRequest = useLatestRequest();
 let successors: Candidate[] | null = null;
+let targetPage = 1, targetIndex = 0;
 async function load() {
   const signal = listRequest.start();
   const id = ++request;
   loading.value = true;
   error.value = "";
-  const query = new URLSearchParams();
+  const query = new URLSearchParams({ page: String(targetPage), page_size: String(pageSize) });
   statuses.value.forEach(value => query.append("decision", value));
   try {
-    const result = await api<Candidate[]>(`/admin/duplicates?${query}`, { signal });
+    const response = await api<Candidate[] | { items: Candidate[]; page: number; total: number }>(`/admin/duplicates?${query}`, { signal });
     if (id !== request) return;
+    const result = Array.isArray(response) ? response : response.items;
+    page.value = Array.isArray(response) ? 1 : response.page;
+    total.value = Array.isArray(response) ? result.length : response.total;
     const next = successors?.map(pair => result.findIndex(r => r.a === pair.a && r.b === pair.b)).find(index => index >= 0);
-    current.value = successors ? (next ?? Math.max(0, result.length - 1)) : 0;
+    const fallback = page.value < targetPage ? result.length - 1 : targetIndex;
+    current.value = next ?? Math.max(0, Math.min(fallback, result.length - 1));
+    const advancePage = successors?.length === 0 && result[current.value]?.a === row.value?.a &&
+      result[current.value]?.b === row.value?.b && current.value === result.length - 1 && position.value + 1 < total.value;
     rows.value = result;
     successors = null;
+    targetPage = page.value;
+    if (advancePage) { targetPage++; targetIndex = 0; await load(); }
   } catch (e) {
     if (id === request) error.value = `${successors ? "已保存，列表刷新失败：" : "加载失败："}${(e as Error).message}`;
   } finally {
     if (id === request) loading.value = false;
   }
 }
-watch(statuses, () => { successors = null; void load(); }, { immediate: true });
+watch(statuses, () => { successors = null; targetPage = 1; targetIndex = 0; void load(); }, { immediate: true });
 onUnmounted(() => { request++; });
 function moveGroup(index: number) {
-  if (blocked.value || index < 0 || index >= rows.value.length) return;
-  current.value = index;
+  if (blocked.value) return;
+  const destination = (page.value - 1) * pageSize + index;
+  if (destination < 0 || destination >= total.value) return;
+  if (index >= 0 && index < rows.value.length) current.value = index;
+  else {
+    targetPage = Math.floor(destination / pageSize) + 1;
+    targetIndex = destination % pageSize;
+    void load();
+  }
 }
 useReviewShortcuts({
-  arrowleft: { run: () => moveGroup(current.value - 1), enabled: () => current.value > 0 },
-  arrowright: { run: () => moveGroup(current.value + 1), enabled: () => current.value < rows.value.length - 1 },
+  arrowleft: { run: () => moveGroup(current.value - 1), enabled: () => position.value > 0 },
+  arrowright: { run: () => moveGroup(current.value + 1), enabled: () => position.value < total.value - 1 },
   m: { run: () => decide("merge") },
   x: { run: () => decide("separate") },
 }, () => !!row.value && !blocked.value && !details.value);
@@ -74,6 +92,7 @@ async function decide(action: "merge" | "separate") {
   try {
     await send("/admin/duplicates", { a, b, action });
     successors = rows.value.slice(current.value + 1);
+    targetIndex = current.value;
     await load();
   } catch (e) {
     message.error((e as Error).message);
@@ -96,9 +115,9 @@ async function decide(action: "merge" | "separate") {
   </div>
   <article v-if="row" class="duplicate-review" aria-label="重复图片审核">
     <nav class="duplicate-navigation" aria-label="候选组切换">
-      <n-button :disabled="blocked || current === 0" @click="moveGroup(current - 1)" aria-label="上一组" aria-keyshortcuts="ArrowLeft">上一组<kbd class="shortcut-key" aria-hidden="true">←</kbd></n-button>
-      <span aria-live="polite">第 {{ current + 1 }} / {{ rows.length }} 组</span>
-      <n-button :disabled="blocked || current === rows.length - 1" @click="moveGroup(current + 1)" aria-label="下一组" aria-keyshortcuts="ArrowRight">下一组<kbd class="shortcut-key" aria-hidden="true">→</kbd></n-button>
+      <n-button :disabled="blocked || position === 0" @click="moveGroup(current - 1)" aria-label="上一组" aria-keyshortcuts="ArrowLeft">上一组<kbd class="shortcut-key" aria-hidden="true">←</kbd></n-button>
+      <span aria-live="polite">第 {{ position + 1 }} / {{ total }} 组</span>
+      <n-button :disabled="blocked || position >= total - 1" @click="moveGroup(current + 1)" aria-label="下一组" aria-keyshortcuts="ArrowRight">下一组<kbd class="shortcut-key" aria-hidden="true">→</kbd></n-button>
     </nav>
     <div class="duplicate-heading">
       <h3>#{{ row.a }} 与 #{{ row.b }}</h3>

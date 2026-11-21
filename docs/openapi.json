@@ -916,6 +916,18 @@
               "default": 40,
               "title": "Limit"
             }
+          },
+          {
+            "name": "include_total",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Return the exact matching group count; false skips counting and returns null.",
+              "default": true,
+              "title": "Include Total"
+            },
+            "description": "Return the exact matching group count; false skips counting and returns null."
           }
         ],
         "responses": {
@@ -2441,6 +2453,35 @@
               "default": [],
               "title": "Decision"
             }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -2448,7 +2489,21 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/DuplicatePage"
+                    }
+                  ],
+                  "title": "Response Duplicates Api V1 Admin Duplicates Get"
+                }
               }
             }
           },
@@ -3351,6 +3406,38 @@
         ],
         "title": "DuplicateInput"
       },
+      "DuplicatePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "DuplicatePage"
+      },
       "Edit": {
         "properties": {
           "hashtags": {
@@ -3652,7 +3739,14 @@
             "title": "Next Cursor"
           },
           "total": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Total"
           }
         },

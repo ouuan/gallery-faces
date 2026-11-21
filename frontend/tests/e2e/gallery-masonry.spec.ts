@@ -59,7 +59,9 @@ test("masonry preserves sorted reading order through append, resize, layout and 
     if (url.pathname.endsWith("/gallery")) {
       const items = url.searchParams.has("cursor") ? photos.slice(10) :
         url.searchParams.get("sort") === "oldest" ? [...photos].reverse().slice(0, 8) : photos.slice(0, 10);
-      return route.fulfill({ json: { items, next_cursor: items.length === 10 ? "next" : null } });
+      const more = url.searchParams.has("cursor");
+      expect(url.searchParams.get("include_total")).toBe(more ? "false" : null);
+      return route.fulfill({ json: { items, next_cursor: items.length === 10 ? "next" : null, total: more ? null : items.length === 10 ? 16 : 8 } });
     }
     return route.fulfill({ json: /\/(people|groups)$/.test(url.pathname) ? [] : {} });
   });
@@ -77,6 +79,7 @@ test("masonry preserves sorted reading order through append, resize, layout and 
   const beforeAppend = await boxes(page);
   await page.getByRole("button", { name: "加载更多" }).click();
   await expect(page.locator(".photo-card")).toHaveCount(16);
+  await expect(page.getByText("共 16 张照片", { exact: true })).toBeVisible();
   await checkLayout(page, 3);
   expect((await boxes(page)).slice(0, 10)).toEqual(beforeAppend);
 
@@ -108,6 +111,7 @@ test("masonry preserves sorted reading order through append, resize, layout and 
   await page.locator('[aria-label="排序"]').click();
   await page.locator(".n-base-select-option").filter({ hasText: /^最早发布$/ }).click();
   await expect(page.locator(".photo-card")).toHaveCount(8);
+  await expect(page.getByText("共 8 张照片", { exact: true })).toBeVisible();
   await expect(page.locator(".photo-card").first()).toContainText("人物 16");
   await checkLayout(page, 4);
   expect(errors).toEqual([]);

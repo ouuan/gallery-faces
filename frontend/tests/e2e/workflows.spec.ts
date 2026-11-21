@@ -676,6 +676,7 @@ test("people cascader groups, shared members, search and mobile apply", async ({
 });
 
 test("publisher cascader groups, unlinked accounts and mobile apply", async ({ page }) => {
+  let candidateRequests = 0;
   const groups = [{ id: 1, name: "朋友" }, { id: 2, name: "同事" }];
   const people = [
     { id: 1, name: "共同成员", groups, accounts: [{ platform: "x", username: "shared" }] },
@@ -686,10 +687,13 @@ test("publisher cascader groups, unlinked accounts and mobile apply", async ({ p
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/people")) return route.fulfill({ json: people });
     if (path.endsWith("/groups")) return route.fulfill({ json: groups });
-    if (path.endsWith("/publisher-candidates")) return route.fulfill({ json: [
+    if (path.endsWith("/publisher-candidates")) {
+      candidateRequests++;
+      return route.fulfill({ json: [
       { platform: "x", username: "unlinked", label: "未关联昵称" },
       { platform: "x", username: "shared", label: "不应重复显示" },
-    ] });
+      ] });
+    }
     if (path.endsWith("/site")) return route.fulfill({ json: { timezone: "Asia/Shanghai" } });
     return route.fulfill({ json: { items: [], next_cursor: null } });
   });
@@ -701,7 +705,9 @@ test("publisher cascader groups, unlinked accounts and mobile apply", async ({ p
   const option = (label: string) => page.locator(".people-cascader-menu:visible .n-cascader-option")
     .filter({ has: page.locator(".n-cascader-option__label", { hasText: new RegExp(`^${label}$`) }) });
   const selected = () => new URL(page.url()).searchParams.get("publishers")?.split(",").sort();
+  expect(candidateRequests).toBe(0);
   await picker.locator(".n-base-selection").click();
+  await expect.poll(() => candidateRequests).toBe(1);
   await option("朋友").locator(".n-checkbox").click();
   await expect.poll(selected).toEqual(["person:1", "person:2"]);
   await option("其他").locator(".n-cascader-option__label").click();

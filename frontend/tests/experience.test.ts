@@ -29,8 +29,10 @@ describe("gallery experience", () => {
     setActivePinia(createPinia());
     const store = useLibrary();
     await Promise.all([store.loadSite(), store.loadSite(), store.load(), store.load()]);
-    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(fetch).toHaveBeenCalledTimes(3);
     await store.loadSite();
+    expect(fetch).toHaveBeenCalledTimes(3);
+    await Promise.all([store.loadPublisherCandidates(), store.loadPublisherCandidates()]);
     expect(fetch).toHaveBeenCalledTimes(4);
     await store.loadSite(true);
     expect(fetch).toHaveBeenCalledTimes(5);

@@ -1127,6 +1127,19 @@ export interface components {
              */
             action: "merge" | "separate";
         };
+        /** DuplicatePage */
+        DuplicatePage: {
+            /** Items */
+            items: {
+                [key: string]: unknown;
+            }[];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
         /** Edit */
         Edit: {
             /** Hashtags */
@@ -1226,7 +1239,7 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
             /** Total */
-            total: number;
+            total: number | null;
         };
         /** GalleryPhoto */
         GalleryPhoto: {
@@ -2345,6 +2358,8 @@ export interface operations {
                 sort?: "newest" | "oldest";
                 cursor?: string;
                 limit?: number;
+                /** @description Return the exact matching group count; false skips counting and returns null. */
+                include_total?: boolean;
             };
             header?: never;
             path?: never;
@@ -3370,6 +3385,8 @@ export interface operations {
         parameters: {
             query?: {
                 decision?: ("pending" | "auto" | "merge" | "separate")[];
+                page?: number | null;
+                page_size?: number;
             };
             header?: never;
             path?: never;
@@ -3383,7 +3400,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[] | components["schemas"]["DuplicatePage"];
                 };
             };
             /** @description Validation Error */

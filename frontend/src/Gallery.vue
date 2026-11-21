@@ -136,15 +136,18 @@ async function load(more = false) {
   error.value = "";
   try {
     const q = new URLSearchParams(toQuery(filter.value));
-    if (more && cursor.value) q.set("cursor", cursor.value);
-    const result = await api<{ items: Photo[]; next_cursor: string | null; total: number }>(
+    if (more && cursor.value) {
+      q.set("cursor", cursor.value);
+      q.set("include_total", "false");
+    }
+    const result = await api<{ items: Photo[]; next_cursor: string | null; total: number | null }>(
       "/gallery?" + q,
       { signal: galleryController.signal },
     );
     if (version !== requestVersion) return;
     photos.value = more ? [...photos.value, ...result.items] : result.items;
     cursor.value = result.next_cursor;
-    total.value = result.total;
+    if (result.total != null) total.value = result.total;
   } catch (e) {
     if (version === requestVersion) error.value = (e as Error).message;
   } finally {

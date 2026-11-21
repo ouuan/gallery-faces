@@ -1,5 +1,17 @@
 # Validation record
 
+## Large-library request benchmark
+
+From the repository root, with backend development dependencies installed, run:
+
+```sh
+PYTHONPATH=backend backend/.venv/bin/python scripts/validation/library_queries.py
+```
+
+This builds temporary 10,000- and 50,000-image databases, including duplicate groups, reference faces, and trashed images. It measures complete in-process HTTP responses (three-run medians), then traces business SQL reads separately and reports uncompressed response bytes. It includes cursor pages, a sparse publisher and a dataset with every post at the same timestamp. No image processing, network, or existing gallery data is involved. Use `--sizes` and `--repeats` to change the workload. Regression tests assert response equivalence and bounded SQL counts, not hardware-dependent timings.
+
+Reference run at 50,000 images: posts first/next page 4.7/4.1 ms, gallery first/next page 115/15 ms, sparse-publisher gallery continuation 16 ms, and all-dates-tied gallery continuation 13 ms. Page reads for recognition review, trash and duplicate review used 5, 8 and 6 business queries respectively; listing 500 people used 4. The default gallery first page still includes an exact count.
+
 Verification passed on Python 3.14.10, OpenCV 5.0.0, Node 26 and the current pinned frontend dependencies. Twenty-nine backend tests, six unit tests and nine Chromium workflow tests passed; the production frontend build passed.
 
 The implementation is tested with an isolated temporary data directory. No demonstration photographs, models, cookies, passwords or runtime database are committed.

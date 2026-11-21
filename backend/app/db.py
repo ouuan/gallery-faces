@@ -6,6 +6,7 @@ import time
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
+from .metadata import post_identity
 
 DATA = Path(os.environ.get("DATA_DIR", "./data")).resolve()
 IMPORT = Path(os.environ.get("IMPORT_DIR", "./imports")).resolve()
@@ -69,6 +70,7 @@ def connect(write=False, *, wait=True):
     public = public_query.get()
     db = sqlite3.connect(DATA / "gallery.sqlite3", timeout=(1 if public else 30) if wait else 0)
     db.row_factory = sqlite3.Row
+    db.create_function('post_identity', 2, post_identity, deterministic=True)
     db.execute("PRAGMA foreign_keys=ON")
     if public:
         from time import monotonic
@@ -164,7 +166,17 @@ def init():
             if db.execute("SELECT 1 FROM reference_images r JOIN images i ON i.id=r.image_id WHERE i.hidden=1").fetchone():
                 schedule_rematch(db)
             db.execute("UPDATE schema_version SET version=9 WHERE version<9")
-        db.execute("UPDATE schema_version SET version=10 WHERE version<10")
+        if 'embed_id' not in {row[1] for row in db.execute('PRAGMA table_info(posts)')}:
+            db.execute('ALTER TABLE posts ADD COLUMN embed_id TEXT')
+            db.execute('UPDATE posts SET embed_id=post_identity(platform,url)')
+        db.execute('CREATE INDEX IF NOT EXISTS post_embed ON posts(platform,embed_id,id) WHERE embed_id IS NOT NULL')
+        db.execute('''CREATE TRIGGER IF NOT EXISTS post_embed_insert AFTER INSERT ON posts BEGIN
+            UPDATE posts SET embed_id=post_identity(NEW.platform,NEW.url) WHERE id=NEW.id; END''')
+        db.execute('''CREATE TRIGGER IF NOT EXISTS post_embed_update AFTER UPDATE OF platform,url ON posts
+            WHEN OLD.platform IS NOT NEW.platform OR OLD.url IS NOT NEW.url BEGIN
+            UPDATE posts SET embed_id=post_identity(NEW.platform,NEW.url) WHERE id=NEW.id; END''')
+        db.execute('CREATE INDEX IF NOT EXISTS image_review_group ON images(group_id,file_size DESC,id) WHERE hidden=0')
+        db.execute('UPDATE schema_version SET version=11 WHERE version<11')
         # Recover files written by a restore interrupted before its transaction
         # committed, including tasks cancelled during process recovery.
         for row in db.execute("SELECT * FROM images WHERE hidden=1").fetchall():
@@ -173,8 +185,6 @@ def init():
         for column in ("image_sha256", "thumbnail_sha256"):
             db.execute(f"CREATE INDEX IF NOT EXISTS image_{column} ON images({column})")
     backfill_media_hashes()
-    with connect(True) as db:
-        db.execute("UPDATE schema_version SET version=10 WHERE version<10")
 
 
 def file_hash(path):
