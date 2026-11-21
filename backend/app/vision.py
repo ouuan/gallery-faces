@@ -160,6 +160,17 @@ def nms(boxes, scores):
     return keep
 
 
+def merge_faces(*groups):
+    combined = [face for group in groups for face in group]
+    if len(combined) <= 1:
+        return combined
+    boxes = np.array([face[0] for face in combined], dtype=np.float32)
+    scores = np.array(
+        [face[3] if len(face) > 3 else 1.0 for face in combined], dtype=np.float32
+    )
+    return [combined[i] for i in nms(boxes, scores)]
+
+
 class Vision:
     def __init__(self):
         with _lock:
@@ -234,11 +245,16 @@ class Vision:
         )
         boxes, points, scores = boxes[valid], points[valid], scores[valid]
         keep = nms(boxes, scores)
-        # Return original coordinates and the effective short side in model coordinates.
+        # Return original coordinates, effective short side in model coordinates, and score.
         ratios = np.array([rw / width, rh / height], dtype=np.float32)
         return [
-            (box / np.tile(ratios, 2), point / ratios, min(box[2:] - box[:2]))
-            for box, point in zip(boxes[keep], points[keep])
+            (
+                box / np.tile(ratios, 2),
+                point / ratios,
+                min(box[2:] - box[:2]),
+                float(score),
+            )
+            for box, point, score in zip(boxes[keep], points[keep], scores[keep])
         ]
 
     def _feature(self, crop):
@@ -262,12 +278,19 @@ class Vision:
         if image is None:
             raise ValueError("无法读取图片")
         check_cancel(cancel)
-        faces = self._detect(image, 1280 if mode == "highres" else 640, threshold)
-        if mode == "auto" and (not faces or any(face[2] < 48 for face in faces)):
+        if mode == "highres":
+            highres = self._detect(image, 1280, threshold)
             check_cancel(cancel)
-            faces = self._detect(image, 1280, threshold)
+            standard = self._detect(image, 640, threshold)
+            faces = merge_faces(highres, standard)
+        else:
+            faces = self._detect(image, 640, threshold)
+            if not faces or any(face[2] < 48 for face in faces):
+                check_cancel(cancel)
+                highres = self._detect(image, 1280, threshold)
+                faces = merge_faces(highres, faces)
         result = []
-        for box, points, _ in faces:
+        for box, points, *_ in faces:
             check_cancel(cancel)
             transform = SimilarityTransform.from_estimate(points, ARCFACE)
             if not transform:

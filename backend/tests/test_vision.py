@@ -4,8 +4,13 @@ import pytest
 from app import vision
 
 
-def face(short=60):
-    return np.array([0, 0, short, short]), vision.ARCFACE.copy(), short
+def face(short=60, x=0, y=0, score=0.9):
+    return (
+        np.array([x, y, x + short, y + short], dtype=np.float32),
+        vision.ARCFACE.copy(),
+        short,
+        score,
+    )
 
 
 @pytest.mark.parametrize("allocator", ["supported", "missing_symbol", "unavailable"])
@@ -45,18 +50,18 @@ def test_idle_release_frees_sessions_and_reloads(monkeypatch, allocator):
 
 
 @pytest.mark.parametrize(
-    "initial,sizes",
+    "initial,sizes,expected_count",
     [
-        ([], [640, 1280]),
-        ([face(47.99)], [640, 1280]),
-        ([face(48)], [640]),
-        ([face(80)], [640]),
-        ([face(80), face(20)], [640, 1280]),
+        ([], [640, 1280], None),
+        ([face(47.99)], [640, 1280], None),
+        ([face(48)], [640], 1),
+        ([face(80)], [640], 1),
+        ([face(80, x=0), face(20, x=200)], [640, 1280], None),
     ],
 )
-@pytest.mark.parametrize("final", [[], [face(100)]])
+@pytest.mark.parametrize("final", [[], [face(100, x=400)]])
 @pytest.mark.parametrize("threshold", [0.25, 0.5, 0.8])
-def test_tiered_detection(monkeypatch, initial, sizes, final, threshold):
+def test_tiered_detection(monkeypatch, initial, sizes, expected_count, final, threshold):
     original = np.zeros((200, 300, 3), dtype=np.uint8)
     monkeypatch.setattr(vision.cv2, "imread", lambda _: original)
     model = vision.Vision.__new__(vision.Vision)
@@ -72,7 +77,60 @@ def test_tiered_detection(monkeypatch, initial, sizes, final, threshold):
     model._feature = lambda crop: features.append(crop) or b"feature"
     result = model.detect("unused", threshold=threshold)
     assert calls == sizes
-    assert len(result) == len(features) == len(final if len(sizes) == 2 else initial)
+    expected = (
+        len(initial) + len(final) if expected_count is None else expected_count
+    )
+    assert len(result) == len(features) == expected
+
+
+def test_multiscale_merge_deduplicates_and_preserves_distinct_faces(monkeypatch):
+    original = np.zeros((400, 400, 3), dtype=np.uint8)
+    monkeypatch.setattr(vision.cv2, "imread", lambda _: original)
+    model = vision.Vision.__new__(vision.Vision)
+    calls = []
+
+    large_640 = face(180, x=10, y=10, score=0.92)
+    shared_640 = face(30, x=250, y=250, score=0.65)
+    shared_1280 = face(30, x=251, y=249, score=0.88)
+    tiny_1280 = face(24, x=320, y=20, score=0.80)
+
+    def detect(image, size, threshold):
+        calls.append(size)
+        return [large_640, shared_640] if size == 640 else [shared_1280, tiny_1280]
+
+    model._detect = detect
+    model._feature = lambda crop: b"feature"
+
+    auto_result = model.detect("unused", mode="auto")
+    assert calls == [640, 1280]
+    assert len(auto_result) == 3
+    # Higher-confidence 1280 box wins for the overlapping face; large 640 face and tiny 1280 face are both kept.
+    xs = sorted(box[0] for box, _ in auto_result)
+    assert xs == pytest.approx([10.0, 251.0, 320.0])
+
+    calls.clear()
+    highres_result = model.detect("unused", mode="highres")
+    assert calls == [1280, 640]
+    assert len(highres_result) == 3
+    assert sorted(box[0] for box, _ in highres_result) == pytest.approx([10.0, 251.0, 320.0])
+
+
+def test_highres_fallback_to_640_for_large_closeup(monkeypatch):
+    original = np.zeros((1600, 1600, 3), dtype=np.uint8)
+    monkeypatch.setattr(vision.cv2, "imread", lambda _: original)
+    model = vision.Vision.__new__(vision.Vision)
+    calls = []
+
+    def detect(image, size, threshold):
+        calls.append(size)
+        return [] if size == 1280 else [face(600, x=500, y=300, score=0.95)]
+
+    model._detect = detect
+    model._feature = lambda crop: b"feature"
+    result = model.detect("unused", mode="highres")
+    assert calls == [1280, 640]
+    assert len(result) == 1
+    assert result[0][0] == pytest.approx([500.0, 300.0, 600.0, 600.0])
 
 
 def test_highres_failure_and_cancellation(monkeypatch):
@@ -100,6 +158,11 @@ def test_highres_failure_and_cancellation(monkeypatch):
     with pytest.raises(vision.DetectionCancelled):
         model.detect("unused", cancel=lambda: bool(calls))
     assert calls == [640]
+    calls.clear()
+    model._detect = lambda image, size, threshold: calls.append(size) or [face(60)]
+    with pytest.raises(vision.DetectionCancelled):
+        model.detect("unused", mode="highres", cancel=lambda: bool(calls))
+    assert calls == [1280]
 
 
 @pytest.mark.parametrize(
@@ -136,10 +199,11 @@ def test_decode_padding_nms_and_coordinates(size, height, width, rh, rw, ratio):
     image = np.full((height, width, 3), [10, 20, 30], dtype=np.uint8)
     result = model._detect(image, size)
     assert len(result) == 1
-    box, points, short = result[0]
+    box, points, short, score = result[0]
     np.testing.assert_allclose(box, np.array([64, 56, 112, 120]) * ratio)
     np.testing.assert_allclose(points, np.full((5, 2), 80 * ratio))
     assert short == 48
+    assert score == pytest.approx(0.9)
     assert model._detect(image, size, threshold=0.95) == []
     outputs[0][index : index + 2] = 0.3
     assert model._detect(image, size) == []
