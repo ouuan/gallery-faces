@@ -1130,6 +1130,9 @@
           "304": {
             "description": "Not modified; visibility and file availability checked"
           },
+          "307": {
+            "description": "Temporary redirect to an available lower-resolution variant"
+          },
           "404": {
             "description": "No public, available file for this hash"
           },

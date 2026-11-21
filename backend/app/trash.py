@@ -118,7 +118,7 @@ def restore_file(task, path):
         references_changed = has_references(db, [row["id"]])
         filename, width, height, original = write_assets(path, row["sha256"], refresh=True)
         db.execute(
-            "UPDATE images SET hidden=0,trashed_at=NULL,image_evicted=0,original_evicted=0,cache_retry_at=0,image_used=unixepoch(),original_used=unixepoch(),filename=?,width=?,height=?,original_filename=?,image_sha256=?,thumbnail_sha256=?,file_size=? WHERE id=?",
+            "UPDATE images SET hidden=0,trashed_at=NULL,image_evicted=0,original_evicted=0,cache_retry_at=0,original_failures=0,original_lost=0,image_used=unixepoch(),original_used=unixepoch(),filename=?,width=?,height=?,original_filename=?,image_sha256=?,thumbnail_sha256=?,file_size=? WHERE id=?",
             (filename, width, height, original, storage.file_hash(storage.DATA / "images" / filename),
              storage.file_hash(storage.DATA / "thumbs" / filename), path.stat().st_size, row["id"]),
         )

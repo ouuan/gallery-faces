@@ -139,6 +139,9 @@ def init():
                     db.execute(f'ALTER TABLE images ADD COLUMN {column} {definition}')
         if 'cache_retry_at' not in columns:
             db.execute('ALTER TABLE images ADD COLUMN cache_retry_at REAL NOT NULL DEFAULT 0')
+        for column in ('original_failures', 'original_lost'):
+            if column not in columns:
+                db.execute(f'ALTER TABLE images ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0')
         for column in ("image_sha256", "thumbnail_sha256", "original_filename"):
             if column not in columns:
                 db.execute(f"ALTER TABLE images ADD COLUMN {column} TEXT")

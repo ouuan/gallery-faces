@@ -2491,6 +2491,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Temporary redirect to an available lower-resolution variant */
+            307: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description No public, available file for this hash */
             404: {
                 headers: {

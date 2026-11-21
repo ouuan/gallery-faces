@@ -343,11 +343,15 @@ def test_recovery_failures_do_not_publish_bytes(client, tmp_path, monkeypatch, f
         monkeypatch.setattr(type(original), 'open', fail_write)
     monkeypatch.setattr(worker, 'download_media', download)
     for _ in range(2):
-        response = client.get(url)
-        assert response.status_code == (404 if failure == 'trash' else 503)
+        response = client.get(url, follow_redirects=False)
+        assert response.status_code == (404 if failure == 'trash' else 307)
         assert response.headers['cache-control'] == 'no-store'
+        assert response.headers['cloudflare-cdn-cache-control'] == 'no-store'
         if failure != 'trash':
-            assert 'retry-after' in response.headers
+            assert response.headers['location'] == main.media_urls(row)['image_url'] + '?download=true'
+            assert client.get(response.headers['location']).content == cache.asset_path(row, 'image').read_bytes()
+            with db.connect() as conn:
+                assert cache.active(conn, row['id'])['original_failures'] == int(failure == 'changed')
     assert calls == [row['id']] and not original.exists()
     assert not list(original.parent.glob('.cache-stage-*'))
 
@@ -374,6 +378,110 @@ def test_timeout_leaves_recovery_running(client, tmp_path, monkeypatch):
         assert path.exists()
 
 
+def test_original_wait_timeout_falls_back_without_counting(client, tmp_path, monkeypatch):
+    row, source = photo(tmp_path)
+    urls = main.media_urls(row)
+    evict(row, 'original')
+    started, release = threading.Event(), threading.Event()
+    calls = []
+
+    def slow(task, payload, attempt, restore_id):
+        calls.append(restore_id)
+        started.set()
+        assert release.wait(5)
+        (attempt / 'original.png').write_bytes(source.read_bytes())
+        return attempt
+
+    monkeypatch.setattr(worker, 'download_media', slow)
+    init = main.MediaRead.__init__
+    def short_wait(reads):
+        init(reads)
+        reads.deadline = time.monotonic() + 0.01
+    monkeypatch.setattr(main.MediaRead, '__init__', short_wait)
+    try:
+        for method in (client.get, client.head):
+            redirect = method(urls['download_url'], headers={'If-None-Match': '*'}, follow_redirects=False)
+            assert redirect.status_code == 307 and 'etag' not in redirect.headers
+            assert redirect.headers['location'] == urls['image_url'] + '?download=true'
+            assert redirect.headers['cache-control'] == redirect.headers['cloudflare-cdn-cache-control'] == 'no-store'
+        assert started.wait(5)
+        response = client.get(f'/api/v1/media/{row["id"]}?download=true')
+        assert response.content == cache.asset_path(row, 'image').read_bytes()
+        assert row['filename'] in response.headers['content-disposition']
+        with db.connect() as conn:
+            latest = cache.active(conn, row['id'])
+            assert latest['original_failures'] == latest['cache_retry_at'] == 0
+    finally:
+        release.set()
+    with cache.asset(row, 'original', timeout=5):
+        assert client.get(urls['download_url']).content == source.read_bytes()
+    assert calls == [row['id']]
+
+
+def test_exponential_backoff_lost_fallback_and_reimport(client, tmp_path, monkeypatch):
+    row, source = photo(tmp_path)
+    urls = main.media_urls(row)
+    evict(row, 'image')
+    evict(row, 'original')
+    calls = []
+    def failed(task, payload, attempt, restore_id):
+        calls.append(restore_id)
+        raise ValueError('source timed out')
+    monkeypatch.setattr(worker, 'download_media', failed)
+    now = time.time()
+    monkeypatch.setattr(cache, 'time', SimpleNamespace(time=lambda: now, monotonic=time.monotonic))
+    for attempt in range(1, 13):
+        response = client.get(urls['download_url'], follow_redirects=False)
+        with db.connect() as conn:
+            latest = cache.active(conn, row['id'])
+        assert latest['original_failures'] == len(calls) == attempt
+        if attempt < 12:
+            assert response.status_code == 503 and int(response.headers['retry-after']) == 60 * 2 ** (attempt - 1)
+            assert not latest['original_lost'] and latest['cache_retry_at'] == now + 60 * 2 ** (attempt - 1)
+            now = latest['cache_retry_at'] - 1
+            cooling = client.get(urls['image_url'])
+            assert cooling.status_code == 503 and cooling.headers['retry-after'] == '1'
+            now += 1
+        else:
+            assert latest['original_lost'] and latest['cache_retry_at'] == 0
+            assert response.status_code == 307 and response.headers['location'] == urls['thumbnail_url'] + '?download=true'
+    db.init()
+    thumb = db.DATA / 'thumbs' / row['filename']
+    assert client.get(urls['image_url']).content == thumb.read_bytes()
+    detail = client.get(f'/api/v1/gallery/{row["group_id"]}').json()
+    assert detail['image_url'] == urls['thumbnail_url'] and detail['download_url'] == urls['thumbnail_url'] + '?download=true'
+    assert 'attachment' in client.head(detail['download_url']).headers['content-disposition']
+    prepared = client.post('/api/v1/gallery/downloads', json={'group_ids': [row['group_id']]})
+    with ZipFile(io.BytesIO(client.get(prepared.json()['download_url']).content)) as archive:
+        assert archive.read(f'{row["group_id"]}-{row["filename"]}') == thumb.read_bytes()
+    thumb.unlink()
+    assert client.get(urls['download_url']).status_code == 404
+    assert len(calls) == 12
+    importer.import_file(source, dict(platform='x', author='alice', tweet_id='1', date='2026-01-01', url='https://x.com/alice/status/1'))
+    assert client.get(urls['download_url']).content == source.read_bytes()
+    with db.connect() as conn:
+        latest = cache.active(conn, row['id'])
+        assert latest['original_failures'] == latest['original_lost'] == latest['cache_retry_at'] == 0
+
+
+def test_keep_remaining_display_after_source_failure(client, tmp_path, monkeypatch):
+    row, _ = photo(tmp_path)
+    urls = main.media_urls(row)
+    evict(row, 'original')
+    monkeypatch.setattr(worker, 'download_media', lambda *args, **kwargs: pytest.fail('unexpected recovery'))
+    with db.connect(True) as conn:
+        conn.execute('UPDATE images SET original_failures=1')
+    display = evict(row, 'image')
+    assert display.exists()
+    with db.connect(True) as conn:
+        conn.execute('UPDATE images SET original_lost=1,original_failures=12,image_evicted=1')
+    redirect = client.head(urls['download_url'], follow_redirects=False)
+    assert redirect.headers['location'] == urls['image_url'] + '?download=true'
+    assert client.get(redirect.headers['location']).content == display.read_bytes()
+    with db.connect() as conn:
+        assert not cache.active(conn, row['id'])['image_evicted']
+
+
 @pytest.mark.parametrize('matching', [True, False])
 def test_reimport_wins_over_inflight_original_recovery(client, tmp_path, monkeypatch, matching):
     row, source = photo(tmp_path)
@@ -389,7 +497,7 @@ def test_reimport_wins_over_inflight_original_recovery(client, tmp_path, monkeyp
         assert os.path.samestat(recovered.stat(), installed[0]) and recovered.read_bytes() == source.read_bytes()
     with db.connect() as conn:
         latest = cache.active(conn, row['id'])
-        assert latest['cache_retry_at'] == latest['original_evicted'] == 0
+        assert latest['original_failures'] == latest['cache_retry_at'] == latest['original_evicted'] == 0
 
 
 @pytest.mark.parametrize('work', ['copy', 'encode', 'eviction-hash'])

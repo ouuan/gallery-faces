@@ -25,7 +25,7 @@ from fastapi import (
     File,
     Query,
 )
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, field_validator
 from .open_graph import render_open_graph
@@ -71,13 +71,14 @@ class MediaRead(ExitStack):
         super().__init__()
         self.deadline = time.monotonic() + 10
 
-    def pin(self, row, variant):
+    def pin(self, row, variant, *, recover_missing=True):
         try:
-            return self.enter_context(media_cache.asset(row, variant, timeout=max(0, self.deadline - time.monotonic()), descriptor=True))
+            return self.enter_context(media_cache.asset(row, variant, timeout=max(0, self.deadline - time.monotonic()),
+                                                       descriptor=True, recover_missing=recover_missing))
         except FileNotFoundError:
             fail('图片不存在', 404)
-        except media_cache.Unavailable:
-            raise HTTPException(503, '图片暂不可用，请稍后重试', headers={'Retry-After': '10'}) from None
+        except media_cache.Unavailable as error:
+            raise HTTPException(503, '图片暂不可用，请稍后重试', headers={'Retry-After': str(error.retry_after)}) from None
 
 
 def media_read():
@@ -1030,10 +1031,10 @@ def gallery_download_files(group_ids, reads, *, preflight=False):
         if preflight:
             with MediaRead() as probe:
                 probe.deadline = reads.deadline
-                probe.pin(row, variant)
+                pin_public(probe, row, variant)
             continue
-        path = reads.pin(row, variant)
-        files.append((f"{group_id}-{media_cache.asset_path(row, variant).name}", path, datetime.fromisoformat(published_at)))
+        actual, path, current = pin_public(reads, row, variant)
+        files.append((f"{group_id}-{media_name(current, actual)}", path, datetime.fromisoformat(published_at)))
     with connect() as db:
         db.execute('BEGIN')
         for group_id, row, _ in selected:
@@ -1129,6 +1130,22 @@ def download_variant(row):
     return 'original' if original and (row['original_evicted'] or original.is_file()) else 'image'
 
 
+HASH_COLUMNS = {'original': 'sha256', 'image': 'image_sha256', 'thumbnail': 'thumbnail_sha256'}
+
+
+def media_name(row, variant):
+    return row['original_filename' if variant == 'original' else 'filename']
+
+
+def variant_url(row, variant, download=False):
+    digest = row[HASH_COLUMNS[variant]]
+    if digest:
+        url = f'/api/v1/media/by-hash/{variant}/{digest}'
+    else:
+        url = f'/api/v1/media/{row["id"]}' + ('?thumbnail=true' if variant == 'thumbnail' else '')
+    return url + (('&' if '?' in url else '?') + 'download=true' if download and variant != 'original' else '')
+
+
 def media_urls(row):
     legacy = f"/api/v1/media/{row['id']}"
     def url(variant, column, folder, fallback):
@@ -1137,12 +1154,58 @@ def media_urls(row):
         return fallback
     image_url = url("image", "image_sha256", "images", legacy)
     thumbnail_url = url("thumbnail", "thumbnail_sha256", "thumbs", legacy + "?thumbnail=true")
+    if row['original_lost']:
+        if not (DATA / 'images' / row['filename']).is_file():
+            return dict(image_url=thumbnail_url, thumbnail_url=thumbnail_url, download_url=variant_url(row, 'thumbnail', True))
+        return dict(image_url=image_url, thumbnail_url=thumbnail_url, download_url=variant_url(row, 'image', True))
     download_url = (
         f"/api/v1/media/by-hash/original/{row['sha256']}"
         if download_variant(row) == 'original'
         else image_url + "?download=true"
     )
     return dict(image_url=image_url, thumbnail_url=thumbnail_url, download_url=download_url)
+
+
+def public_row(identifier):
+    with connect() as db:
+        row = db.execute(f'SELECT * FROM images WHERE id=? AND {PUBLIC_IMAGE}', (identifier,)).fetchone()
+    if not row:
+        fail('图片不存在', 404)
+    return row
+
+
+def fallback_asset(reads, row, variant, error):
+    latest = public_row(row['id'])
+    if latest[HASH_COLUMNS[variant]] != row[HASH_COLUMNS[variant]]:
+        fail('图片不存在', 404)
+    if variant == 'thumbnail' or not (latest['original_lost'] or (variant == 'original' and error.status_code == 503)):
+        raise error
+    candidates = ['image'] if variant == 'original' else []
+    if latest['original_lost']:
+        candidates.append('thumbnail')
+    for actual in candidates:
+        try:
+            path = reads.pin(latest, actual, recover_missing=False)
+        except HTTPException as missing:
+            if missing.status_code == 404:
+                continue
+            raise
+        current = public_row(row['id'])
+        if (current[HASH_COLUMNS[variant]] != row[HASH_COLUMNS[variant]] or current[HASH_COLUMNS[actual]] != latest[HASH_COLUMNS[actual]]
+                or media_name(current, actual) != media_name(latest, actual)):
+            fail('图片不存在', 404)
+        return actual, path, current
+    if latest['original_lost']:
+        fail('图片不存在', 404)
+    raise error
+
+
+def pin_public(reads, row, variant):
+    try:
+        path = reads.pin(row, variant)
+    except HTTPException as error:
+        return fallback_asset(reads, row, variant, error)
+    return variant, path, public_row(row['id'])
 
 
 def conditional_file(request, path, *, headers, filename=None, media_type=None):
@@ -1165,67 +1228,64 @@ def conditional_file(request, path, *, headers, filename=None, media_type=None):
         200: {"content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}},
         206: {"description": "Partial file content"},
         304: {"description": "Not modified; visibility and file availability checked"},
+        307: {"description": "Temporary redirect to an available lower-resolution variant"},
         404: {"description": "No public, available file for this hash"},
     },
 )
 def hash_media(request: Request, reads: MediaReads, variant: Literal["image", "thumbnail", "original"], digest: str, download: bool = False):
     if not re.fullmatch(r"[0-9a-f]{64}", digest):
         fail("图片不存在", 404)
-    column, folder = {"image": ("image_sha256", "images"), "thumbnail": ("thumbnail_sha256", "thumbs"), "original": ("sha256", "originals")}[variant]
+    column = HASH_COLUMNS[variant]
     with connect() as db:
         order = 'id' if variant == 'thumbnail' else f'{variant}_evicted,id'
         rows = db.execute(f"SELECT * FROM images WHERE {column}=? AND {PUBLIC_IMAGE} ORDER BY {order}", (digest,)).fetchall()
     unavailable = None
+    fallbacks = []
     for row in rows:
-        name = row["original_filename"] if variant == "original" else row["filename"]
+        name = media_name(row, variant)
         if not name:
             continue
-        path = DATA / folder / name
-        if variant != 'thumbnail':
-            try:
-                path = reads.pin(row, variant)
-            except HTTPException as error:
-                if error.status_code == 404:
-                    continue
-                if error.status_code == 503:
-                    unavailable = error
-                    continue
+        try:
+            path = reads.pin(row, variant)
+        except HTTPException as error:
+            if error.status_code not in (404, 503):
                 raise
-            with connect() as db:
-                if not db.execute(f'SELECT 1 FROM images WHERE id=? AND {column}=? AND {PUBLIC_IMAGE}', (row['id'], digest)).fetchone():
-                    continue
-        if path.is_file():
-            return conditional_file(request, path, headers={"Cache-Control": IMMUTABLE, "ETag": f'"{digest}"'}, filename=name if download or variant == "original" else None, media_type=mimetypes.guess_type(name)[0])
+            if error.status_code == 503 or row['original_lost']:
+                fallbacks.append((row, error))
+            continue
+        with connect() as db:
+            if not db.execute(f'SELECT 1 FROM images WHERE id=? AND {column}=? AND {PUBLIC_IMAGE}', (row['id'], digest)).fetchone():
+                continue
+        return conditional_file(request, path, headers={"Cache-Control": IMMUTABLE, "ETag": f'"{digest}"'}, filename=name if download or variant == "original" else None, media_type=mimetypes.guess_type(name)[0])
+    for row, error in fallbacks:
+        try:
+            actual, _, current = fallback_asset(reads, row, variant, error)
+        except HTTPException as failure:
+            if failure.status_code == 404:
+                continue
+            if failure.status_code == 503:
+                unavailable = failure
+                continue
+            raise
+        return RedirectResponse(variant_url(current, actual, download or variant == 'original'), status_code=307,
+                                headers={'Cache-Control': 'no-store', 'Cloudflare-CDN-Cache-Control': 'no-store'})
     if unavailable is not None:
         raise unavailable
     fail("图片不存在", 404)
 
 
 @app.get("/api/v1/media/{image_id}")
+@app.head("/api/v1/media/{image_id}", include_in_schema=False)
 def media(image_id: int, reads: MediaReads, thumbnail: bool = False, download: bool = False):
-    with connect() as db:
-        row = db.execute(
-            f"SELECT * FROM images WHERE id=? AND {PUBLIC_IMAGE}",
-            (image_id,),
-        ).fetchone()
-        if not row:
-            fail("图片不存在", 404)
-    variant = download_variant(row) if download else 'image'
-    if download and not row['original_filename']:
+    row = public_row(image_id)
+    variant = 'thumbnail' if thumbnail else download_variant(row) if download else 'image'
+    if download and not thumbnail and not row['original_filename'] and not row['original_lost']:
         original = next((DATA / 'originals').glob(row['sha256'] + '.*'), None)
         if original:
             return FileResponse(original, filename=original.name)
-    path = DATA / 'thumbs' / row['filename'] if thumbnail and variant != 'original' else reads.pin(row, variant)
-    with connect() as db:
-        if not db.execute(f'SELECT 1 FROM images WHERE id=? AND {PUBLIC_IMAGE}', (image_id,)).fetchone():
-            fail('图片不存在', 404)
-    if not path.is_file():
-        fail("图片不存在", 404)
-    return FileResponse(
-        path,
-        filename=media_cache.asset_path(row, variant).name if download else None,
-        media_type=mimetypes.guess_type(media_cache.asset_path(row, variant).name)[0],
-    )
+    actual, path, current = pin_public(reads, row, variant)
+    name = media_name(current, actual)
+    return FileResponse(path, filename=name if download else None, media_type=mimetypes.guess_type(name)[0])
 
 
 class FeedbackInput(BaseModel):

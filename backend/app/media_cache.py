@@ -2,6 +2,7 @@
 import fcntl
 import hashlib
 import logging
+import math
 import os
 import re
 import shutil
@@ -22,7 +23,8 @@ from .cache_status import Cleanup, Evictions, record
 from .security import download_url
 
 FOLDERS = {'image': 'images', 'original': 'originals'}
-PRIVATE_FIELDS = {'image_used', 'original_used', 'image_evicted', 'original_evicted', 'cache_retry_at'}
+PRIVATE_FIELDS = {'image_used', 'original_used', 'image_evicted', 'original_evicted', 'cache_retry_at', 'original_failures', 'original_lost'}
+LOST_AFTER = 12
 DAY = 86400
 logger = logging.getLogger(__name__)
 pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix='media-cache')
@@ -31,7 +33,9 @@ pending_lock = threading.Lock()
 
 
 class Unavailable(Exception):
-    pass
+    def __init__(self, message, *, retry_at=0):
+        super().__init__(message)
+        self.retry_after = max(1, math.ceil(retry_at - time.time())) if retry_at else 10
 
 
 class SourceUnavailable(Exception):
@@ -112,7 +116,7 @@ def active(db, identifier):
 def check_snapshot(db, row):
     latest = active(db, row['id'])
     if any(latest[key] != row[key] for key in ('filename', 'original_filename', 'sha256', 'image_sha256',
-                                               'image_evicted', 'original_evicted')):
+                                               'image_evicted', 'original_evicted', 'original_lost', 'original_failures')):
         raise StaleRecovery
 
 
@@ -148,7 +152,7 @@ def publish(row, variant, before, *, temporary=None, digest=None, original_stamp
     with storage.connect(True) as db:
         validate(db, before)
         if variant == 'original':
-            db.execute('UPDATE images SET original_evicted=0,original_used=?,cache_retry_at=0 WHERE id=?',
+            db.execute('UPDATE images SET original_evicted=0,original_used=?,original_failures=0,original_lost=0,cache_retry_at=0 WHERE id=?',
                        (time.time(), row['id']))
         else:
             db.execute('UPDATE images SET image_evicted=0,image_used=?,image_sha256=? WHERE id=?',
@@ -237,8 +241,8 @@ def restore_asset(row, variant):
     if before and storage.file_hash(target) == known_hash:
         publish(row, variant, before, digest=known_hash)
         return
-    if row['cache_retry_at'] > time.time():
-        raise Unavailable('Media recovery is in backoff')
+    if row['original_lost'] or row['cache_retry_at'] > time.time():
+        raise Unavailable('Original lost or in backoff', retry_at=row['cache_retry_at'])
     original = asset_path(row, 'original')
     if original is None:
         raise SourceUnavailable('Missing original filename')
@@ -273,12 +277,22 @@ def recover(identifier, variant):
         try:
             try:
                 restore_asset(row, variant)
-            except (SourceUnavailable, ValueError, OSError) as error:
+            except SourceUnavailable as error:
+                failures = row['original_failures'] + 1
+                lost = failures >= LOST_AFTER
+                retry = 0 if lost else time.time() + 60 * 2 ** (failures - 1)
+                with storage.connect(True) as db:
+                    check_snapshot(db, row)
+                    db.execute('UPDATE images SET original_failures=?,original_lost=?,cache_retry_at=? WHERE id=?',
+                               (failures, lost, retry, identifier))
+                logger.warning('Original %s recovery failed (%d attempts, lost=%s): %s', identifier, failures, lost, error)
+                raise Unavailable('Original unavailable', retry_at=retry) from error
+            except (ValueError, OSError) as error:
                 retry = time.time() + 60
                 with storage.connect(True) as db:
                     check_snapshot(db, row)
                     db.execute('UPDATE images SET cache_retry_at=? WHERE id=?', (retry, identifier))
-                raise Unavailable('Media recovery failed') from error
+                raise Unavailable('Media storage unavailable', retry_at=retry) from error
         except StaleRecovery:
             return
 
@@ -312,23 +326,30 @@ def request_recovery(identifier, variant, timeout):
 
 
 @contextmanager
-def asset(row, variant, *, timeout=None, descriptor=False):
+def asset(row, variant, *, timeout=None, descriptor=False, recover_missing=True):
     identifier = row['id']
     until = None if timeout is None else time.monotonic() + timeout
     while True:
         with storage.connect() as db:
             row = active(db, identifier)
-        path = asset_path(row, variant)
+        path = storage.DATA / 'thumbs' / row['filename'] if variant == 'thumbnail' else asset_path(row, variant)
         if path is None:
             raise FileNotFoundError(identifier)
-        if row[variant + '_evicted']:
+        local_display = variant == 'image' and row['image_evicted'] and (not recover_missing or row['original_lost'])
+        if variant != 'thumbnail' and row[variant + '_evicted'] and not local_display:
+            if not recover_missing:
+                raise FileNotFoundError(identifier)
+            if row['original_lost'] or (row['cache_retry_at'] > time.time() and not path.is_file()):
+                raise Unavailable('Original lost or in backoff', retry_at=row['cache_retry_at'])
             request_recovery(identifier, variant, None if until is None else max(0, until - time.monotonic()))
             continue
         try:
             handle = path.open('rb')
         except FileNotFoundError:
+            if local_display:
+                raise
             with storage.connect() as db:
-                if active(db, identifier)[variant + '_evicted']:
+                if variant != 'thumbnail' and active(db, identifier)[variant + '_evicted']:
                     continue
             raise
         with handle:
@@ -339,8 +360,17 @@ def asset(row, variant, *, timeout=None, descriptor=False):
                 unchanged = False
             if not unchanged:
                 continue
+            if local_display:
+                before = file_signature(os.fstat(handle.fileno()))
+                if hashlib.file_digest(handle, 'sha256').hexdigest() != row['image_sha256']:
+                    raise FileNotFoundError(identifier)
+                handle.seek(0)
+                try:
+                    publish(row, 'image', before, digest=row['image_sha256'])
+                except StaleRecovery:
+                    continue
             now = time.time()
-            if now - (row[variant + '_used'] or 0) >= 1:
+            if variant != 'thumbnail' and now - (row[variant + '_used'] or 0) >= 1:
                 try:
                     with storage.connect(wait=False) as db:
                         db.execute(f'UPDATE images SET {variant}_used=max(coalesce({variant}_used,0),?) WHERE id=? AND hidden=0', (now, identifier))
@@ -430,7 +460,7 @@ def evict(identifier, variant, volume, now):
         with storage.connect() as db:
             row = active(db, identifier)
             path = asset_path(row, variant)
-            if not path or not asset_path(row, 'original'):
+            if not path or not asset_path(row, 'original') or (variant == 'image' and row['original_failures']):
                 return
             if path.is_symlink() or device(path.parent) != volume or device(path) != volume:
                 return
@@ -448,6 +478,7 @@ def evict(identifier, variant, volume, now):
                 latest = active(db, identifier)
                 return (asset_path(latest, variant) == path and latest['original_filename'] == row['original_filename']
                         and latest['sha256'] == row['sha256'] and latest['image_sha256'] == row['image_sha256']
+                        and not (variant == 'image' and latest['original_failures'])
                         and (latest[variant + '_used'] or info.st_mtime) <= now - DAY
                         and not path.is_symlink() and stamp(path) == before and os.path.samestat(path.stat(), info)
                         and device(path.parent) == volume and proof.registered(db, latest))

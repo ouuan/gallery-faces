@@ -115,7 +115,7 @@ def import_file(path, raw, start=None, end=None, *, counts=None):
             schedule_detection(db, image_id)
             db.execute("INSERT INTO pending_deduplications(image_id) VALUES(?)", (image_id,))
         db.execute(
-            "UPDATE images SET image_evicted=0,original_evicted=0,cache_retry_at=0,image_used=unixepoch(),original_used=unixepoch(),image_sha256=?,thumbnail_sha256=?,original_filename=?,file_size=? WHERE id=?",
+            "UPDATE images SET image_evicted=0,original_evicted=0,cache_retry_at=0,original_failures=0,original_lost=0,image_used=unixepoch(),original_used=unixepoch(),image_sha256=?,thumbnail_sha256=?,original_filename=?,file_size=? WHERE id=?",
             (file_hash(target), file_hash(DATA / "thumbs" / filename), original_name, path.stat().st_size, image_id),
         )
         save_source(db, image_id, meta)
