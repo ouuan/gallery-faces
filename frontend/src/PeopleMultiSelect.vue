@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { t } from "./locale";
-import { computed } from "vue";
-import { NCascader } from "naive-ui";
+import { cloneVNode, computed, type VNode } from "vue";
+import { NCascader, type CascaderOption } from "naive-ui";
 import type { Person } from "./api";
-import { peopleOptions, peopleKeys, updatePeople } from "./people-cascader";
+import { peopleOptions, pickerIndex } from "./people-cascader";
 
 const props = withDefaults(defineProps<{
   modelValue: string[];
@@ -14,29 +14,32 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ "update:modelValue": [value: string[]] }>();
 const groupedOptions = computed(() => peopleOptions(props.people, props.groups));
 const options = computed(() => [...groupedOptions.value, ...props.extraGroups]);
-const extraGroupOptions = computed(() => props.extraGroups.flatMap((group) => group.children));
-function selectedExtraValues(keys: Set<string | number>) {
-  return props.extraGroups.flatMap((group) => group.children
-    .filter((option) => keys.has(group.value) || keys.has(option.value))
-    .map((option) => option.value));
+const index = computed(() => pickerIndex(options.value));
+const selected = computed(() => new Set(props.modelValue));
+const value = computed(() => index.value.tagKeys(selected.value));
+function checkbox({ option, node }: { option: CascaderOption; node: VNode | null }) {
+  if (!node) return null;
+  const members = index.value.members.get(String(option.value))!;
+  const checked = members.filter(id => selected.value.has(id)).length;
+  return cloneVNode(node, {
+    checked: checked === members.length,
+    indeterminate: checked > 0 && checked < members.length,
+  });
 }
-const selectedIds = computed(() => {
-  const available = new Set(props.people.map((person) => `person:${person.id}`));
-  return props.modelValue
-    .filter((value) => available.has(value))
-    .map((value) => Number(value.slice(7)));
-});
-const value = computed(() => [
-  ...peopleKeys(selectedIds.value, groupedOptions.value),
-  ...extraGroupOptions.value.filter((option) => props.modelValue.includes(option.value)).map((option) => option.value),
-]);
+function toggle(members: string[]) {
+  const next = new Set(selected.value);
+  const remove = members.every(id => next.has(id));
+  for (const id of members) {
+    if (remove) next.delete(id);
+    else next.add(id);
+  }
+  emit("update:modelValue", [...next]);
+}
 function update(keys: (string | number)[] | null) {
-  const selected = new Set(keys);
-  emit("update:modelValue", [
-    ...updatePeople(keys, selectedIds.value, groupedOptions.value)
-      .map((id) => `person:${id}`),
-    ...selectedExtraValues(selected),
-  ]);
+  if (!keys?.length) return emit("update:modelValue", []);
+  const changed = keys.find(key => !value.value.includes(String(key)))
+    ?? value.value.find(key => !keys.includes(key));
+  if (changed != null) toggle(index.value.members.get(String(changed))!);
 }
 </script>
 <template>
@@ -45,6 +48,9 @@ function update(keys: (string | number)[] | null) {
     filterable
     clearable
     check-strategy="parent"
+    :cascade="false"
+    :filter="index.filter"
+    :render-prefix="checkbox"
     :show-path="false"
     :virtual-scroll="false"
     expand-trigger="click"

@@ -592,6 +592,12 @@ test("people cascader groups, shared members, search and mobile apply", async ({
           hasText: new RegExp("^" + text + "$"),
         }),
       });
+  await picker.locator("input").fill("共同");
+  const shared = page.locator(".people-cascader-search:visible .n-base-select-option");
+  await expect(shared).toHaveCount(1);
+  await shared.click();
+  await expect(picker.locator(".n-tag")).toHaveText(["共同成员"]);
+  await expect.poll(() => new URL(page.url()).searchParams.get("people")).toBe("1");
   await option("朋友").locator(".n-checkbox").click();
   await expect
     .poll(() => new URL(page.url()).searchParams.get("people"))
@@ -722,7 +728,9 @@ test("publisher cascader groups, unlinked accounts and mobile apply", async ({ p
   await option("共同成员").click();
   await expect.poll(selected).toEqual(["person:2", "x:unlinked"]);
   await picker.locator("input").fill("共同");
-  await page.locator(".people-cascader-search:visible .n-base-select-option").first().click();
+  const shared = page.locator(".people-cascader-search:visible .n-base-select-option");
+  await expect(shared).toHaveCount(1);
+  await shared.click();
   await expect.poll(selected).toEqual(["person:1", "person:2", "x:unlinked"]);
   await page.getByRole("heading", { name: "照片库", exact: true }).click();
   await page.reload();

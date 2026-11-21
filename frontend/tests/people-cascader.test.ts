@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   peopleOptions,
   peopleKeys,
-  updatePeople,
+  pickerIndex,
 } from "../src/people-cascader";
 import type { Person } from "../src/api";
 
@@ -26,21 +26,22 @@ describe("people cascader selection", () => {
       "group:1:person:1",
       "group:2:person:1",
     ]);
-    expect(updatePeople(["group:0"], [], options)).toEqual([4]);
+    expect(pickerIndex(options).members.get("group:0")).toEqual(["person:4"]);
   });
-  it("selects overlapping groups without duplicate people", () => {
-    expect(updatePeople(["group:1", "group:2"], [], options)).toEqual([
-      1, 2, 3,
-    ]);
-    expect(updatePeople(["group:1", "group:2:person:1"], [1], options)).toEqual(
-      [1, 2],
-    );
+  it("represents each person exactly once even when whole groups overlap", () => {
+    const index = pickerIndex(options);
+    for (const ids of [[1], [1, 3], [1, 2, 3, 4]]) {
+      const selected = ids.map(id => `person:${id}`);
+      const tags = index.tagKeys(new Set(selected));
+      expect(tags.flatMap(key => index.members.get(key)!).sort()).toEqual(selected);
+    }
   });
-  it("deselects aliases everywhere and preserves unrelated selected people", () => {
-    expect(
-      updatePeople(["group:1:person:2", "group:2:person:1"], [1, 2], options),
-    ).toEqual([2]);
-    expect(updatePeople(["group:2"], [1, 2, 3], options)).toEqual([3]);
-    expect(updatePeople([], [1, 2], options)).toEqual([]);
+  it("deduplicates name and group matches by identity, not by name", () => {
+    const namedAlike = peopleOptions([...people, { ...people[0], id: 5 }], groups);
+    const { filter } = pickerIndex(namedAlike);
+    const search = (query: string) => namedAlike.flatMap(group => group.children
+      .filter(child => filter(query, child, [group, child])).map(child => child.personId));
+    expect(search("共同")).toEqual([1, 5]);
+    expect(search("同事")).toEqual([1, 3, 5]);
   });
 });
