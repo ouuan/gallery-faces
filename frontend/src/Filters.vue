@@ -51,17 +51,18 @@ function set(key: keyof Filter, value: any) {
       <p v-if="modelValue.people.length" class="hint">
         {{ ja ? `${modelValue.people.length}人を選択中` : `已选 ${modelValue.people.length} 位人物` }}
       </p>
-      <n-radio-group
-        role="radiogroup"
-        :aria-label="t('人物匹配方式')"
-        v-if="modelValue.people.length > 1 || (modelValue.people.length && modelValue.match === 'exact')"
-        :value="modelValue.match"
-        @update:value="set('match', $event)"
-      >
-        <n-radio-button value="any">{{ t("任一") }}</n-radio-button>
-        <n-radio-button value="all">{{ t("全部") }}</n-radio-button>
-        <n-radio-button value="exact">{{ t("仅所选") }}</n-radio-button>
-      </n-radio-group>
+      <div v-if="modelValue.people.length" class="people-modes">
+        <n-radio-group v-if="modelValue.people.length > 1" role="radiogroup"
+          :aria-label="t('人物匹配方式')" :value="modelValue.match" @update:value="set('match', $event)">
+          <n-radio-button value="any">{{ t("任一入镜") }}</n-radio-button>
+          <n-radio-button value="all">{{ t("全部同框") }}</n-radio-button>
+        </n-radio-group>
+        <n-radio-group role="radiogroup" :aria-label="t('是否包含其他人物')"
+          :value="modelValue.onlySelected" @update:value="set('onlySelected', $event)">
+          <n-radio-button :value="true">{{ t("仅限所选") }}</n-radio-button>
+          <n-radio-button :value="false">{{ t("可含他人") }}</n-radio-button>
+        </n-radio-group>
+      </div>
     </fieldset>
     <fieldset>
       <legend>{{ t("发布者") }}</legend>
@@ -89,5 +90,7 @@ function set(key: keyof Filter, value: any) {
 .filters-ja .filter-clear { position: static; transform: none; flex-shrink: 0; }
 .filters-ja .field-label.date-field { grid-template-columns: 2em minmax(0, 1fr); gap: 8px; }
 .filters-ja .hint { overflow-wrap: anywhere; }
-.filters :deep(.n-radio-button) { padding-inline: 10px; }
+.people-modes { display: grid; gap: 8px; }
+.people-modes :deep(.n-radio-group) { display: flex; }
+.people-modes :deep(.n-radio-button) { flex: 1; padding-inline: 4px; text-align: center; white-space: nowrap; }
 </style>

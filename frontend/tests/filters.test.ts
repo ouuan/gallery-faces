@@ -20,6 +20,14 @@ describe("gallery state", () => {
     const filter = { ...emptyFilter(), people, match: "all" as const };
     expect(fromQuery(toQuery(filter))).toEqual(filter);
   });
+  it.each([
+    [undefined, "any", false], ["all", "all", false],
+    ["subset", "any", true], ["exact", "all", true],
+  ] as const)("restores both people filters for match=%s", (mode, match, onlySelected) => {
+    const filter = fromQuery({ people: "1,2", match: mode });
+    expect(filter).toMatchObject({ match, onlySelected });
+    expect(toQuery(filter).match).toBe(mode);
+  });
   it("renders source text safely while preserving links and newlines", () => {
     vi.stubGlobal("ResizeObserver", class {
       observe() {}

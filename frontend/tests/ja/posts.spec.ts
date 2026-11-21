@@ -32,22 +32,27 @@ for (const width of [320, 390, 768, 1280, 1440]) {
     if (width <= 900) await page.getByRole('button',{name:'絞り込み',exact:true}).click();
     const filters = page.locator('.filters:visible');
     const modes = filters.getByRole('radiogroup', {name:'人物の絞り込み条件'});
-    const buttons = modes.locator('.n-radio-button');
-    await expect(buttons).toHaveText(['いずれか', '全員', '選んだ人だけ']);
-    expect(await buttons.evaluateAll(elements => new Set(elements.map(el => el.getBoundingClientRect().top)).size)).toBe(1);
+    const others = filters.getByRole('radiogroup', {name:'他の人物を含めるか'});
+    await expect(modes.locator('.n-radio-button')).toHaveText(['誰か一人以上', '全員一緒']);
+    await expect(others.locator('.n-radio-button')).toHaveText(['選んだ人だけ', '他の人も可']);
+    for (const group of [modes, others]) {
+      expect(await group.locator('.n-radio-button').evaluateAll(elements => new Set(elements.map(el => el.getBoundingClientRect().top)).size)).toBe(1);
+    }
+    const firstRow = (await modes.boundingBox())!;
+    expect((await others.boundingBox())!.y).toBeGreaterThanOrEqual(firstRow.y + firstRow.height);
     expect(await filters.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
     const dates = filters.getByLabel('開始日時', {exact:true});
     await expect(dates).not.toHaveValue('');
     const label = await filters.locator('.date-field').first().boundingBox();
     const date = await dates.boundingBox();
     expect(date!.x).toBeGreaterThanOrEqual(label!.x + 28);
-    await modes.getByText('選んだ人だけ', {exact:true}).click();
-    await expect(modes.getByRole('radio', {name:'選んだ人だけ'})).toBeChecked();
+    await others.getByText('選んだ人だけ', {exact:true}).click();
+    await expect(others.getByRole('radio', {name:'選んだ人だけ'})).toBeChecked();
     await page.locator('.people-cascader:visible .n-base-selection').last().click();
     await expect(page.getByText('グループ',{exact:true}).last()).toBeVisible();
     await page.locator('.people-cascader:visible .n-base-selection').last().click();
     if (width <= 900) await page.getByRole('button',{name:'絞り込みを適用',exact:true}).click();
-    await expect(page).toHaveURL(/match=exact/);
+    await expect(page).toHaveURL(/match=subset/);
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.screenshot({path:`/tmp/gallery-faces/ja-${width}.png`,fullPage:true});
     await page.getByLabel('テーマ', { exact: true }).click();

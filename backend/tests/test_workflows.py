@@ -539,7 +539,7 @@ def test_source_filters_and_all_same_image(client):
     assert detail["sources"][0]["post_text"] == "hello\nworld 🐈"
 
 
-def test_exact_people_match_across_gallery_posts_and_review(client):
+def test_people_match_modes_across_gallery_posts_and_review(client):
     with db.connect(True) as conn:
         conn.execute("INSERT INTO people(id,name) VALUES(1,'A'),(2,'B'),(3,'C')")
         def photo(people):
@@ -552,11 +552,17 @@ def test_exact_people_match_across_gallery_posts_and_review(client):
         with_unknown = photo([1, 2, 2, None])
         conn.execute("INSERT INTO faces(image_id,box,person_id,ignored) VALUES(?,'[0,0,20,20]',3,1)", (with_unknown,))
         extra = photo([1, 2, 3])
-        photo([1, 3])
-        photo([1, None])
+        partial_extra = photo([1, 3])
+        partial = photo([1, None])
         photo([None])
+        photo([3])
 
-    for mode, expected in [("exact", {pair, with_unknown}), ("all", {pair, with_unknown, extra})]:
+    for mode, expected in [
+        ("any", {pair, with_unknown, extra, partial_extra, partial}),
+        ("all", {pair, with_unknown, extra}),
+        ("subset", {pair, with_unknown, partial}),
+        ("exact", {pair, with_unknown}),
+    ]:
         params = {"people": "1,2", "match": mode}
         gallery = client.get("/api/v1/gallery", params=params).json()
         assert gallery["total"] == len(expected)

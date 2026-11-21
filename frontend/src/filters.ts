@@ -1,6 +1,7 @@
 export type Filter = {
   people: number[];
-  match: "any" | "all" | "exact";
+  match: "any" | "all";
+  onlySelected: boolean;
   publishers: string[];
   start: string;
   end: string;
@@ -10,6 +11,7 @@ export type Filter = {
 export const emptyFilter = (): Filter => ({
   people: [],
   match: "any",
+  onlySelected: false,
   publishers: [],
   start: "",
   end: "",
@@ -23,7 +25,8 @@ export function fromQuery(q: Record<string, any>): Filter {
       .filter(Boolean)
       .map(Number)
       .filter(Number.isFinite),
-    match: q.match === "all" || q.match === "exact" ? q.match : "any",
+    match: q.match === "all" || q.match === "exact" ? "all" : "any",
+    onlySelected: q.match === "subset" || q.match === "exact",
     publishers: String(q.publishers || "")
       .split(",")
       .filter(Boolean),
@@ -36,7 +39,8 @@ export function fromQuery(q: Record<string, any>): Filter {
 export function toQuery(f: Filter) {
   const q: Record<string, string> = {};
   if (f.people.length) q.people = f.people.join(",");
-  if (f.match !== "any") q.match = f.match;
+  if (f.onlySelected) q.match = f.match === "all" ? "exact" : "subset";
+  else if (f.match === "all") q.match = "all";
   if (f.publishers.length) q.publishers = f.publishers.join(",");
   if (f.start) q.start = f.start;
   if (f.end) q.end = f.end;

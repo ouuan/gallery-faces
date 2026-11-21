@@ -705,22 +705,23 @@ def publisher_condition(publishers):
     return '(' + ' OR '.join(clauses) + ')', args
 
 
-PeopleMatch = Literal["any", "all", "exact"]
+PeopleMatch = Literal["any", "all", "exact", "subset"]
 
 
 def people_condition(image_id, people_ids, match: PeopleMatch):
     marks = ",".join("?" for _ in people_ids)
     faces = f"FROM faces f WHERE f.image_id={image_id} AND f.ignored=0"
     selected = f"f.person_id IN ({marks})"
-    if match == "exact":
-        return (
-            f"EXISTS(SELECT count(*) {faces} HAVING count(DISTINCT f.person_id)=? "
-            f"AND count(DISTINCT f.person_id) FILTER (WHERE {selected})=?)",
-            [len(people_ids), *people_ids, len(people_ids)],
-        )
-    if match == "all":
-        return f"(SELECT count(DISTINCT f.person_id) {faces} AND {selected})=?", [*people_ids, len(people_ids)]
-    return f"EXISTS(SELECT 1 {faces} AND {selected})", people_ids
+    if match in ("all", "exact"):
+        clause = f"(SELECT count(DISTINCT f.person_id) {faces} AND {selected})=?"
+        args = [*people_ids, len(people_ids)]
+    else:
+        clause = f"EXISTS(SELECT 1 {faces} AND {selected})"
+        args = list(people_ids)
+    if match in ("subset", "exact"):
+        clause += f" AND NOT EXISTS(SELECT 1 {faces} AND f.person_id NOT IN ({marks}))"
+        args.extend(people_ids)
+    return clause, args
 
 
 def source_conditions(people_ids, match, publishers, start, end, include_no_faces):
