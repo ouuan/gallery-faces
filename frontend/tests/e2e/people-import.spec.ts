@@ -71,6 +71,10 @@ test("batch imports associated accounts and preserves input on failure", async (
   await page.locator(".people-cascader-menu .n-cascader-option").filter({ has: page.locator(".n-cascader-option__label", { hasText: /^未分组$/ }) }).locator(".n-checkbox").click();
   await page.getByRole("heading", { name: "导入任务", exact: true }).click();
   const links = page.getByRole("textbox", { name: "链接，每行一个" });
+  const x = page.getByRole("checkbox", { name: "X", exact: true });
+  const instagram = page.getByRole("checkbox", { name: "Instagram" });
+  await expect(x).toBeChecked();
+  await expect(instagram).toBeChecked();
   await expect(links).toHaveValue("");
   await links.fill("https://www.twitter.com/Alice/\nhttps://x.com/bob");
   await page.getByRole("textbox", { name: "话题标签" }).fill("#摄影，Live");
@@ -106,4 +110,14 @@ test("batch imports associated accounts and preserves input on failure", async (
     start: "2026-11-18T00:00:00Z",
     end: "2026-11-19T00:00:00Z",
   });
+  await links.fill("");
+  await x.uncheck();
+  await instagram.uncheck();
+  await expect(submit).toBeDisabled();
+  await expect(page.getByRole("status").filter({ hasText: "没有匹配的发布者账号" })).toBeVisible();
+  await links.fill("https://x.com/bob");
+  await expect(submit).toBeEnabled();
+  await instagram.check();
+  await submit.click();
+  await expect.poll(() => requests.at(-1).urls).toEqual(["https://instagram.com/alice", "https://x.com/bob"]);
 });

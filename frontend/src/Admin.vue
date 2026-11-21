@@ -8,6 +8,8 @@ import { useLatestRequest } from "./use-latest-request";
 import { useRouter, useRoute } from "vue-router";
 import {
   NButton,
+  NCheckbox,
+  NCheckboxGroup,
   NInput,
   NSelect,
   NAlert,
@@ -16,7 +18,7 @@ import {
   useMessage,
 } from "naive-ui";
 import { Download, Users, ScanFace, Copy, Settings, LogOut } from "@lucide/vue";
-import { api, send, dateLabel } from "./api";
+import { api, send, dateLabel, platformLabel } from "./api";
 import { useLibrary } from "./store";
 import { usePageTitle } from "./page-title";
 import PublisherSelect from "./PublisherSelect.vue";
@@ -30,7 +32,10 @@ import DateRangeHint from "./DateRangeHint.vue";
 import CookieGuide from "./CookieGuide.vue";
 const store = useLibrary();
 const { selected: publishers, accounts: publisherAccounts } = usePublisherSelection();
-const importUrls = computed(() => mergeImportUrls(publisherAccounts.value, urls.value));
+const platformOptions = ["x", "instagram"];
+const importPlatforms = ref([...platformOptions]);
+const importAccounts = computed(() => publisherAccounts.value.filter(account => importPlatforms.value.includes(account.platform)));
+const importUrls = computed(() => mergeImportUrls(importAccounts.value, urls.value));
 const invalidImportRange = computed(() => !!start.value && !!end.value && Date.parse(start.value) >= Date.parse(end.value));
 const router = useRouter();
 const route = useRoute(),
@@ -306,7 +311,11 @@ onUnmounted(() => {
           <label class="field-label">发布者
             <PublisherSelect v-model="publishers" :disabled="busy" />
           </label>
-          <p class="hint">导入所选人物的全部关联账号，可同时补充链接</p>
+          <div class="field-label" id="import-platforms-label">发布者平台</div>
+          <n-checkbox-group v-model:value="importPlatforms" class="inline-form" aria-labelledby="import-platforms-label" :disabled="busy">
+            <n-checkbox v-for="platform in platformOptions" :key="platform" :value="platform">{{ platformLabel(platform) }}</n-checkbox>
+          </n-checkbox-group>
+          <p v-if="publishers.length && !importAccounts.length" class="hint" role="status">没有匹配的发布者账号，仍可导入手动链接或目录。</p>
           <label class="field-label"
             >链接，每行一个<n-input
               v-model:value="urls"
