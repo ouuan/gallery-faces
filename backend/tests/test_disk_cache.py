@@ -349,7 +349,7 @@ def test_recovery_failures_do_not_publish_bytes(client, tmp_path, monkeypatch, f
         if failure != 'trash':
             assert 'retry-after' in response.headers
     assert calls == [row['id']] and not original.exists()
-    assert not list(original.parent.glob('.asset-*'))
+    assert not list(original.parent.glob('.cache-stage-*'))
 
 
 def test_timeout_leaves_recovery_running(client, tmp_path, monkeypatch):
@@ -372,6 +372,88 @@ def test_timeout_leaves_recovery_running(client, tmp_path, monkeypatch):
         finish.set()
     with cache.asset(row, 'image', timeout=5):
         assert path.exists()
+
+
+@pytest.mark.parametrize('matching', [True, False])
+def test_reimport_wins_over_inflight_original_recovery(client, tmp_path, monkeypatch, matching):
+    row, source = photo(tmp_path)
+    original = evict(row, 'original')
+    installed = []
+    def download(task, payload, attempt, restore_id):
+        importer.import_file(source, dict(platform='x', author='alice', tweet_id='1', date='2026-01-01', url=payload['url']))
+        installed.append(original.stat())
+        (attempt / 'download.png').write_bytes(source.read_bytes() if matching else b'wrong')
+        return attempt
+    monkeypatch.setattr(worker, 'download_media', download)
+    with cache.asset(row, 'original') as recovered:
+        assert os.path.samestat(recovered.stat(), installed[0]) and recovered.read_bytes() == source.read_bytes()
+    with db.connect() as conn:
+        latest = cache.active(conn, row['id'])
+        assert latest['cache_retry_at'] == latest['original_evicted'] == 0
+
+
+@pytest.mark.parametrize('work', ['copy', 'encode', 'eviction-hash'])
+def test_public_write_during_slow_cache_work(client, tmp_path, monkeypatch, work):
+    monkeypatch.setattr(importer, 'IMPORT', tmp_path)
+    row, source = photo(tmp_path)
+    started, release = threading.Event(), threading.Event()
+    def pause():
+        started.set()
+        assert release.wait(5)
+    if work == 'eviction-hash':
+        with db.connect(True) as conn:
+            conn.execute('UPDATE posts SET url=?', ('https://x.com/alice',))
+        file_hash = db.file_hash
+        def slow_hash(path):
+            digest = file_hash(path)
+            if path == source:
+                pause()
+            return digest
+        monkeypatch.setattr(db, 'file_hash', slow_hash)
+        action = lambda: evict(row, 'original')
+    else:
+        variant = 'original' if work == 'copy' else 'image'
+        path = evict(row, variant)
+        if work == 'copy':
+            original_open = type(path).open
+            def slow_open(candidate, mode='r', *args, **kwargs):
+                if candidate.parent == path.parent and mode == 'wb':
+                    pause()
+                return original_open(candidate, mode, *args, **kwargs)
+            monkeypatch.setattr(type(path), 'open', slow_open)
+        else:
+            encode = importer.encode_display
+            def slow_encode(image, target):
+                pause()
+                encode(image, target)
+            monkeypatch.setattr(importer, 'encode_display', slow_encode)
+        action = lambda: cache.recover(row['id'], variant)
+    with ThreadPoolExecutor() as pool:
+        future = pool.submit(action)
+        try:
+            assert started.wait(5)
+            assert client.post(f'/api/v1/images/{row["id"]}/feedback', json={'content': 'check'}).status_code == 201
+            if work == 'eviction-hash':
+                source.write_bytes(b'replaced after hashing')
+            elif work == 'copy':
+                worker.cleanup_interrupted_files()
+                assert len(list(path.parent.glob('.cache-stage-*'))) == 1
+            else:
+                assert recycle(client, [row['id']]).status_code == 200
+        finally:
+            release.set()
+        if work == 'encode':
+            with pytest.raises(FileNotFoundError):
+                future.result()
+        else:
+            future.result()
+    if work == 'eviction-hash':
+        assert cache.asset_path(row, 'original').exists()
+    elif work == 'encode':
+        assert not path.exists()
+    else:
+        assert path.read_bytes() == source.read_bytes()
+    assert not list(db.DATA.glob('*/.cache-stage-*'))
 
 
 @pytest.mark.parametrize('low,target,expected', [('', '', None), ('0.5', '2', (2**29, 2**31)), ('', '2', False), ('2', '1', False), ('0', '1', False), ('nan', 'inf', False)])
