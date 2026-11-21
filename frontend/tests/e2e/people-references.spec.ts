@@ -63,6 +63,7 @@ test("person editor stages all reference changes and preserves drafts on failure
     return route.fulfill({ json: [] });
   });
   await page.goto("/admin/people");
+  await page.getByRole("button", { name: /^未分组 / }).click();
   await expect(
     page.getByRole("button", { name: "参考图", exact: true }),
   ).toHaveCount(0);

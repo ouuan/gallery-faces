@@ -6,6 +6,8 @@ import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { onBeforeRouteLeave } from "vue-router";
 import {
   NButton,
+  NCollapse,
+  NCollapseItem,
   NInput,
   NSelect,
   NModal,
@@ -20,7 +22,7 @@ import PersonAvatar from "./PersonAvatar.vue";
 import { useLatestRequest } from "./use-latest-request";
 import { useImageDownloads } from "./use-review-images";
 import PersonDetailsFields from "./PersonDetailsFields.vue";
-import { emptyGroup, personGroupPayload, type SelectedGroup } from "./person-groups";
+import { emptyGroup, groupPeople, personGroupPayload, type SelectedGroup } from "./person-groups";
 import type { components } from "./schema";
 import { api, send, platformLabel, type Person } from "./api";
 const store = useLibrary(),
@@ -36,23 +38,8 @@ const store = useLibrary(),
   accounts = ref<{ platform: string; username: string }[]>([]),
   newGroup = ref(emptyGroup()),
   baseline = ref("");
-const sortedPeople = computed(() => {
-  const groupOrder = new Map(
-    store.groups.map((group, index) => [group.id, index]),
-  );
-  return store.people
-    .map((person) => ({
-      person,
-      groupIndex: Math.min(
-        store.groups.length,
-        ...person.groups.map((group) =>
-          groupOrder.get(group.id) ?? store.groups.length,
-        ),
-      ),
-    }))
-    .sort((a, b) => a.groupIndex - b.groupIndex)
-    .map(({ person }) => person);
-});
+const peopleGroups = computed(() => groupPeople(store.people, store.groups));
+const expandedGroups = ref<number[]>([]);
 const references = ref<any[]>([]),
   deletingPerson = ref<number | null>(null),
   upload = ref<any>(null),
@@ -291,39 +278,41 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
       <p>先添加姓名，再选择参考人脸。有效参考图会用于匹配未知人物</p>
       <n-button @click="open()">添加第一位人物</n-button>
     </div>
-    <div v-for="person in sortedPeople" :key="person.id" class="person-row">
-      <PersonAvatar
-        :reference-id="person.avatar_reference_id"
-        :name="person.name"
-      />
-      <div class="grow">
-        <h3>{{ person.name }}</h3>
-        <div class="selected-tags">
-          <n-tag v-for="g in person.groups" :key="g.id">{{ g.name }}</n-tag>
+    <n-collapse v-else v-model:expanded-names="expandedGroups" display-directive="if">
+      <n-collapse-item v-for="group in peopleGroups" :key="group.id" :name="group.id">
+        <template #header="{ collapsed }">
+          <h2 class="grow">
+            <button type="button" class="group-toggle" :aria-expanded="!collapsed"
+              :aria-controls="collapsed ? undefined : `people-group-${group.id}`">
+              <span class="grow">{{ group.name }}</span>
+              <span class="group-count">{{ group.members.length }} 人</span>
+            </button>
+          </h2>
+        </template>
+        <div :id="`people-group-${group.id}`">
+          <div v-for="person in group.members" :key="person.id" class="person-row">
+            <PersonAvatar :reference-id="person.avatar_reference_id" :name="person.name" />
+            <div class="grow">
+              <h3>{{ person.name }}</h3>
+              <div class="selected-tags">
+                <n-tag v-for="g in person.groups" :key="g.id">{{ g.name }}</n-tag>
+              </div>
+              <p class="muted">
+                {{ person.accounts.map((a) => `${platformLabel(a.platform)}: ${a.username}`).join(" · ") || "未关联账号" }}
+              </p>
+            </div>
+            <div>
+              <p>{{ person.reference_count }} 张参考图</p>
+              <p v-if="!person.reference_count" class="hint">尚不能自动匹配</p>
+            </div>
+            <n-button @click="open(person)">编辑</n-button>
+            <n-button class="stable-loading-button" type="error" secondary
+              :aria-label="`删除人物 ${person.name}`" :loading="deletingPerson === person.id"
+              :disabled="deletingPerson !== null" @click="removePerson(person)">删除</n-button>
+          </div>
         </div>
-        <p class="muted">
-          {{
-            person.accounts
-              .map((a) => `${platformLabel(a.platform)}: ${a.username}`)
-              .join(" · ") || "未关联账号"
-          }}
-        </p>
-      </div>
-      <div>
-        <p>{{ person.reference_count }} 张参考图</p>
-        <p v-if="!person.reference_count" class="hint">尚不能自动匹配</p>
-      </div>
-      <n-button @click="open(person)">编辑</n-button
-      ><n-button class="stable-loading-button"
-        type="error"
-        secondary
-        :aria-label="`删除人物 ${person.name}`"
-        :loading="deletingPerson === person.id"
-        :disabled="deletingPerson !== null"
-        @click="removePerson(person)"
-        >删除</n-button
-      >
-    </div></template
+      </n-collapse-item>
+    </n-collapse></template
   ><template v-else
     ><p v-if="!store.groups.length" class="empty-state">
       暂无分组。可在人物编辑中直接新建
@@ -565,6 +554,24 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
 </template>
 
 <style scoped>
+.group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.group-toggle:hover { background: var(--bg); }
+.group-count { color: var(--muted); font-size: 13px; font-weight: 400; }
+
 @media (max-width: 640px) {
   .person-row {
     flex-wrap: wrap;

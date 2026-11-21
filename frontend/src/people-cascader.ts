@@ -1,4 +1,4 @@
-import { t } from "./locale";
+import { groupPeople } from "./person-groups";
 import type { Person } from "./api";
 
 export type PeopleGroupOption = {
@@ -11,23 +11,15 @@ export function peopleOptions(
   people: Person[],
   groups: { id: number; name: string }[],
 ): PeopleGroupOption[] {
-  return [...groups, { id: 0, name: t("未分组") }]
-    .map((group) => ({
-      label: group.name,
-      value: `group:${group.id}`,
-      children: people
-        .filter((person) =>
-          group.id
-            ? person.groups.some((g) => g.id === group.id)
-            : !person.groups.length,
-        )
-        .map((person) => ({
-          label: person.name,
-          value: `group:${group.id}:person:${person.id}`,
-          personId: person.id,
-        })),
-    }))
-    .filter((group) => group.children.length);
+  return groupPeople(people, groups).map((group) => ({
+    label: group.name,
+    value: `group:${group.id}`,
+    children: group.members.map((person) => ({
+      label: person.name,
+      value: `group:${group.id}:person:${person.id}`,
+      personId: person.id,
+    })),
+  }));
 }
 
 export function peopleKeys(ids: number[], options: PeopleGroupOption[]) {

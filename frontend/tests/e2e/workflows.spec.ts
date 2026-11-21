@@ -45,6 +45,7 @@ test("gallery responsive states and transactional person groups", async ({
   await page.getByPlaceholder("新分组日语名称（可选）").fill("二組");
   await page.getByRole("button", { name: "保存人物", exact: true }).click();
   await expect(page.getByText("人物已保存", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /^测试分组 / }).click();
   await expect(page.getByText("尚不能自动匹配").first()).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const people = await (await page.request.get("/api/v1/people")).json();
@@ -433,6 +434,7 @@ test("filters omit avatars and people management uses reference face crops", asy
   await expect(page.locator(".people-cascader")).toBeVisible();
   await expect(page.locator(".filters img, .filters .avatar")).toHaveCount(0);
   await page.goto("/admin/people");
+  await page.getByRole("button", { name: /^未分组 / }).click();
   const avatar = page.getByRole("img", { name: "有参考图的参考人脸" });
   await expect(avatar).toHaveAttribute(
     "src",
@@ -455,6 +457,7 @@ test("filters omit avatars and people management uses reference face crops", asy
   });
   avatarFailed = true;
   await page.reload();
+  await page.getByRole("button", { name: /^未分组 / }).click();
   await expect(page.getByRole("img", { name: "参考图无法加载" })).toBeVisible();
 });
 

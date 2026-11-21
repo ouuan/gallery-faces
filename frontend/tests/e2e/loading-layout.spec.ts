@@ -59,6 +59,7 @@ for (const width of [390, 1280]) {
       return route.fulfill({ json: /\/(session|site|settings)$/.test(path) ? {} : [] });
     });
     await page.goto('/admin/people');
+    await page.getByRole('button', { name: /^未分组 / }).click();
     await page.getByRole('button', { name: '编辑', exact: true }).click();
     const grid = page.locator('.confirmed-face-grid');
     await expect(grid).toBeVisible();
