@@ -35,6 +35,8 @@ services:
     environment:
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-auto}
       WORKER_IDLE_TIMEOUT_SECONDS: ${WORKER_IDLE_TIMEOUT_SECONDS:-300}
+      MEDIA_CACHE_LOW_FREE_GIB: ${MEDIA_CACHE_LOW_FREE_GIB:-}
+      MEDIA_CACHE_TARGET_FREE_GIB: ${MEDIA_CACHE_TARGET_FREE_GIB:-}
     stop_grace_period: 5m
     volumes:
       - gallery-data:/data

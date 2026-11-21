@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import OpenGraphSettings from "./OpenGraphSettings.vue";
+import MediaCacheStatus from "./MediaCacheStatus.vue";
 import LocalDateTime from "./LocalDateTime.vue";
 import LoadingOverlay from "./LoadingOverlay.vue";
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
@@ -560,6 +561,7 @@ onUnmounted(() => {
             >保存设置</n-button
           >
         </form>
+        <MediaCacheStatus />
         <div class="cookie-heading">
           <h2>平台 Cookies</h2>
           <CookieGuide />

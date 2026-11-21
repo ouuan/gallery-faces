@@ -36,7 +36,7 @@
 
 照片、数据库和模型保存在 `gallery-data` 数据卷中。
 
-公开图片长期缓存、升级扫描和 Cloudflare 配置见[缓存部署指南](docs/deployment-cache.md)。
+可选的本地磁盘清理、独立挂载、公开图片缓存和 Cloudflare 配置见[缓存部署指南](docs/deployment-cache.md)。
 
 可另行构建部署[日语只读帖子前端](docs/japanese-frontend.md)，与中文版共享后端。
 

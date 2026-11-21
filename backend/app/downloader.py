@@ -112,7 +112,7 @@ def install_policy():
     return state
 
 
-def install_library_filter(report_path=None, restore_id=None, hashtags=()):
+def install_library_filter(report_path=None, restore_id=None, hashtags=(), cache_post=None):
     """Runs after gallery-dl's date/media filters, before any media request."""
     import json
     from gallery_dl.job import DownloadJob
@@ -122,10 +122,26 @@ def install_library_filter(report_path=None, restore_id=None, hashtags=()):
 
     original = DownloadJob.handle_url
     wanted = frozenset(hashtags)
+    if cache_post:
+        from .security import download_url
+        from urllib.parse import urlsplit
+        platform, canonical = download_url(cache_post)
+        parts = urlsplit(canonical).path.strip('/').split('/')
+        if platform == 'x' and len(parts) >= 3 and parts[1] == 'status':
+            post_key = parts[2]
+        elif platform == 'instagram' and len(parts) == 2 and parts[0] in ('p', 'reel', 'tv'):
+            post_key = parts[1]
+        else:
+            raise ValueError('Cache recovery requires a single post')
 
     def handle_url(self, url, raw):
         meta = metadata({**raw, "category": self.extractor.category}, "")
         if not matches_hashtags(wanted, raw, meta):
+            return
+        if cache_post:
+            keys = (meta['key'], raw.get('post_shortcode'), raw.get('shortcode'))
+            if meta['platform'] == platform and post_key in keys:
+                return original(self, url, raw)
             return
         with connect() as db:
             known = source_image(db, meta)
@@ -156,7 +172,7 @@ def main():
     state = install_policy()
     restore_id = os.environ.get("GALLERY_FACES_RESTORE_IMAGE")
     install_library_filter(os.environ.get("GALLERY_FACES_SKIPPED_REPORT"), int(restore_id) if restore_id else None,
-                           json.loads(os.environ.get("GALLERY_FACES_HASHTAGS", "[]")))
+                           json.loads(os.environ.get("GALLERY_FACES_HASHTAGS", "[]")), os.environ.get('GALLERY_FACES_CACHE_POST'))
     options = ["cookies-update=false", "netrc=false",
                "retweets=false", "quoted=false", "cards=false", "twitpic=false",
                "articles=false", "videos=false", "audio=false", "previews=false"]

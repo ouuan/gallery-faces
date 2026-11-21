@@ -7,6 +7,7 @@ from pathlib import Path
 from PIL import Image, ImageOps
 from .db import DATA, IMPORT, connect, settings, file_hash
 from .vision import phash, similarity
+from .media_cache import asset, Unavailable
 from .metadata import metadata, validate_url, source_image, save_source, in_date_range
 
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".avif"}
@@ -43,6 +44,10 @@ def valid_image(path):
         return False
 
 
+def encode_display(image, target):
+    image.convert('RGB').save(target, format='JPEG', quality=97)
+
+
 def write_assets(path, digest, *, refresh=False):
     """Caller holds the database write transaction, shared with file cleanup."""
     original = DATA / "originals" / (digest + path.suffix.lower())
@@ -54,7 +59,7 @@ def write_assets(path, digest, *, refresh=False):
         target = DATA / "images" / filename
         if refresh or not valid_image(target):
             with atomic_asset(target) as temporary:
-                im.convert("RGB").save(temporary, format="JPEG", quality=97)
+                encode_display(im, temporary)
         thumbnail = DATA / "thumbs" / filename
         if refresh or not valid_image(thumbnail):
             im.thumbnail((640, 640))
@@ -110,7 +115,7 @@ def import_file(path, raw, start=None, end=None, *, counts=None):
             schedule_detection(db, image_id)
             db.execute("INSERT INTO pending_deduplications(image_id) VALUES(?)", (image_id,))
         db.execute(
-            "UPDATE images SET image_sha256=?,thumbnail_sha256=?,original_filename=?,file_size=? WHERE id=?",
+            "UPDATE images SET image_evicted=0,original_evicted=0,cache_retry_at=0,image_used=unixepoch(),original_used=unixepoch(),image_sha256=?,thumbnail_sha256=?,original_filename=?,file_size=? WHERE id=?",
             (file_hash(target), file_hash(DATA / "thumbs" / filename), original_name, path.stat().st_size, image_id),
         )
         save_source(db, image_id, meta)
@@ -125,7 +130,8 @@ def finish_deduplication(image_id):
     with connect() as db:
         if not db.execute("SELECT 1 FROM pending_deduplications WHERE image_id=?", (image_id,)).fetchone():
             return
-    deduplicate(image_id)
+    if deduplicate(image_id) is False:
+        return
     with connect(True) as db:
         db.execute("DELETE FROM pending_deduplications WHERE image_id=?", (image_id,))
 
@@ -144,6 +150,72 @@ def recover_deduplications(stop):
             logging.getLogger(__name__).exception("Could not resume deduplication for image %s", image_id)
 
 
+def pair_score(first, second):
+    try:
+        with asset(first, 'image') as left, asset(second, 'image') as right:
+            return similarity(left, right)
+    except FileNotFoundError:
+        return None
+
+
+def consider_pair(first, second, config):
+    pair = tuple(sorted((first, second)))
+    query = 'SELECT * FROM images WHERE group_id IN (SELECT group_id FROM images WHERE id IN (?,?)) ORDER BY id'
+    decision = 'SELECT 1 FROM duplicate_decisions WHERE a=? AND b=?'
+
+    def membership(rows):
+        return [(row['id'], row['group_id'], row['hidden'], row['image_sha256']) for row in rows]
+
+    def similar_shape(left, right):
+        distance = (int(left['phash'], 16) ^ int(right['phash'], 16)).bit_count()
+        ratio = abs(left['width'] * right['height'] / (left['height'] * right['width']) - 1)
+        return distance <= int(config['phash_distance']) and ratio <= float(config['aspect_tolerance'])
+
+    while True:
+        with connect() as db:
+            if db.execute(decision, pair).fetchone():
+                return
+            rows = db.execute(query, pair).fetchall()
+        images = {row['id']: row for row in rows}
+        if any(identifier not in images or images[identifier]['hidden'] for identifier in pair):
+            return
+        left, right = images[first], images[second]
+        score = pair_score(left, right)
+        if score is None:
+            return
+        threshold = float(config['ssim_threshold'])
+        auto = score >= threshold and similar_shape(left, right) and all(
+            not row['hidden'] and row['phash'] and (row['image_evicted'] or (DATA / 'images' / row['filename']).is_file()) for row in rows
+        )
+        groups = (left['group_id'], right['group_id'])
+        if auto and groups[0] != groups[1]:
+            for member in rows:
+                if member['group_id'] != groups[0]:
+                    continue
+                for other in rows:
+                    if other['group_id'] != groups[1] or (member['id'], other['id']) == (first, second):
+                        continue
+                    cross_score = pair_score(member, other) if similar_shape(member, other) else None
+                    if cross_score is None or cross_score < threshold:
+                        auto = False
+                        break
+                if not auto:
+                    break
+        with connect(True) as db:
+            if db.execute(decision, pair).fetchone():
+                return
+            if membership(rows) != membership(db.execute(query, pair)):
+                continue
+            if auto and groups[0] != groups[1]:
+                auto = not db.execute('''SELECT 1 FROM duplicate_decisions d JOIN images l ON l.id=d.a
+                    JOIN images r ON r.id=d.b WHERE decision='separate' AND
+                    ((l.group_id=? AND r.group_id=?) OR (l.group_id=? AND r.group_id=?)) LIMIT 1''', (*groups, *reversed(groups))).fetchone()
+                if auto:
+                    db.execute('UPDATE images SET group_id=? WHERE group_id=?', tuple(images[identifier]['group_id'] for identifier in pair))
+            db.execute('INSERT INTO duplicate_decisions VALUES(?,?,?,?)', (*pair, 'auto' if auto else 'pending', score))
+            return
+
+
 def deduplicate(image_id):
     with connect() as db:
         current = dict(
@@ -154,80 +226,18 @@ def deduplicate(image_id):
         ]
         config = settings(db)
     if current["hidden"] or not current["phash"]:
-        return
+        return True
+    complete = True
     for other in others:
         distance = (int(current["phash"], 16) ^ int(other["phash"], 16)).bit_count()
         if distance > 10:
             continue
-        ratio = abs(
-            (current["width"] / current["height"]) / (other["width"] / other["height"])
-            - 1
-        )
-        if not (DATA / "images" / other["filename"]).is_file():
-            continue
-        score = similarity(
-            DATA / "images" / current["filename"], DATA / "images" / other["filename"]
-        )
-        with connect(True) as db:
-            a, b = sorted((image_id, other["id"]))
-            if db.execute(
-                "SELECT 1 FROM duplicate_decisions WHERE a=? AND b=?", (a, b)
-            ).fetchone():
-                continue
-            auto = (
-                distance <= int(config["phash_distance"])
-                and ratio <= float(config["aspect_tolerance"])
-                and score >= float(config["ssim_threshold"])
-            )
-            groups = [
-                db.execute("SELECT group_id FROM images WHERE id=?", (i,)).fetchone()[0]
-                for i in (a, b)
-            ]
-            # Every cross-group pair must pass, preventing transitive chains.
-            members = [
-                [
-                    dict(r)
-                    for r in db.execute("SELECT * FROM images WHERE group_id=?", (g,))
-                ]
-                for g in groups
-            ]
-            if any(m["hidden"] or not m["phash"] or not (DATA / "images" / m["filename"]).is_file() for group in members for m in group):
-                auto = False
-            if auto and groups[0] != groups[1]:
-                for left in members[0]:
-                    for right in members[1]:
-                        denied = db.execute(
-                            "SELECT 1 FROM duplicate_decisions WHERE a=? AND b=? AND decision='separate'",
-                            tuple(sorted((left["id"], right["id"]))),
-                        ).fetchone()
-                        if (
-                            denied
-                            or (
-                                int(left["phash"], 16) ^ int(right["phash"], 16)
-                            ).bit_count()
-                            > int(config["phash_distance"])
-                            or abs(
-                                (left["width"] / left["height"])
-                                / (right["width"] / right["height"])
-                                - 1
-                            )
-                            > float(config["aspect_tolerance"])
-                            or similarity(
-                                DATA / "images" / left["filename"],
-                                DATA / "images" / right["filename"],
-                            )
-                            < float(config["ssim_threshold"])
-                        ):
-                            auto = False
-                if auto:
-                    db.execute(
-                        "UPDATE images SET group_id=? WHERE group_id=?",
-                        (groups[0], groups[1]),
-                    )
-            db.execute(
-                "INSERT OR IGNORE INTO duplicate_decisions VALUES(?,?,?,?)",
-                (a, b, "auto" if auto else "pending", score),
-            )
+        try:
+            consider_pair(image_id, other['id'], config)
+        except Unavailable:
+            logging.getLogger(__name__).warning('Deferring unavailable duplicate comparison %s/%s', image_id, other['id'])
+            complete = False
+    return complete
 
 
 def safe_directory(relative):

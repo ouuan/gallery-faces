@@ -744,6 +744,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/media-cache": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Media Cache */
+        get: operations["get_media_cache_api_v1_admin_media_cache_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/settings": {
         parameters: {
             query?: never;
@@ -1010,6 +1027,23 @@ export interface components {
             /** Person Id */
             person_id?: number | null;
         };
+        /** CacheConfig */
+        CacheConfig: {
+            /** Reported At */
+            reported_at: number;
+            /** Low Bytes */
+            low_bytes: number | null;
+            /** Target Bytes */
+            target_bytes: number | null;
+        };
+        /** CacheStatus */
+        CacheStatus: {
+            config: components["schemas"]["CacheConfig"] | null;
+            /** Inventory */
+            inventory: components["schemas"]["Inventory"][];
+            /** Volumes */
+            volumes: components["schemas"]["Volume"][];
+        };
         /** Candidate */
         Candidate: {
             /** Platform */
@@ -1018,6 +1052,26 @@ export interface components {
             username: string;
             /** Label */
             label: string | null;
+        };
+        /** Cleanup */
+        Cleanup: {
+            /** Finished At */
+            finished_at: number;
+            /** Before Bytes */
+            before_bytes: number;
+            /** After Bytes */
+            after_bytes: number | null;
+            /** Target Bytes */
+            target_bytes: number;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "target" | "exhausted" | "error";
+            /** Removals */
+            removals: {
+                [key: string]: components["schemas"]["Evictions"];
+            };
         };
         /** Create */
         Create: {
@@ -1068,6 +1122,15 @@ export interface components {
             interval_minutes?: number | null;
             /** Paused */
             paused?: boolean | null;
+        };
+        /** Evictions */
+        Evictions: {
+            /** Count */
+            count: number;
+            /** Min Idle Days */
+            min_idle_days: number | null;
+            /** Min Score */
+            min_score: number | null;
         };
         /** FaceEdit */
         FaceEdit: {
@@ -1252,6 +1315,19 @@ export interface components {
              * @default
              */
             end: string;
+        };
+        /** Inventory */
+        Inventory: {
+            /** Folder */
+            folder: string;
+            /** Present */
+            present: number;
+            /** Evicted */
+            evicted: number;
+            /** Missing */
+            missing: number;
+            /** Unknown */
+            unknown: number;
         };
         /** Login */
         Login: {
@@ -1598,6 +1674,14 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** Volume */
+        Volume: {
+            /** Folders */
+            folders: string[];
+            /** Free Bytes */
+            free_bytes: number | null;
+            last_cleanup: components["schemas"]["Cleanup"] | null;
         };
     };
     responses: never;
@@ -3183,6 +3267,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_media_cache_api_v1_admin_media_cache_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CacheStatus"];
                 };
             };
         };

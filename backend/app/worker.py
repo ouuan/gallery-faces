@@ -3,6 +3,7 @@ import os
 import signal
 import threading
 import math
+from contextlib import nullcontext
 from concurrent.futures import ThreadPoolExecutor
 import json
 import subprocess
@@ -117,12 +118,9 @@ def detect(task):
             "SELECT * FROM images WHERE id=?", (task["image_id"],)
         ).fetchone()
         detection_threshold = float(settings(db)["detection_threshold"])
-    faces = Vision().detect(
-        DATA / "images" / row["filename"],
-        mode=mode,
-        cancel=lambda: cancelled(task["id"]),
-        threshold=detection_threshold,
-    )
+    from .media_cache import asset
+    with asset(row, 'image') as path:
+        faces = Vision().detect(path, mode=mode, cancel=lambda: cancelled(task["id"]), threshold=detection_threshold)
     with connect(True) as db:
         if db.execute(
             "SELECT cancel_requested FROM tasks WHERE id=?", (task["id"],)
@@ -238,15 +236,19 @@ def download_media(task, payload, attempt, restore_id=None):
             "GALLERY_FACES_SKIPPED_REPORT": str(attempt / "skipped.jsonl"),
             "GALLERY_FACES_HASHTAGS": json.dumps(payload.get("hashtags", [])),
             "GALLERY_FACES_RESTORE_IMAGE": str(restore_id) if restore_id is not None else "",
+            "GALLERY_FACES_CACHE_POST": payload['url'] if task is None and restore_id is not None else '',
         },
     ) as process:
+        deadline = time.monotonic() + 120 if task is None else None
         while process.poll() is None:
-            if cancelled(task["id"]):
+            if (deadline is not None and time.monotonic() >= deadline) or (task is not None and cancelled(task["id"])):
                 process.terminate()
                 try:
                     process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
                     process.kill()
+                if task is None:
+                    raise ValueError('缓存原图下载超时')
                 raise DetectionCancelled()
             time.sleep(0.5)
         if process.returncode:
@@ -507,6 +509,9 @@ def main():
 
     with (DATA / "worker.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        from .media_cache import watermarks
+        from .cache_status import report_config
+        report_config(watermarks())
         stop = threading.Event()
         for signum in (signal.SIGTERM, signal.SIGINT):
             signal.signal(signum, lambda *_: stop.set())
@@ -520,6 +525,9 @@ def main():
 def cleanup_interrupted_files():
     """Only run with the exclusive worker lock, before dispatching any work."""
     import shutil
+    from .media_cache import cleanup_fetches
+
+    cleanup_fetches()
 
     for path in (DATA / "downloads").iterdir():
         if path.name.startswith(("attempt-", "restore-local-", "restore-remote-")):
@@ -593,6 +601,10 @@ def worker_idle_timeout():
 
 
 def run_worker(stop):
+    from .media_cache import watermarks, clean
+    limits = watermarks()
+    next_clean = 0
+    cleaning = None
     concurrency = worker_concurrency()
     idle_timeout = worker_idle_timeout()
     idle_since = None
@@ -600,10 +612,16 @@ def run_worker(stop):
     with (
         ThreadPoolExecutor(max_workers=concurrency) as compute,
         ThreadPoolExecutor(max_workers=1) as io,
+        (ThreadPoolExecutor(max_workers=1) if limits else nullcontext()) as maintenance,
     ):
         running = {compute: set(), io: set()}
         next_schedule = 0.0
         while not stop.is_set():
+            if limits and time.monotonic() >= next_clean and (cleaning is None or cleaning.done()):
+                if cleaning is not None:
+                    cleaning.result()
+                cleaning = maintenance.submit(clean, *limits)
+                next_clean = time.monotonic() + 60
             if time.monotonic() >= next_schedule:
                 from .monitors import schedule_due
                 schedule_due()

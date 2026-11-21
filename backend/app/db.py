@@ -59,14 +59,13 @@ ACTIVE_REFERENCE = "(image_id IS NULL OR EXISTS(SELECT 1 FROM images ri WHERE ri
 
 
 @contextmanager
-def connect(write=False):
+def connect(write=False, *, wait=True):
     DATA.mkdir(parents=True, exist_ok=True)
     from .request_guard import public_query
     public = public_query.get()
-    db = sqlite3.connect(DATA / "gallery.sqlite3", timeout=1 if public else 30)
+    db = sqlite3.connect(DATA / "gallery.sqlite3", timeout=(1 if public else 30) if wait else 0)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys=ON")
-    db.execute("PRAGMA busy_timeout=" + ("1000" if public else "30000"))
     if public:
         from time import monotonic
         deadline = monotonic() + 2
@@ -78,7 +77,7 @@ def connect(write=False):
         db.commit()
     except sqlite3.OperationalError as error:
         db.rollback()
-        if public and any(word in str(error) for word in ("locked", "interrupted", "busy")):
+        if public and wait and any(word in str(error) for word in ("locked", "interrupted", "busy")):
             from fastapi import HTTPException
             raise HTTPException(503, "查询繁忙，请稍后重试", headers={"Retry-After": "1"}) from None
         raise
@@ -133,6 +132,13 @@ def init():
                     logging.getLogger(__name__).warning("Original unavailable for image %s", image["id"])
                 db.execute("UPDATE images SET file_size=? WHERE id=?", (size, image["id"]))
         columns = {row[1] for row in db.execute("PRAGMA table_info(images)")}
+        for variant in ('image', 'original'):
+            for suffix, definition in [('used', 'REAL'), ('evicted', 'INTEGER NOT NULL DEFAULT 0')]:
+                column = f'{variant}_{suffix}'
+                if column not in columns:
+                    db.execute(f'ALTER TABLE images ADD COLUMN {column} {definition}')
+        if 'cache_retry_at' not in columns:
+            db.execute('ALTER TABLE images ADD COLUMN cache_retry_at REAL NOT NULL DEFAULT 0')
         for column in ("image_sha256", "thumbnail_sha256", "original_filename"):
             if column not in columns:
                 db.execute(f"ALTER TABLE images ADD COLUMN {column} TEXT")

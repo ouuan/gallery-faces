@@ -6,7 +6,7 @@ from zipfile import ZipFile
 
 import pytest
 
-from app import archives, db
+from app import archives, db, main
 from test_workflows import client, image
 
 
@@ -48,6 +48,21 @@ def test_download_public_representatives_original_fallback_and_deduplication(cli
         assert archive.read(archive.namelist()[0]) == f"original {representative}".encode()
         assert archive.read(archive.namelist()[1]) == f"display {second}".encode()
         assert archive.testzip() is None
+
+
+def test_archive_budget_released_after_requests(client, monkeypatch):
+    first, group = seed()
+    _, other = seed()
+    monkeypatch.setattr(main.resource, 'getrlimit', lambda _: (16, 16))
+    url = f'/api/v1/gallery/download.zip?groups={group},{other}'
+    with main.MediaRead() as concurrent:
+        main.archive_budget.reserve(concurrent, 3)
+        assert client.post('/api/v1/gallery/downloads', json={'group_ids': [group, other]}).status_code == 200
+        busy = client.get(url)
+        assert busy.status_code == 503 and 'retry-after' in busy.headers
+        assert client.get(f'/api/v1/media/{first}').status_code == 200
+    assert client.get(url).status_code == 200
+    assert main.archive_budget.used == 0
 
 
 @pytest.mark.parametrize("original", [True, False])

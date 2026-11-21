@@ -1,14 +1,17 @@
 import base64
 import ipaddress
 import math
+import mimetypes
 import hashlib
 import hmac
 import json
 import os
 import secrets
 import re
+import resource
+import threading
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Literal
@@ -34,6 +37,8 @@ from .db import schedule_detection, ACTIVE_REFERENCE
 from .trash import require_active, require_active_face
 from .representatives import complete_source_sql, representative_sql, require_representative, require_representative_face
 from .archives import stream_zip
+from . import media_cache
+from . import cache_status
 from .hashtags import Hashtags
 
 
@@ -59,6 +64,28 @@ async def uncaught_error(request: Request, error: Exception):
 
 def fail(message, code=400):
     raise HTTPException(code, message)
+
+
+class MediaRead(ExitStack):
+    def __init__(self):
+        super().__init__()
+        self.deadline = time.monotonic() + 10
+
+    def pin(self, row, variant):
+        try:
+            return self.enter_context(media_cache.asset(row, variant, timeout=max(0, self.deadline - time.monotonic()), descriptor=True))
+        except FileNotFoundError:
+            fail('图片不存在', 404)
+        except media_cache.Unavailable:
+            raise HTTPException(503, '图片暂不可用，请稍后重试', headers={'Retry-After': '10'}) from None
+
+
+def media_read():
+    with MediaRead() as reads:
+        yield reads
+
+
+MediaReads = Annotated[MediaRead, Depends(media_read, scope='request')]
 
 
 def admin(request: Request):
@@ -101,7 +128,6 @@ class Login(BaseModel):
 
 
 attempts = {}
-import threading
 login_lock = threading.Lock()
 
 
@@ -568,15 +594,15 @@ def references(person_id: int, _: None = Depends(admin)):
 
 
 @app.get("/api/v1/admin/faces/{face_id}/crop")
-def face_crop(face_id: int, _: None = Depends(admin)):
+def face_crop(face_id: int, reads: MediaReads, _: None = Depends(admin)):
     with connect() as db:
         face = db.execute(
-            "SELECT f.box,i.filename FROM faces f JOIN images i ON i.id=f.image_id WHERE f.id=? AND i.hidden=0",
+            "SELECT f.box,i.id FROM faces f JOIN images i ON i.id=f.image_id WHERE f.id=? AND i.hidden=0",
             (face_id,),
         ).fetchone()
     if not face:
         fail("人脸不存在", 404)
-    return cropped_image(DATA / "images" / face["filename"], json.loads(face["box"]))
+    return cropped_image(reads.pin(face, 'image'), json.loads(face["box"]))
 
 
 def cropped_image(path, box):
@@ -595,13 +621,13 @@ def cropped_image(path, box):
 
 
 @app.get("/api/v1/admin/references/{reference_id}/crop")
-def reference_crop(reference_id: int, _: None = Depends(admin)):
+def reference_crop(reference_id: int, reads: MediaReads, _: None = Depends(admin)):
     with connect() as db:
         reference = db.execute(f"SELECT * FROM reference_images WHERE id=? AND {ACTIVE_REFERENCE}", (reference_id,)).fetchone()
     if not reference:
         fail("参考图不存在", 404)
     if reference["face_id"]:
-        return face_crop(reference["face_id"])
+        return face_crop(reference["face_id"], reads)
     if not reference["filename"]:
         fail("参考图不存在", 404)
     path = DATA / "references" / reference["filename"]
@@ -955,8 +981,31 @@ class GalleryDownloadLink(BaseModel):
     download_url: str
 
 
-def gallery_download_files(group_ids):
+class ArchiveBudget:
+    def __init__(self):
+        self.used = 0
+        self.lock = threading.Lock()
+
+    def reserve(self, reads, count):
+        soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+        limit = 512 if soft == resource.RLIM_INFINITY else min(512, soft // 4)
+        with self.lock:
+            if self.used + count > limit:
+                raise HTTPException(503, '下载繁忙，请稍后重试', headers={'Retry-After': '10'})
+            self.used += count
+        reads.callback(self.release, count)
+
+    def release(self, count):
+        with self.lock:
+            self.used -= count
+
+
+archive_budget = ArchiveBudget()
+
+
+def gallery_download_files(group_ids, reads, *, preflight=False):
     files = []
+    selected = []
     with connect() as db:
         db.execute("BEGIN")
         for group_id in dict.fromkeys(group_ids):
@@ -974,21 +1023,29 @@ def gallery_download_files(group_ids):
                 "ORDER BY p.published_at,p.id LIMIT 1",
                 (group_id,),
             ).fetchone()[0]
-            original = row["original_filename"]
-            path = DATA / "originals" / original if original else None
-            if path is None or not path.is_file():
-                path = DATA / "images" / row["filename"]
-            if not path.is_file():
-                fail("部分照片文件缺失，请刷新后重试或联系管理员", 404)
-            # Group IDs keep archive entries unique even when source names collide.
-            files.append((f"{group_id}-{path.name}", path, datetime.fromisoformat(published_at)))
+            selected.append((group_id, row, published_at))
+    archive_budget.reserve(reads, 1 if preflight else len(selected) + 1)
+    for group_id, row, published_at in selected:
+        variant = download_variant(row)
+        if preflight:
+            with MediaRead() as probe:
+                probe.deadline = reads.deadline
+                probe.pin(row, variant)
+            continue
+        path = reads.pin(row, variant)
+        files.append((f"{group_id}-{media_cache.asset_path(row, variant).name}", path, datetime.fromisoformat(published_at)))
+    with connect() as db:
+        db.execute('BEGIN')
+        for group_id, row, _ in selected:
+            if db.execute(f"SELECT {representative_sql('?', public=True)}", (group_id,)).fetchone()[0] != row['id']:
+                fail('部分照片已不可用，请刷新后重新选择', 404)
     return files
 
 
 @app.post("/api/v1/gallery/downloads", response_model=GalleryDownloadLink)
-def prepare_gallery_download(body: GalleryDownloadInput):
+def prepare_gallery_download(body: GalleryDownloadInput, reads: MediaReads):
     ids = list(dict.fromkeys(body.group_ids))
-    gallery_download_files(ids)
+    gallery_download_files(ids, reads, preflight=True)
     # Validate before handing the request to the browser's download manager.
     # This stores no archive or job; GET rechecks visibility and availability.
     return {"download_url": "/api/v1/gallery/download.zip?groups=" + ",".join(map(str, ids))}
@@ -998,14 +1055,14 @@ def prepare_gallery_download(body: GalleryDownloadInput):
     "/api/v1/gallery/download.zip", response_class=StreamingResponse,
     responses={200: {"content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}}}},
 )
-def download_gallery(groups: str = Query(min_length=1, max_length=4000)):
+def download_gallery(reads: MediaReads, groups: str = Query(min_length=1, max_length=4000)):
     parts = groups.split(",")
     if len(parts) > 200 or any(not re.fullmatch(r"[0-9]{1,19}", part) for part in parts):
         fail("请选择 1–200 张照片")
     ids = [int(part) for part in parts]
     if any(not 0 < identifier <= 9223372036854775807 for identifier in ids):
         fail("照片编号无效")
-    files = gallery_download_files(ids)
+    files = gallery_download_files(ids, reads)
     filename = datetime.now(timezone.utc).strftime("gallery-%Y%m%d-%H%M%S.zip")
     return StreamingResponse(stream_zip(files), media_type="application/zip", headers={
         "Content-Disposition": f'attachment; filename="{filename}"',
@@ -1055,7 +1112,7 @@ def detail(group_id: int, matched_post: int | None = None):
             sources=sources,
             earliest_source=sources[0],
             matched_source=matched,
-            members=[dict(m, **media_urls(m)) for m in members],
+            members=[{**{key: member[key] for key in member.keys() if key not in media_cache.PRIVATE_FIELDS}, **media_urls(member)} for member in members],
             pending_feedback_count=db.execute(
                 f"SELECT count(*) FROM feedback WHERE image_id IN ({marks}) AND status='pending'", ids
             ).fetchone()[0],
@@ -1067,25 +1124,29 @@ IMMUTABLE = "public, max-age=31536000, immutable"
 PUBLIC_IMAGE = "hidden=0 AND detection='done' AND EXISTS(SELECT 1 FROM sources s JOIN posts p ON p.id=s.post_id WHERE s.image_id=images.id AND p.author IS NOT NULL AND p.published_at IS NOT NULL AND p.url IS NOT NULL)"
 
 
+def download_variant(row):
+    original = media_cache.asset_path(row, 'original')
+    return 'original' if original and (row['original_evicted'] or original.is_file()) else 'image'
+
+
 def media_urls(row):
     legacy = f"/api/v1/media/{row['id']}"
     def url(variant, column, folder, fallback):
-        if row[column] and (DATA / folder / row["filename"]).is_file():
+        if row[column] and ((variant == 'image' and row['image_evicted']) or (DATA / folder / row["filename"]).is_file()):
             return f"/api/v1/media/by-hash/{variant}/{row[column]}"
         return fallback
     image_url = url("image", "image_sha256", "images", legacy)
     thumbnail_url = url("thumbnail", "thumbnail_sha256", "thumbs", legacy + "?thumbnail=true")
-    original = row["original_filename"]
     download_url = (
         f"/api/v1/media/by-hash/original/{row['sha256']}"
-        if original and (DATA / "originals" / original).is_file()
+        if download_variant(row) == 'original'
         else image_url + "?download=true"
     )
     return dict(image_url=image_url, thumbnail_url=thumbnail_url, download_url=download_url)
 
 
-def conditional_file(request, path, *, headers, filename=None):
-    response = FileResponse(path, filename=filename, headers=headers, stat_result=path.stat())
+def conditional_file(request, path, *, headers, filename=None, media_type=None):
+    response = FileResponse(path, filename=filename, headers=headers, stat_result=path.stat(), media_type=media_type)
     # If-None-Match takes precedence, including when it does not match.
     if "if-none-match" in request.headers:
         tags = request.headers["if-none-match"].split(",")
@@ -1107,24 +1168,41 @@ def conditional_file(request, path, *, headers, filename=None):
         404: {"description": "No public, available file for this hash"},
     },
 )
-def hash_media(request: Request, variant: Literal["image", "thumbnail", "original"], digest: str, download: bool = False):
+def hash_media(request: Request, reads: MediaReads, variant: Literal["image", "thumbnail", "original"], digest: str, download: bool = False):
     if not re.fullmatch(r"[0-9a-f]{64}", digest):
         fail("图片不存在", 404)
     column, folder = {"image": ("image_sha256", "images"), "thumbnail": ("thumbnail_sha256", "thumbs"), "original": ("sha256", "originals")}[variant]
     with connect() as db:
-        rows = db.execute(f"SELECT * FROM images WHERE {column}=? AND {PUBLIC_IMAGE} ORDER BY id", (digest,))
-        for row in rows:
-            name = row["original_filename"] if variant == "original" else row["filename"]
-            if not name:
-                continue
-            path = DATA / folder / name
-            if path.is_file():
-                return conditional_file(request, path, headers={"Cache-Control": IMMUTABLE, "ETag": f'"{digest}"'}, filename=name if download or variant == "original" else None)
+        order = 'id' if variant == 'thumbnail' else f'{variant}_evicted,id'
+        rows = db.execute(f"SELECT * FROM images WHERE {column}=? AND {PUBLIC_IMAGE} ORDER BY {order}", (digest,)).fetchall()
+    unavailable = None
+    for row in rows:
+        name = row["original_filename"] if variant == "original" else row["filename"]
+        if not name:
+            continue
+        path = DATA / folder / name
+        if variant != 'thumbnail':
+            try:
+                path = reads.pin(row, variant)
+            except HTTPException as error:
+                if error.status_code == 404:
+                    continue
+                if error.status_code == 503:
+                    unavailable = error
+                    continue
+                raise
+            with connect() as db:
+                if not db.execute(f'SELECT 1 FROM images WHERE id=? AND {column}=? AND {PUBLIC_IMAGE}', (row['id'], digest)).fetchone():
+                    continue
+        if path.is_file():
+            return conditional_file(request, path, headers={"Cache-Control": IMMUTABLE, "ETag": f'"{digest}"'}, filename=name if download or variant == "original" else None, media_type=mimetypes.guess_type(name)[0])
+    if unavailable is not None:
+        raise unavailable
     fail("图片不存在", 404)
 
 
 @app.get("/api/v1/media/{image_id}")
-def media(image_id: int, thumbnail: bool = False, download: bool = False):
+def media(image_id: int, reads: MediaReads, thumbnail: bool = False, download: bool = False):
     with connect() as db:
         row = db.execute(
             f"SELECT * FROM images WHERE id=? AND {PUBLIC_IMAGE}",
@@ -1132,16 +1210,21 @@ def media(image_id: int, thumbnail: bool = False, download: bool = False):
         ).fetchone()
         if not row:
             fail("图片不存在", 404)
-    if download:
-        original = next((DATA / "originals").glob(row["sha256"] + ".*"), None)
+    variant = download_variant(row) if download else 'image'
+    if download and not row['original_filename']:
+        original = next((DATA / 'originals').glob(row['sha256'] + '.*'), None)
         if original:
             return FileResponse(original, filename=original.name)
-    path = DATA / ("thumbs" if thumbnail else "images") / row["filename"]
+    path = DATA / 'thumbs' / row['filename'] if thumbnail and variant != 'original' else reads.pin(row, variant)
+    with connect() as db:
+        if not db.execute(f'SELECT 1 FROM images WHERE id=? AND {PUBLIC_IMAGE}', (image_id,)).fetchone():
+            fail('图片不存在', 404)
     if not path.is_file():
         fail("图片不存在", 404)
     return FileResponse(
         path,
-        filename=row["filename"] if download else None,
+        filename=media_cache.asset_path(row, variant).name if download else None,
+        media_type=mimetypes.guess_type(media_cache.asset_path(row, variant).name)[0],
     )
 
 
@@ -1259,17 +1342,17 @@ def feedback_delete(feedback_id: int, _: None = Depends(admin)):
 
 
 @app.get("/api/v1/admin/media/{image_id}")
-def admin_media(image_id: int, thumbnail: bool = False, _: None = Depends(admin)):
+def admin_media(image_id: int, reads: MediaReads, thumbnail: bool = False, _: None = Depends(admin)):
     with connect() as db:
         row = db.execute(
-            "SELECT filename,hidden FROM images WHERE id=?", (image_id,)
+            "SELECT id,filename,hidden FROM images WHERE id=?", (image_id,)
         ).fetchone()
     if not row:
         fail("图片不存在", 404)
-    path = DATA / ("thumbs" if thumbnail else "images") / row["filename"]
+    path = DATA / 'thumbs' / row['filename'] if thumbnail else reads.pin(row, 'image')
     if (row["hidden"] and not thumbnail) or not path.is_file():
         fail("原图已移入回收站或文件不存在", 404)
-    return FileResponse(path)
+    return FileResponse(path, media_type='image/jpeg')
 
 
 def review_image(db, row, *, grouped=False):
@@ -1857,6 +1940,11 @@ def cookie_upload(
 def cookie_delete(platform: Literal["instagram", "x"], _: None = Depends(admin)):
     (DATA / "cookies" / f"{platform}.txt").unlink(missing_ok=True)
     return {"ok": True}
+
+
+@app.get('/api/v1/admin/media-cache', response_model=cache_status.CacheStatus)
+def get_media_cache(_: None = Depends(admin)):
+    return cache_status.status()
 
 
 @app.get("/api/v1/admin/settings")

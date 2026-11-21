@@ -70,6 +70,7 @@ def recycle(client, ids):
 
 
 def test_detection_tracks_image_speed_even_without_faces(client, monkeypatch):
+    (db.DATA / 'images' / 'fixture.jpg').touch()
     clock = SimpleNamespace(monotonic=lambda: 10.0)
     monkeypatch.setattr(worker, "time", clock)
     with db.connect(True) as conn:
@@ -152,6 +153,7 @@ def test_rematch_tracks_face_progress_and_speed(client, monkeypatch, face_count)
 def test_redetect_refreshes_candidates_and_reconsiders_unlocked_labels(
     client, monkeypatch, scores, expected_match
 ):
+    (db.DATA / 'images' / 'fixture.jpg').touch()
     embedding = np.array([1, 0] + [0] * 510, dtype="float32").tobytes()
     with db.connect(True) as conn:
         target = image(conn, faces=False)
@@ -1326,6 +1328,7 @@ def test_worker_parallel_slots_and_order(client, monkeypatch):
 
 
 def test_cancel_detection_before_write(client, monkeypatch):
+    (db.DATA / 'images' / 'fixture.jpg').touch()
     with db.connect(True) as conn:
         target = image(conn)
         task_id = db.schedule_detection(conn, target)

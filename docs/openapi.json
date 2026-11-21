@@ -2341,6 +2341,24 @@
         }
       }
     },
+    "/api/v1/admin/media-cache": {
+      "get": {
+        "summary": "Get Media Cache",
+        "operationId": "get_media_cache_api_v1_admin_media_cache_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CacheStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/settings": {
       "get": {
         "summary": "Get Settings",
@@ -3045,6 +3063,78 @@
         ],
         "title": "BoxInput"
       },
+      "CacheConfig": {
+        "properties": {
+          "reported_at": {
+            "type": "number",
+            "title": "Reported At"
+          },
+          "low_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low Bytes"
+          },
+          "target_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reported_at",
+          "low_bytes",
+          "target_bytes"
+        ],
+        "title": "CacheConfig"
+      },
+      "CacheStatus": {
+        "properties": {
+          "config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CacheConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "inventory": {
+            "items": {
+              "$ref": "#/components/schemas/Inventory"
+            },
+            "type": "array",
+            "title": "Inventory"
+          },
+          "volumes": {
+            "items": {
+              "$ref": "#/components/schemas/Volume"
+            },
+            "type": "array",
+            "title": "Volumes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "config",
+          "inventory",
+          "volumes"
+        ],
+        "title": "CacheStatus"
+      },
       "Candidate": {
         "properties": {
           "platform": {
@@ -3074,6 +3164,59 @@
           "label"
         ],
         "title": "Candidate"
+      },
+      "Cleanup": {
+        "properties": {
+          "finished_at": {
+            "type": "number",
+            "title": "Finished At"
+          },
+          "before_bytes": {
+            "type": "integer",
+            "title": "Before Bytes"
+          },
+          "after_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Bytes"
+          },
+          "target_bytes": {
+            "type": "integer",
+            "title": "Target Bytes"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "target",
+              "exhausted",
+              "error"
+            ],
+            "title": "Outcome"
+          },
+          "removals": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Evictions"
+            },
+            "type": "object",
+            "title": "Removals"
+          }
+        },
+        "type": "object",
+        "required": [
+          "finished_at",
+          "before_bytes",
+          "after_bytes",
+          "target_bytes",
+          "outcome",
+          "removals"
+        ],
+        "title": "Cleanup"
       },
       "Create": {
         "properties": {
@@ -3206,6 +3349,43 @@
         },
         "type": "object",
         "title": "Edit"
+      },
+      "Evictions": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "min_idle_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Idle Days"
+          },
+          "min_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "min_idle_days",
+          "min_score"
+        ],
+        "title": "Evictions"
       },
       "FaceEdit": {
         "properties": {
@@ -3693,6 +3873,39 @@
         },
         "type": "object",
         "title": "ImportInput"
+      },
+      "Inventory": {
+        "properties": {
+          "folder": {
+            "type": "string",
+            "title": "Folder"
+          },
+          "present": {
+            "type": "integer",
+            "title": "Present"
+          },
+          "evicted": {
+            "type": "integer",
+            "title": "Evicted"
+          },
+          "missing": {
+            "type": "integer",
+            "title": "Missing"
+          },
+          "unknown": {
+            "type": "integer",
+            "title": "Unknown"
+          }
+        },
+        "type": "object",
+        "required": [
+          "folder",
+          "present",
+          "evicted",
+          "missing",
+          "unknown"
+        ],
+        "title": "Inventory"
       },
       "Login": {
         "properties": {
@@ -4521,6 +4734,45 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "Volume": {
+        "properties": {
+          "folders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Folders"
+          },
+          "free_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Bytes"
+          },
+          "last_cleanup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cleanup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "folders",
+          "free_bytes",
+          "last_cleanup"
+        ],
+        "title": "Volume"
       }
     }
   }
