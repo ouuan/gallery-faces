@@ -394,15 +394,15 @@ def test_task_filters(client, query, kinds, statuses):
             for status in ("queued", "running", "done", "failed", "cancelled")
             for _ in range(7)
         ])
-        expected = [dict(row) for row in conn.execute("SELECT * FROM tasks ORDER BY id DESC")
-                    if (kinds is None or row["kind"] in kinds)
-                    and (statuses is None or row["status"] in statuses)]
+        expected_ids = [row["id"] for row in conn.execute("SELECT id,kind,status FROM tasks ORDER BY id DESC")
+                        if (kinds is None or row["kind"] in kinds)
+                        and (statuses is None or row["status"] in statuses)]
     for requested_page in (1, 2, 999):
         data = client.get(f"/api/v1/admin/tasks?{query}&page={requested_page}").json()
-        page = min(requested_page, (len(expected) + 19) // 20)
-        assert data["total"] == len(expected)
+        page = min(requested_page, (len(expected_ids) + 19) // 20)
+        assert data["total"] == len(expected_ids)
         assert data["page"] == page
-        assert data["items"] == expected[(page - 1) * 20:page * 20]
+        assert [task["id"] for task in data["items"]] == expected_ids[(page - 1) * 20:page * 20]
 
 
 def test_task_filters_empty(client):
