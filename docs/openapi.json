@@ -2837,6 +2837,34 @@
         ],
         "title": "Account"
       },
+      "Activity": {
+        "properties": {
+          "folder": {
+            "type": "string",
+            "title": "Folder"
+          },
+          "hits": {
+            "type": "integer",
+            "title": "Hits"
+          },
+          "misses": {
+            "type": "integer",
+            "title": "Misses"
+          },
+          "recoveries": {
+            "type": "integer",
+            "title": "Recoveries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "folder",
+          "hits",
+          "misses",
+          "recoveries"
+        ],
+        "title": "Activity"
+      },
       "Batch": {
         "properties": {
           "ids": {
@@ -3122,6 +3150,13 @@
             "type": "array",
             "title": "Inventory"
           },
+          "activity_24h": {
+            "items": {
+              "$ref": "#/components/schemas/Activity"
+            },
+            "type": "array",
+            "title": "Activity 24H"
+          },
           "volumes": {
             "items": {
               "$ref": "#/components/schemas/Volume"
@@ -3134,6 +3169,7 @@
         "required": [
           "config",
           "inventory",
+          "activity_24h",
           "volumes"
         ],
         "title": "CacheStatus"

@@ -948,6 +948,17 @@ export interface components {
             /** Username */
             username: string;
         };
+        /** Activity */
+        Activity: {
+            /** Folder */
+            folder: string;
+            /** Hits */
+            hits: number;
+            /** Misses */
+            misses: number;
+            /** Recoveries */
+            recoveries: number;
+        };
         /** Batch */
         Batch: {
             /** Ids */
@@ -1041,6 +1052,8 @@ export interface components {
             config: components["schemas"]["CacheConfig"] | null;
             /** Inventory */
             inventory: components["schemas"]["Inventory"][];
+            /** Activity 24H */
+            activity_24h: components["schemas"]["Activity"][];
             /** Volumes */
             volumes: components["schemas"]["Volume"][];
         };

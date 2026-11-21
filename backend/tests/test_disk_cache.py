@@ -178,6 +178,32 @@ def test_admin_cache_inventory_and_cleanup_history(client, tmp_path, monkeypatch
     assert client.get(endpoint).status_code == 401
 
 
+def test_cache_activity_counts_reads_and_successful_writes(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(importer, 'IMPORT', tmp_path)
+    row, _ = photo(tmp_path)
+    endpoint = '/api/v1/admin/media-cache'
+    empty = [dict(folder=folder, hits=0, misses=0, recoveries=0) for folder in ('images', 'originals')]
+    assert client.get(endpoint).json()['activity_24h'] == empty
+    evict(row, 'image')
+    evict(row, 'original')
+    for variant in ('image', 'image', 'original', 'thumbnail'):
+        with cache.asset(row, variant):
+            pass
+    cache.asset_path(row, 'original').unlink()
+    with pytest.raises(FileNotFoundError), cache.asset(row, 'original'):
+        pass
+    db.init()
+    assert client.get(endpoint).json()['activity_24h'] == [dict(folder='images', hits=1, misses=1, recoveries=1),
+                                                          dict(folder='originals', hits=1, misses=1, recoveries=1)]
+    later = time.time() + cache.DAY
+    monkeypatch.setattr(time, 'time', lambda: later)
+    assert cache_status.status()['activity_24h'] == empty
+    with cache.asset(row, 'image'):
+        pass
+    with db.connect() as conn:
+        assert conn.execute('SELECT count(*) FROM media_cache_activity').fetchone()[0] == 1
+
+
 def test_cache_status_distinguishes_volumes_and_unreadable_files(client, tmp_path, monkeypatch):
     photo(tmp_path)
     monkeypatch.setattr(cache, 'device', lambda path: 2 if path.name == 'originals' else 1)
@@ -372,10 +398,14 @@ def test_timeout_leaves_recovery_running(client, tmp_path, monkeypatch):
         with pytest.raises(cache.Unavailable), cache.asset(row, 'image', timeout=0.01):
             pass
         assert started.wait(5)
+        stats = cache_status.status()['activity_24h'][0]
+        assert stats == dict(folder='images', hits=0, misses=1, recoveries=0)
     finally:
         finish.set()
     with cache.asset(row, 'image', timeout=5):
         assert path.exists()
+    stats = cache_status.status()['activity_24h'][0]
+    assert stats['hits'] + stats['misses'] == 2 and stats['recoveries'] == 1
 
 
 def test_original_wait_timeout_falls_back_without_counting(client, tmp_path, monkeypatch):

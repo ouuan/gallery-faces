@@ -19,7 +19,7 @@ from pathlib import Path
 from PIL import Image, ImageOps
 
 from . import db as storage
-from .cache_status import Cleanup, Evictions, record
+from .cache_status import Cleanup, Evictions, count_activity, record
 from .security import download_url
 
 FOLDERS = {'image': 'images', 'original': 'originals'}
@@ -157,6 +157,8 @@ def publish(row, variant, before, *, temporary=None, digest=None, original_stamp
         else:
             db.execute('UPDATE images SET image_evicted=0,image_used=?,image_sha256=? WHERE id=?',
                        (time.time(), digest, row['id']))
+        if temporary is not None:
+            count_activity(db, time.time(), variant, recoveries=1)
 
 
 def install_original(row, source, before):
@@ -325,14 +327,31 @@ def request_recovery(identifier, variant, timeout):
         raise Unavailable('Media recovery storage unavailable') from error
 
 
+def record_access(row, variant, *, hit, touch=False):
+    now = time.time()
+    try:
+        with storage.connect(wait=False) as db:
+            db.execute('PRAGMA busy_timeout=25')
+            count_activity(db, now, variant, hits=int(hit), misses=int(not hit))
+            if touch and now - (row[variant + '_used'] or 0) >= 1:
+                db.execute(f'UPDATE images SET {variant}_used=max(coalesce({variant}_used,0),?) WHERE id=? AND hidden=0', (now, row['id']))
+    except sqlite3.Error as error:
+        if getattr(error, 'sqlite_errorcode', 0) & 255 not in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+            logger.warning('Cannot record media access for %s: %s', row['id'], error)
+
+
 @contextmanager
 def asset(row, variant, *, timeout=None, descriptor=False, recover_missing=True):
     identifier = row['id']
     until = None if timeout is None else time.monotonic() + timeout
+    missed = False
     while True:
         with storage.connect() as db:
             row = active(db, identifier)
         path = storage.DATA / 'thumbs' / row['filename'] if variant == 'thumbnail' else asset_path(row, variant)
+        if variant != 'thumbnail' and not missed and (path is None or row[variant + '_evicted']):
+            record_access(row, variant, hit=False)
+            missed = True
         if path is None:
             raise FileNotFoundError(identifier)
         local_display = variant == 'image' and row['image_evicted'] and (not recover_missing or row['original_lost'])
@@ -346,6 +365,9 @@ def asset(row, variant, *, timeout=None, descriptor=False, recover_missing=True)
         try:
             handle = path.open('rb')
         except FileNotFoundError:
+            if variant != 'thumbnail' and not missed:
+                record_access(row, variant, hit=False)
+                missed = True
             if local_display:
                 raise
             with storage.connect() as db:
@@ -369,14 +391,8 @@ def asset(row, variant, *, timeout=None, descriptor=False, recover_missing=True)
                     publish(row, 'image', before, digest=row['image_sha256'])
                 except StaleRecovery:
                     continue
-            now = time.time()
-            if variant != 'thumbnail' and now - (row[variant + '_used'] or 0) >= 1:
-                try:
-                    with storage.connect(wait=False) as db:
-                        db.execute(f'UPDATE images SET {variant}_used=max(coalesce({variant}_used,0),?) WHERE id=? AND hidden=0', (now, identifier))
-                except sqlite3.Error as error:
-                    if getattr(error, 'sqlite_errorcode', 0) & 255 not in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
-                        logger.warning('Cannot record media access for %s: %s', identifier, error)
+            if variant != 'thumbnail' and not missed:
+                record_access(row, variant, hit=True, touch=True)
             yield Path('/dev/fd') / str(handle.fileno()) if descriptor else path
             return
 

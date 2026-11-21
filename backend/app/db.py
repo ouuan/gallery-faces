@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS pending_deduplications(image_id INTEGER PRIMARY KEY R
 CREATE TABLE IF NOT EXISTS feedback(id INTEGER PRIMARY KEY AUTOINCREMENT, image_id INTEGER NOT NULL REFERENCES images ON DELETE CASCADE, content TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','resolved')), created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')), resolved_at TEXT);
 CREATE INDEX IF NOT EXISTS feedback_image_status ON feedback(image_id,status,id);
 CREATE TABLE IF NOT EXISTS private_config(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS media_cache_activity(minute INTEGER NOT NULL, variant TEXT NOT NULL, hits INTEGER NOT NULL, misses INTEGER NOT NULL, recoveries INTEGER NOT NULL, PRIMARY KEY(minute,variant));
+CREATE TRIGGER IF NOT EXISTS expire_media_cache_activity AFTER INSERT ON media_cache_activity BEGIN
+    DELETE FROM media_cache_activity WHERE minute <= NEW.minute - 1440;
+END;
 CREATE TABLE IF NOT EXISTS feedback_submissions(ip_hash TEXT NOT NULL, submitted_at REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS feedback_submission_ip ON feedback_submissions(ip_hash,submitted_at);
 CREATE INDEX IF NOT EXISTS feedback_submission_time ON feedback_submissions(submitted_at);

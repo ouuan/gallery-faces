@@ -9,6 +9,8 @@ const status = ref<components["schemas"]["CacheStatus"] | null>(null);
 const loading = ref(false);
 const error = ref("");
 const number = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 });
+const percent = new Intl.NumberFormat("zh-CN", { style: "percent", maximumFractionDigits: 1 });
+const hitRate = (hits: number, misses: number) => hits + misses ? percent.format(hits / (hits + misses)) : "暂无读取";
 const size = (bytes: number | null) => bytes === null ? "未知" : `${number.format(bytes / 2 ** 30)} GiB`;
 const date = (seconds: number) => dateLabel(new Date(seconds * 1000).toISOString());
 const label = (folder: string) => folder === "images" ? "展示图" : "原图";
@@ -38,6 +40,10 @@ onMounted(refresh);
       <p v-if="!status.config">尚未收到 worker 的缓存配置。</p>
       <p v-else-if="status.config.low_bytes === null">自动清理未启用。</p>
       <p v-else>自动清理已启用：每块盘低于 <strong>{{ size(status.config.low_bytes) }}</strong> 时开始，清至 <strong>{{ size(status.config.target_bytes) }}</strong> 可用空间。</p>
+      <table><caption>源站缓存读取（最近 24 小时）</caption>
+        <thead><tr><th scope="col">类型</th><th scope="col">命中率</th><th scope="col">命中</th><th scope="col">未命中</th><th scope="col">成功恢复</th></tr></thead>
+        <tbody><tr v-for="item in status.activity_24h" :key="item.folder"><th scope="row">{{ label(item.folder) }}</th><td>{{ hitRate(item.hits, item.misses) }}</td><td>{{ number.format(item.hits) }}</td><td>{{ number.format(item.misses) }}</td><td>{{ number.format(item.recoveries) }}</td></tr></tbody>
+      </table>
       <table><caption>当前文件数（不含回收站）</caption>
         <thead><tr><th scope="col">类型</th><th scope="col">在盘</th><th scope="col">已淘汰</th><th scope="col">已丢失</th><th scope="col">缺失</th><th v-if="status.inventory?.some(item => item.unknown)" scope="col">未核实</th></tr></thead>
         <tbody><tr v-for="item in status.inventory" :key="item.folder"><th scope="row">{{ label(item.folder) }}</th><td>{{ number.format(item.present) }}</td><td>{{ number.format(item.evicted) }}</td><td>{{ item.folder === 'originals' ? number.format(item.lost) : '—' }}</td><td>{{ number.format(item.missing) }}</td><td v-if="status.inventory.some(row => row.unknown)">{{ number.format(item.unknown) }}</td></tr></tbody>

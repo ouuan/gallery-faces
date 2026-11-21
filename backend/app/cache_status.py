@@ -21,6 +21,13 @@ class Inventory(TypedDict):
     unknown: int
 
 
+class Activity(TypedDict):
+    folder: str
+    hits: int
+    misses: int
+    recoveries: int
+
+
 class Evictions(TypedDict):
     count: int
     min_idle_days: float | None
@@ -45,6 +52,7 @@ class Volume(TypedDict):
 class CacheStatus(TypedDict):
     config: CacheConfig | None
     inventory: list[Inventory]
+    activity_24h: list[Activity]
     volumes: list[Volume]
 
 
@@ -58,14 +66,26 @@ def report_config(limits):
     record('config', CacheConfig(reported_at=time.time(), low_bytes=low, target_bytes=target))
 
 
+def count_activity(db, now, variant, *, hits=0, misses=0, recoveries=0):
+    db.execute('''INSERT INTO media_cache_activity(minute,variant,hits,misses,recoveries) VALUES(?,?,?,?,?)
+                  ON CONFLICT(minute,variant) DO UPDATE SET hits=hits+excluded.hits, misses=misses+excluded.misses,
+                  recoveries=recoveries+excluded.recoveries''', (int(now // 60), variant, hits, misses, recoveries))
+
+
 def status() -> CacheStatus:
     from .media_cache import FOLDERS, device, free_bytes
     inventory = []
+    activity = []
     volumes = {}
     with storage.connect() as db:
         db.execute('BEGIN')
         reports = {key: json.loads(value) for key, value in db.execute("SELECT key,value FROM private_config WHERE key GLOB 'media-cache:*'")}
+        minute = int(time.time() // 60)
         for variant, folder in FOLDERS.items():
+            hits, misses, recoveries = db.execute('''SELECT coalesce(sum(hits),0), coalesce(sum(misses),0), coalesce(sum(recoveries),0)
+                                                     FROM media_cache_activity WHERE minute BETWEEN ? AND ? AND variant=?''',
+                                                  (minute - 1439, minute, variant)).fetchone()
+            activity.append(Activity(folder=folder, hits=hits, misses=misses, recoveries=recoveries))
             try:
                 with os.scandir(storage.DATA / folder) as entries:
                     names = {entry.name for entry in entries if entry.is_file()}
@@ -91,4 +111,4 @@ def status() -> CacheStatus:
                 remaining = None
             volumes[volume] = Volume(folders=[], free_bytes=remaining, last_cleanup=reports.get(f'media-cache:volume:{volume}'))
         volumes[volume]['folders'].append(folder)
-    return CacheStatus(config=reports.get('media-cache:config'), inventory=inventory, volumes=list(volumes.values()))
+    return CacheStatus(config=reports.get('media-cache:config'), inventory=inventory, activity_24h=activity, volumes=list(volumes.values()))
