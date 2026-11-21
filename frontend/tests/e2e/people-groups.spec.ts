@@ -36,8 +36,9 @@ test("people groups expand independently and load avatars only for visible membe
   await friends.press("Space");
   await expect(shared).toHaveCount(1);
   await expect(page.locator("#people-group-1")).toHaveCount(0);
-  await page.getByRole("button", { name: "分组", exact: true }).click();
-  await page.getByRole("button", { name: "人物", exact: true }).click();
+  await page.getByRole("button", { name: "分组", exact: true }).press("Enter");
+  await expect(page.getByRole("button", { name: "分组", pressed: true, exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "人物", exact: true }).press("Space");
   await expect(friends).toHaveAttribute("aria-expanded", "false");
   await expect(colleagues).toHaveAttribute("aria-expanded", "true");
   await ungrouped.click();

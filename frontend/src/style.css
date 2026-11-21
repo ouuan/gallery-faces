@@ -783,21 +783,6 @@ td:first-child {
 .person-row p {
   font-size: 13px;
 }
-.tabs {
-  display: flex;
-  gap: 20px;
-}
-.tabs button {
-  border: 0;
-  border-bottom: 2px solid transparent;
-  min-height: 44px;
-  background: none;
-  color: var(--muted);
-}
-.tabs .active {
-  color: var(--accent);
-  border-color: var(--accent);
-}
 .form-dialog {
   width: min(560px, calc(100vw - 32px));
   max-height: 90dvh;

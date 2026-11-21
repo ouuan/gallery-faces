@@ -12,6 +12,8 @@ import {
   NSelect,
   NModal,
   NTag,
+  NTabs,
+  NTabPane,
   NAlert,
   NCheckbox,
   useMessage,
@@ -259,20 +261,13 @@ onMounted(() => window.addEventListener("beforeunload", beforeUnload));
 onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
 </script>
 <template>
-  <div class="section-heading">
-    <div class="tabs">
-      <button :class="{ active: tab === 'people' }" @click="tab = 'people'">
-        人物</button
-      ><button :class="{ active: tab === 'groups' }" @click="tab = 'groups'">
-        分组
-      </button>
-    </div>
-    <n-button type="primary" @click="open()"
-      ><template #icon><Plus /></template>添加人物</n-button
-    >
-  </div>
-  <template v-if="tab === 'people'"
-    ><div v-if="!store.people.length" class="empty-state">
+  <n-tabs v-model:value="tab" type="line">
+    <template #suffix>
+      <n-button type="primary" @click="open()"><template #icon><Plus /></template>添加人物</n-button>
+    </template>
+    <n-tab-pane name="people">
+      <template #tab><button type="button" class="people-tab" :aria-pressed="tab === 'people'">人物</button></template>
+      <div v-if="!store.people.length" class="empty-state">
       <UserRound :size="40" />
       <h2>建立你的人物库</h2>
       <p>先添加姓名，再选择参考人脸。有效参考图会用于匹配未知人物</p>
@@ -312,9 +307,11 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
           </div>
         </div>
       </n-collapse-item>
-    </n-collapse></template
-  ><template v-else
-    ><p v-if="!store.groups.length" class="empty-state">
+    </n-collapse>
+    </n-tab-pane>
+    <n-tab-pane name="groups">
+      <template #tab><button type="button" class="people-tab" :aria-pressed="tab === 'groups'">分组</button></template>
+      <p v-if="!store.groups.length" class="empty-state">
       暂无分组。可在人物编辑中直接新建
     </p>
     <div v-for="g in store.groups" :key="g.id" class="person-row">
@@ -335,8 +332,9 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
         "
         >编辑成员</n-button
       ><n-button @click="removeGroup(g)">删除</n-button>
-    </div></template
-  >
+    </div>
+    </n-tab-pane>
+  </n-tabs>
   <n-modal :show="editing" @update:show="!$event && close()"
     ><div
       class="form-dialog"
@@ -554,6 +552,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
 </template>
 
 <style scoped>
+.people-tab { border: 0; padding: 0; color: inherit; background: none; font: inherit; }
 .group-toggle {
   display: flex;
   align-items: center;
