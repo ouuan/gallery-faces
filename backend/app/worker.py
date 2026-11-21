@@ -438,14 +438,17 @@ def claim(kinds=("detect", "rematch", "import", "download", "restore", "monitor"
         if task['kind'] in DOWNLOAD_KINDS:
             task['rounds'] += 1
             task['_deadline'] = time.monotonic() + ROUND_SECONDS
-            db.execute("""UPDATE tasks SET status='running',rounds=?,finished_at=NULL,stage='下载并导入',speed=0,
+            db.execute("""UPDATE tasks SET status='running',rounds=?,round_started_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                runtime_seconds=CASE WHEN rounds=0 OR stage='等待重试' THEN 0 ELSE runtime_seconds END,
+                started_at=CASE WHEN rounds=0 OR stage='等待重试' THEN strftime('%Y-%m-%dT%H:%M:%SZ','now') ELSE started_at END,
+                finished_at=NULL,stage='下载并导入',speed=0,
                 done=CASE WHEN rounds=0 THEN 0 ELSE done END,total=0,
                 result=CASE WHEN rounds=0 OR result='{}' THEN ? ELSE result END WHERE id=?""",
                        (task['rounds'], json.dumps(EMPTY_RESULT), task['id']))
             task['_progress'] = RoundProgress.read(db, task['id'])
             return task
         db.execute(
-            "UPDATE tasks SET status='running',finished_at=NULL,stage=?,done=0,speed=0,total=CASE WHEN kind='detect' THEN 1 ELSE 0 END WHERE id=?",
+            "UPDATE tasks SET status='running',runtime_seconds=CASE WHEN started_at IS NULL THEN 0 ELSE runtime_seconds END,started_at=coalesce(started_at,strftime('%Y-%m-%dT%H:%M:%SZ','now')),finished_at=NULL,stage=?,done=0,speed=0,total=CASE WHEN kind='detect' THEN 1 ELSE 0 END WHERE id=?",
             ("检测人脸" if task["kind"] == "detect" else "开始处理", task["id"]),
         )
         return task
@@ -600,6 +603,7 @@ def cleanup_asset_temporaries():
 
 def recover_tasks():
     with connect(True) as db:
+        db.execute("UPDATE tasks SET runtime_seconds=NULL WHERE status='running'")
         for row in db.execute("SELECT id FROM tasks WHERE kind IN ('download','monitor') AND status='running' AND cancel_requested=0").fetchall():
             requeue_round(db, row['id'])
         db.execute(

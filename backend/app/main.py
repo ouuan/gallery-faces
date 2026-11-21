@@ -1960,7 +1960,10 @@ def tasks(
         items = [
             dict(r)
             for r in db.execute(
-                "SELECT * FROM tasks" + where + " ORDER BY id DESC LIMIT ? OFFSET ?",
+                """SELECT *,runtime_seconds + CASE WHEN status='running' THEN
+                    max(0,unixepoch()-unixepoch(coalesce(round_started_at,started_at))) ELSE 0 END AS elapsed_seconds,
+                    CASE WHEN status='running' THEN max(0,unixepoch()-unixepoch(round_started_at)) END AS round_seconds
+                    FROM tasks""" + where + " ORDER BY id DESC LIMIT ? OFFSET ?",
                 [*params, page_size, (page - 1) * page_size],
             )
         ]
@@ -1998,7 +2001,7 @@ def task_action(
             ):
                 fail("该图片已有同类活动任务", 409)
             db.execute(
-                "UPDATE tasks SET status='queued',finished_at=NULL,stage='等待重试',error=NULL,cancel_requested=0,stalled_rounds=0,done=CASE WHEN kind='download' THEN done ELSE 0 END,total=0,speed=0,queue_rank_at=unixepoch()+CASE WHEN rounds>0 THEN ? ELSE 0 END WHERE id=?",
+                "UPDATE tasks SET status='queued',started_at=NULL,round_started_at=NULL,runtime_seconds=NULL,finished_at=NULL,stage='等待重试',error=NULL,cancel_requested=0,stalled_rounds=0,done=CASE WHEN kind='download' THEN done ELSE 0 END,total=0,speed=0,queue_rank_at=unixepoch()+CASE WHEN rounds>0 THEN ? ELSE 0 END WHERE id=?",
                 (ROUND_SECONDS, task_id),
             )
         else:

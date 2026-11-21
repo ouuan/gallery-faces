@@ -148,9 +148,15 @@ def init():
             DELETE FROM download_cursors WHERE task_id=NEW.id;
             DELETE FROM download_item_errors WHERE task_id=NEW.id;
             DELETE FROM download_items WHERE task_id=NEW.id AND (NEW.status='done' OR NEW.kind='monitor'); END''')
-        for column in ("finished_at",):
+        for column in ("started_at", "round_started_at", "finished_at"):
             if column not in task_columns:
                 db.execute(f"ALTER TABLE tasks ADD COLUMN {column} TEXT")
+        if 'runtime_seconds' not in task_columns:
+            db.execute('ALTER TABLE tasks ADD COLUMN runtime_seconds INTEGER')
+        db.execute('''CREATE TRIGGER IF NOT EXISTS task_runtime AFTER UPDATE OF status ON tasks
+            WHEN OLD.status='running' AND NEW.status!='running' AND OLD.runtime_seconds IS NOT NULL BEGIN
+            UPDATE tasks SET runtime_seconds=OLD.runtime_seconds + max(0,unixepoch()-unixepoch(coalesce(OLD.round_started_at,OLD.started_at)))
+            WHERE id=NEW.id; END''')
         if "author_name" not in {row[1] for row in db.execute("PRAGMA table_info(posts)")}:
             db.execute("ALTER TABLE posts ADD COLUMN author_name TEXT")
         db.execute("CREATE INDEX IF NOT EXISTS post_publisher ON posts(platform,lower(author),author_name) WHERE author IS NOT NULL AND TRIM(author) <> ''")

@@ -4,6 +4,7 @@ import MediaCacheStatus from "./MediaCacheStatus.vue";
 import LocalDateTime from "./LocalDateTime.vue";
 import LoadingOverlay from "./LoadingOverlay.vue";
 import ListPagination from "./ListPagination.vue";
+import TaskTable, { taskKindLabels, taskStatusLabels, type TaskRecord } from "./TaskTable.vue";
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useLatestRequest } from "./use-latest-request";
 import { useRouter, useRoute } from "vue-router";
@@ -19,13 +20,13 @@ import {
   useMessage,
 } from "naive-ui";
 import { Download, Users, ScanFace, Copy, Settings, LogOut } from "@lucide/vue";
-import { api, send, dateLabel, platformLabel } from "./api";
+import { api, send, platformLabel } from "./api";
 import { useLibrary } from "./store";
 import { usePageTitle } from "./page-title";
 import PublisherSelect from "./PublisherSelect.vue";
 import { usePublisherSelection, mergeImportUrls } from "./publisher-selection";
 import Monitors from "./Monitors.vue";
-import HashtagField, { splitHashtags, formatHashtags } from "./HashtagField.vue";
+import HashtagField, { splitHashtags } from "./HashtagField.vue";
 import People from "./People.vue";
 import Review from "./Review.vue";
 import DuplicateReview from "./DuplicateReview.vue";
@@ -50,7 +51,7 @@ const route = useRoute(),
   hashtags = ref(""),
   directory = ref<string | null>(null),
   directories = ref<string[]>([]),
-  tasks = ref<any[]>([]),
+  tasks = ref<TaskRecord[]>([]),
   taskPage = ref(1),
   taskTotal = ref(0),
   tasksLoading = ref(false),
@@ -74,13 +75,6 @@ const vThresholdLabels = {
 const section = computed(() => String(route.params.section || "import"));
 const taskKinds = ref<string[]>(route.query.kind ? [String(route.query.kind)] : []);
 const taskStatuses = ref<string[]>([]);
-const taskKindLabels: Record<string, string> = {
-  monitor: "发布者监控", download: "链接下载", import: "目录导入", detect: "人脸检测", rematch: "人物匹配", restore: "图片恢复",
-};
-const taskStatusLabels = {
-  queued: "排队中", running: "执行中", done: "已完成", failed: "失败", cancelled: "已取消",
-};
-const taskFinishLabels: Record<string, string> = { done: "完成时间", failed: "失败时间", cancelled: "取消时间" };
 const taskKindOptions = Object.entries(taskKindLabels).map(([value, label]) => ({ value, label }));
 const taskStatusOptions = Object.entries(taskStatusLabels).map(([value, label]) => ({ value, label }));
 const hasTaskFilters = computed(() => taskKinds.value.length > 0 || taskStatuses.value.length > 0);
@@ -110,7 +104,7 @@ async function loadTasks(page = taskPage.value, background = false) {
   taskStatuses.value.forEach((status) => query.append("status", status));
   try {
     const data = await api<{
-      items: any[];
+      items: (Omit<TaskRecord, 'payload' | 'result'> & { payload: string; result?: string })[];
       total: number;
       page: number;
     }>(`/admin/tasks?${query}`, { signal });
@@ -397,77 +391,7 @@ onUnmounted(() => {
             <p>创建任务后，可在这里查看进度、取消或重试</p>
           </template>
         </div>
-        <div v-if="tasks.length" class="table-scroll" :aria-busy="tasksLoading">
-          <table class="task-table">
-            <thead>
-              <tr>
-                <th>任务</th>
-                <th>阶段</th>
-                <th>进度</th>
-                <th>速度</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="task in tasks" :key="task.id">
-                <td>
-                  <strong
-                    >#{{ task.id }}
-                    {{
-                      taskKindLabels[task.kind]
-                    }}</strong
-                  >
-                  <p class="task-target">
-                    {{
-                      task.payload.url ||
-                      task.payload.directory ||
-                      (task.image_id ? "图片 #" + task.image_id : "")
-                    }}
-                  </p>
-                  <p v-if="task.payload.hashtags?.length" class="task-target hint">{{ formatHashtags(task.payload.hashtags) }}</p>
-                  <div v-if="['download', 'monitor'].includes(task.kind) && (task.payload.start || task.payload.end)" class="task-dates hint">
-                    <span>下载范围：<template v-if="task.payload.start && !task.payload.end">自 </template><time v-if="task.payload.start" :datetime="task.payload.start">{{ dateLabel(task.payload.start) }}</time><template v-else>截至 </template><template v-if="task.payload.start && task.payload.end"> 至 </template><template v-if="task.payload.end"><time :datetime="task.payload.end">{{ dateLabel(task.payload.end) }}</time>（不含）</template><template v-else> 起</template></span>
-                  </div>
-                  <div v-if="task.created_at || task.finished_at" class="task-dates hint">
-                    <span v-if="task.created_at">创建时间：<time :datetime="task.created_at">{{ dateLabel(task.created_at) }}</time></span>
-                    <span v-if="task.finished_at && taskFinishLabels[task.status]">{{ taskFinishLabels[task.status] }}：<time :datetime="task.finished_at">{{ dateLabel(task.finished_at) }}</time></span>
-                  </div>
-                  <p v-if="task.result && ('imported' in task.result)" class="hint">新入库 {{ task.result.imported }} 张 · 跳过已收录 {{ task.result.skipped_existing }} 张 · 跳过回收站 {{ task.result.skipped_trashed }} 张</p>
-                  <p v-if="task.error" class="error-text">{{ task.error }}</p>
-                </td>
-                <td>
-                  {{ task.stage }}
-                  <span v-if="task.rounds && ['download', 'monitor'].includes(task.kind)" class="hint"> · 第 {{ task.rounds }} 轮</span>
-                  <p class="hint">{{ task.status }}</p>
-                </td>
-                <td class="task-metric">
-                  {{ task.done }} / {{ task.total || "—" }}
-                  {{ task.kind === "rematch" ? "个人脸" : "张" }}
-                </td>
-                <td class="task-metric">
-                  <template v-if="task.speed > 0 && task.status !== 'queued'">
-                    {{ task.speed < 0.1 ? "<0.1" : task.speed.toFixed(1) }}
-                    {{ task.kind === "rematch" ? "个人脸/秒" : "张/秒" }}
-                  </template>
-                  <template v-else>—</template>
-                </td>
-                <td>
-                  <n-button
-                    v-if="['queued', 'running'].includes(task.status)"
-                    :disabled="tasksLoading"
-                    @click="taskAction(task.id, 'cancel')"
-                    >取消</n-button
-                  ><n-button
-                    v-if="['failed', 'cancelled'].includes(task.status)"
-                    :disabled="tasksLoading"
-                    @click="taskAction(task.id, 'retry')"
-                    >重试</n-button
-                  >
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <TaskTable v-if="tasks.length" :tasks="tasks" :loading="tasksLoading" @action="taskAction" />
         <nav
           v-if="taskTotal > 0"
           class="task-pagination"
@@ -620,26 +544,12 @@ onUnmounted(() => {
 }
 @media (max-width: 640px) {
   .task-filters {
-    flex-direction: column;
-    align-items: stretch;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
   }
-}
-.task-table {
-  min-width: 640px;
-}
-.task-dates {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-  margin-top: 4px;
-  font-variant-numeric: tabular-nums;
-}
-.task-dates time {
-  white-space: nowrap;
-}
-.task-metric {
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
+  .task-filters > button { grid-column: 1 / -1; justify-self: end; }
 }
 .task-pagination {
   display: flex;
