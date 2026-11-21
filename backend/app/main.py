@@ -705,6 +705,24 @@ def publisher_condition(publishers):
     return '(' + ' OR '.join(clauses) + ')', args
 
 
+PeopleMatch = Literal["any", "all", "exact"]
+
+
+def people_condition(image_id, people_ids, match: PeopleMatch):
+    marks = ",".join("?" for _ in people_ids)
+    faces = f"FROM faces f WHERE f.image_id={image_id} AND f.ignored=0"
+    selected = f"f.person_id IN ({marks})"
+    if match == "exact":
+        return (
+            f"EXISTS(SELECT count(*) {faces} HAVING count(DISTINCT f.person_id)=? "
+            f"AND count(DISTINCT f.person_id) FILTER (WHERE {selected})=?)",
+            [len(people_ids), *people_ids, len(people_ids)],
+        )
+    if match == "all":
+        return f"(SELECT count(DISTINCT f.person_id) {faces} AND {selected})=?", [*people_ids, len(people_ids)]
+    return f"EXISTS(SELECT 1 {faces} AND {selected})", people_ids
+
+
 def source_conditions(people_ids, match, publishers, start, end, include_no_faces):
     # Source filters share one post row; identity filters use the public representative.
     conditions = [
@@ -727,18 +745,9 @@ def source_conditions(people_ids, match, publishers, start, end, include_no_face
         args.extend(publisher_args)
     eligible = f"m.id={representative_sql('i.group_id', public=True)}"
     if people_ids:
-        marks = ",".join("?" for _ in people_ids)
-        if match == "all":
-            conditions.append(
-                f"EXISTS(SELECT 1 FROM images m WHERE {eligible} AND (SELECT count(DISTINCT person_id) FROM faces f WHERE f.image_id=m.id AND f.ignored=0 AND f.person_id IN ({marks}))=?)"
-            )
-            args.extend(people_ids)
-            args.append(len(people_ids))
-        else:
-            conditions.append(
-                f"EXISTS(SELECT 1 FROM images m JOIN faces f ON f.image_id=m.id WHERE {eligible} AND f.ignored=0 AND f.person_id IN ({marks}))"
-            )
-            args.extend(people_ids)
+        clause, people_args = people_condition("m.id", people_ids, match)
+        conditions.append(f"EXISTS(SELECT 1 FROM images m WHERE {eligible} AND {clause})")
+        args.extend(people_args)
     if not include_no_faces:
         conditions.append(
             f"EXISTS(SELECT 1 FROM images m JOIN faces f ON f.image_id=m.id WHERE {eligible} AND f.ignored=0)"
@@ -896,7 +905,7 @@ def post_identity(platform, url):
 
 
 @app.get('/api/v1/posts', response_model=PostPage)
-def posts(people: str = '', match: Literal['any', 'all'] = 'any', publishers: str = '',
+def posts(people: str = '', match: PeopleMatch = 'any', publishers: str = '',
           start: str = '', end: str = '', include_no_faces: bool = False,
           sort: Literal['newest', 'oldest'] = 'newest', cursor: str = '',
           limit: int = Query(default=20, ge=1, le=100)):
@@ -936,7 +945,7 @@ def posts(people: str = '', match: Literal['any', 'all'] = 'any', publishers: st
 @app.get("/api/v1/gallery", response_model=GalleryPage)
 def gallery(
     people: str = "",
-    match: Literal["any", "all"] = "any",
+    match: PeopleMatch = "any",
     publishers: str = "",
     start: str = "",
     end: str = "",
@@ -1491,7 +1500,7 @@ class ReviewPage(BaseModel):
 def admin_images(
     state: str = "review", image_id: int | None = None,
     start: str = "", end: str = "", people: str = "",
-    match: Literal["any", "all"] = "any", publishers: str = "",
+    match: PeopleMatch = "any", publishers: str = "",
     page: int | None = Query(None, ge=1, description="Request a page instead of the legacy list."),
     page_size: int = Query(50, ge=1, le=100), _: None = Depends(admin)
 ):
@@ -1538,14 +1547,9 @@ def admin_images(
                 params.extend(publisher_args)
             condition = f"({condition}) AND EXISTS(SELECT 1 FROM images m JOIN sources s ON s.image_id=m.id JOIN posts p ON p.id=s.post_id WHERE {' AND '.join(source_conditions)})"
         if ids:
-            marks = ",".join("?" for _ in ids)
-            if match == "all":
-                condition = f"({condition}) AND (SELECT count(DISTINCT person_id) FROM faces f WHERE f.image_id=i.id AND f.ignored=0 AND f.person_id IN ({marks}))=?"
-                params.extend(ids)
-                params.append(len(ids))
-            else:
-                condition = f"({condition}) AND EXISTS(SELECT 1 FROM faces f WHERE f.image_id=i.id AND f.ignored=0 AND f.person_id IN ({marks}))"
-                params.extend(ids)
+            clause, people_args = people_condition("i.id", ids, match)
+            condition = f"({condition}) AND {clause}"
+            params.extend(people_args)
         order = "i.group_id" if grouped else "i.id"
         matching = " FROM images i WHERE " + condition
         limit, offset = 500, 0

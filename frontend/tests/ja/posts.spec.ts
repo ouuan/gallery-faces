@@ -31,20 +31,23 @@ for (const width of [320, 390, 768, 1280, 1440]) {
     }
     if (width <= 900) await page.getByRole('button',{name:'絞り込み',exact:true}).click();
     const filters = page.locator('.filters:visible');
-    await expect(filters.getByText('全員が同じ写真に写っている', {exact:true})).toBeVisible();
+    const modes = filters.getByRole('radiogroup', {name:'人物の絞り込み条件'});
+    const buttons = modes.locator('.n-radio-button');
+    await expect(buttons).toHaveText(['いずれか', '全員', '選んだ人だけ']);
+    expect(await buttons.evaluateAll(elements => new Set(elements.map(el => el.getBoundingClientRect().top)).size)).toBe(1);
     expect(await filters.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
     const dates = filters.getByLabel('開始日時', {exact:true});
     await expect(dates).not.toHaveValue('');
     const label = await filters.locator('.date-field').first().boundingBox();
     const date = await dates.boundingBox();
     expect(date!.x).toBeGreaterThanOrEqual(label!.x + 28);
-    await filters.getByText('全員が同じ写真に写っている', {exact:true}).click();
-    await expect(filters.getByRole('radio', {name:'全員が同じ写真に写っている'})).toBeChecked();
+    await modes.getByText('選んだ人だけ', {exact:true}).click();
+    await expect(modes.getByRole('radio', {name:'選んだ人だけ'})).toBeChecked();
     await page.locator('.people-cascader:visible .n-base-selection').last().click();
     await expect(page.getByText('グループ',{exact:true}).last()).toBeVisible();
     await page.locator('.people-cascader:visible .n-base-selection').last().click();
     if (width <= 900) await page.getByRole('button',{name:'絞り込みを適用',exact:true}).click();
-    await expect(page).toHaveURL(/match=all/);
+    await expect(page).toHaveURL(/match=exact/);
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.screenshot({path:`/tmp/gallery-faces/ja-${width}.png`,fullPage:true});
     await page.getByLabel('テーマ', { exact: true }).click();

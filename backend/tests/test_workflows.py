@@ -539,6 +539,34 @@ def test_source_filters_and_all_same_image(client):
     assert detail["sources"][0]["post_text"] == "hello\nworld 🐈"
 
 
+def test_exact_people_match_across_gallery_posts_and_review(client):
+    with db.connect(True) as conn:
+        conn.execute("INSERT INTO people(id,name) VALUES(1,'A'),(2,'B'),(3,'C')")
+        def photo(people):
+            image_id = image(conn, faces=False)
+            conn.executemany("INSERT INTO faces(image_id,box,person_id) VALUES(?,'[0,0,20,20]',?)",
+                             [(image_id, person) for person in people])
+            return image_id
+
+        pair = photo([1, 2])
+        with_unknown = photo([1, 2, 2, None])
+        conn.execute("INSERT INTO faces(image_id,box,person_id,ignored) VALUES(?,'[0,0,20,20]',3,1)", (with_unknown,))
+        extra = photo([1, 2, 3])
+        photo([1, 3])
+        photo([1, None])
+        photo([None])
+
+    for mode, expected in [("exact", {pair, with_unknown}), ("all", {pair, with_unknown, extra})]:
+        params = {"people": "1,2", "match": mode}
+        gallery = client.get("/api/v1/gallery", params=params).json()
+        assert gallery["total"] == len(expected)
+        assert {item["image_id"] for item in gallery["items"]} == expected
+        posts = client.get("/api/v1/posts", params=params).json()
+        assert {item["embed_id"] for item in posts["items"]} == {str(identifier) for identifier in expected}
+        review = client.get("/api/v1/admin/images", params={**params, "state": "all"}).json()
+        assert {item["id"] for item in review} == expected
+
+
 def test_queue_dedup_preserves_position_and_manual_decisions(client, monkeypatch):
     with db.connect(True) as conn:
         i = image(conn)

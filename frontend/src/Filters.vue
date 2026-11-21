@@ -6,7 +6,6 @@ import {
   NCheckbox,
   NRadioGroup,
   NRadioButton,
-  NRadio,
 } from "naive-ui";
 import { useLibrary } from "./store";
 import { hasFilters, type Filter } from "./filters";
@@ -53,19 +52,16 @@ function set(key: keyof Filter, value: any) {
         {{ ja ? `${modelValue.people.length}人を選択中` : `已选 ${modelValue.people.length} 位人物` }}
       </p>
       <n-radio-group
-        :class="{ 'person-match-ja': ja }"
+        role="radiogroup"
         :aria-label="t('人物匹配方式')"
-        v-if="modelValue.people.length > 1"
+        v-if="modelValue.people.length > 1 || (modelValue.people.length && modelValue.match === 'exact')"
         :value="modelValue.match"
         @update:value="set('match', $event)"
-        ><template v-if="ja">
-          <n-radio value="any">{{ t("任一人物") }}</n-radio>
-          <n-radio value="all">{{ t("全部同框") }}</n-radio>
-        </template><template v-else>
-          <n-radio-button value="any">{{ t("任一人物") }}</n-radio-button>
-          <n-radio-button value="all">{{ t("全部同框") }}</n-radio-button>
-        </template></n-radio-group
       >
+        <n-radio-button value="any">{{ t("任一") }}</n-radio-button>
+        <n-radio-button value="all">{{ t("全部") }}</n-radio-button>
+        <n-radio-button value="exact">{{ t("仅所选") }}</n-radio-button>
+      </n-radio-group>
     </fieldset>
     <fieldset>
       <legend>{{ t("发布者") }}</legend>
@@ -93,7 +89,5 @@ function set(key: keyof Filter, value: any) {
 .filters-ja .filter-clear { position: static; transform: none; flex-shrink: 0; }
 .filters-ja .field-label.date-field { grid-template-columns: 2em minmax(0, 1fr); gap: 8px; }
 .filters-ja .hint { overflow-wrap: anywhere; }
-.person-match-ja { display: flex; flex-direction: column; }
-.person-match-ja :deep(.n-radio) { min-height: 44px; align-items: center; margin: 0; }
-.person-match-ja :deep(.n-radio__label) { white-space: normal; }
+.filters :deep(.n-radio-button) { padding-inline: 10px; }
 </style>

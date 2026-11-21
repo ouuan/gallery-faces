@@ -2298,7 +2298,7 @@ export interface operations {
         parameters: {
             query?: {
                 people?: string;
-                match?: "any" | "all";
+                match?: "any" | "all" | "exact";
                 publishers?: string;
                 start?: string;
                 end?: string;
@@ -2337,7 +2337,7 @@ export interface operations {
         parameters: {
             query?: {
                 people?: string;
-                match?: "any" | "all";
+                match?: "any" | "all" | "exact";
                 publishers?: string;
                 start?: string;
                 end?: string;
@@ -2774,7 +2774,7 @@ export interface operations {
                 start?: string;
                 end?: string;
                 people?: string;
-                match?: "any" | "all";
+                match?: "any" | "all" | "exact";
                 publishers?: string;
                 /** @description Request a page instead of the legacy list. */
                 page?: number | null;

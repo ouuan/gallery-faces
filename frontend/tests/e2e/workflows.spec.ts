@@ -611,9 +611,15 @@ test("people cascader groups, shared members, search and mobile apply", async ({
     .poll(() => new URL(page.url()).searchParams.get("people"))
     .toBe("2,4");
   await page.getByRole("heading", { name: "照片库", exact: true }).click();
-  await page.getByText("全部同框", { exact: true }).click();
+  const modes = page.locator('.desktop-filters [aria-label="人物匹配方式"]');
+  await expect(modes.locator(".n-radio-button")).toHaveText(["任一", "全部", "仅所选"]);
+  await modes.getByText("全部", { exact: true }).click();
   await expect(page).toHaveURL(/match=all/);
+  const exact = modes.getByRole("radio", { name: "仅所选" });
+  await modes.getByText("仅所选", { exact: true }).click();
+  await expect(page).toHaveURL(/match=exact/);
   await page.reload();
+  await expect(exact).toBeChecked();
   await expect(picker).toContainText("朋友甲");
   await expect(picker).toContainText("未分组");
   await expect(picker.locator(".n-tag")).toHaveText(["朋友甲", "未分组"]);
