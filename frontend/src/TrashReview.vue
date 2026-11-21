@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ListPagination from "./ListPagination.vue";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { NAlert, NButton, NCheckbox, NSelect, useMessage } from "naive-ui";
 import { api, send, dateLabel, platformLabel, type Source } from "./api";
@@ -143,7 +144,9 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
       </div>
     </div>
   </div>
-  <nav v-if="total > 50" class="trash-actions trash-pagination" aria-label="回收站分页"><n-button :disabled="loading || busy || page <= 1" @click="changePage(page - 1)">上一页</n-button><span>{{ page }} / {{ pages }}</span><n-button :disabled="loading || busy || page >= pages" @click="changePage(page + 1)">下一页</n-button></nav>
+  <nav v-if="total > 50" class="trash-actions trash-pagination" aria-label="回收站分页">
+    <ListPagination :page="page" :page-count="pages" :disabled="loading || busy" @change="changePage" />
+  </nav>
 </template>
 
 <style scoped>

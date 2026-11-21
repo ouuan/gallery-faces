@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import LocalDateTime from "./LocalDateTime.vue";
 import LoadingOverlay from "./LoadingOverlay.vue";
+import ListPagination from "./ListPagination.vue";
 import Filters from "./Filters.vue";
 import { emptyFilter, fromQuery, toQuery, hasFilters } from "./filters";
 import TrashReview from "./TrashReview.vue";
@@ -638,9 +639,8 @@ onMounted(load);
   </div>
   <div v-if="images.length && !error" class="review-workspace">
     <nav v-if="state !== 'image' && pageCount > 1" class="review-navigation review-pagination" aria-label="审核分页">
-      <n-button :disabled="navigationDisabled || page <= 1" @click="changePage(page - 1)">上一页</n-button>
-      <span class="muted">第 {{ page }} / {{ pageCount }} 页 · 共 {{ total }} 组</span>
-      <n-button :disabled="navigationDisabled || page >= pageCount" @click="changePage(page + 1)">下一页</n-button>
+      <span class="muted">共 {{ total }} 组</span>
+      <ListPagination :page="page" :page-count="pageCount" :disabled="navigationDisabled" @change="changePage" />
     </nav>
     <div :key="page" ref="thumbnailStrip" class="review-strip">
       <div

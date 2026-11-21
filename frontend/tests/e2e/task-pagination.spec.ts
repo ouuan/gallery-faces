@@ -45,12 +45,13 @@ test("task pages preserve selection when polling and retrying, and reset after i
   const pagination = page.getByRole("navigation", { name: "任务记录分页" });
   const previous = pagination.getByRole("button", { name: "上一页" });
   const next = pagination.getByRole("button", { name: "下一页" });
+  const currentPage = pagination.locator('[aria-current="page"]');
   await expect(rows).toHaveCount(20);
   await expect(rows.first()).toContainText("#45");
   await expect(previous).toBeDisabled();
-  await next.click();
+  await pagination.getByRole("button", { name: "第 2 页" }).press("Enter");
   await expect(rows.first()).toContainText("#25");
-  await expect(pagination).toContainText("第 2 / 3 页");
+  await expect(currentPage).toHaveText("2");
 
   const beforePoll = requestedPages.length;
   await page.clock.fastForward(3000);
@@ -58,12 +59,12 @@ test("task pages preserve selection when polling and retrying, and reset after i
   expect(requestedPages.at(-1)).toBe(2);
   await rows.first().getByRole("button", { name: "重试" }).click();
   await expect(rows.first().getByRole("button", { name: "取消" })).toBeVisible();
-  await expect(pagination).toContainText("第 2 / 3 页");
+  await expect(currentPage).toHaveText("2");
 
   failNext = true;
   await next.click();
   await expect(page.getByText("测试网络错误")).toBeVisible();
-  await expect(pagination).toContainText("第 2 / 3 页");
+  await expect(currentPage).toHaveText("2");
   await page.getByRole("button", { name: "重新加载" }).click();
   await expect(rows).toHaveCount(5);
   await expect(rows.first()).toContainText("#5");
@@ -81,11 +82,11 @@ test("task pages preserve selection when polling and retrying, and reset after i
   await page.clock.runFor(500);
   await page.screenshot({ path: "/tmp/gallery-faces/tasks-dark.png", animations: "disabled" });
   await previous.click();
-  await expect(pagination).toContainText("第 2 / 3 页");
+  await expect(currentPage).toHaveText("2");
   await page.locator(".import-form textarea").fill("https://x.com/test/status/1");
   await page.getByRole("button", { name: "创建导入任务" }).click();
   await expect(rows.first()).toContainText("#46");
-  await expect(pagination).toContainText("第 1 / 3 页");
+  await expect(currentPage).toHaveText("1");
   await expect(pagination).toContainText("共 46 条");
 });
 

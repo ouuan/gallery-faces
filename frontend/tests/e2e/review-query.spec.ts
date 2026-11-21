@@ -57,7 +57,8 @@ test("pages through filtered groups, scopes selection and restores the last avai
   await expect(page.getByText("已选 50 张")).toBeVisible();
   await nav.getByRole("button", { name: "下一页" }).click();
   await expect(page).toHaveURL(/page=2.*image=51/);
-  await expect(nav).toContainText("第 2 / 2 页 · 共 51 组");
+  await expect(nav.getByRole("button", { name: "第 2 页" })).toHaveAttribute("aria-current", "page");
+  await expect(nav).toContainText("共 51 组");
   await expect(page.getByText(/已选 \d+ 张/)).toHaveCount(0);
   await expect(nav.getByRole("button", { name: "下一页" })).toBeDisabled();
   await page.reload();

@@ -41,6 +41,7 @@ test("task filters combine multiple values and survive polling, actions, errors 
   await page.goto("/admin/import");
   const rows = page.locator(".task-table tbody tr");
   const pagination = page.getByRole("navigation", { name: "任务记录分页" });
+  const currentPage = pagination.locator('[aria-current="page"]');
   const select = async (name: string, label: string) => {
     await page.getByRole("group", { name, exact: true }).click();
     await page.locator(".n-base-select-option").filter({ hasText: label }).click();
@@ -48,9 +49,9 @@ test("task filters combine multiple values and survive polling, actions, errors 
   };
   await expect(rows).toHaveCount(20);
   await pagination.getByRole("button", { name: "下一页" }).click();
-  await expect(pagination).toContainText("第 2");
+  await expect(currentPage).toHaveText("2");
   await select("任务类型", "目录导入");
-  await expect(pagination).toContainText("第 1");
+  await expect(currentPage).toHaveText("1");
   await select("任务类型", "链接下载");
   await select("任务状态", "失败");
   await select("任务状态", "排队中");
@@ -72,11 +73,11 @@ test("task filters combine multiple values and survive polling, actions, errors 
   await pagination.getByRole("button", { name: "下一页" }).click();
   await expect(page.getByText("测试网络错误")).toBeVisible();
   await page.getByRole("button", { name: "重新加载" }).click();
-  await expect(pagination).toContainText("第 2");
+  await expect(currentPage).toHaveText("2");
   expect(queries.at(-1)!.getAll("status")).toEqual(["failed"]);
   await page.locator(".import-form textarea").fill("https://x.com/test/status/1");
   await page.getByRole("button", { name: "创建导入任务" }).click();
-  await expect(pagination).toContainText("第 1");
+  await expect(currentPage).toHaveText("1");
   expect(queries.at(-1)!.getAll("status")).toEqual(["failed"]);
 
   for (const width of [390, 1280]) {

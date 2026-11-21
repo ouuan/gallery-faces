@@ -3,6 +3,7 @@ import OpenGraphSettings from "./OpenGraphSettings.vue";
 import MediaCacheStatus from "./MediaCacheStatus.vue";
 import LocalDateTime from "./LocalDateTime.vue";
 import LoadingOverlay from "./LoadingOverlay.vue";
+import ListPagination from "./ListPagination.vue";
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useLatestRequest } from "./use-latest-request";
 import { useRouter, useRoute } from "vue-router";
@@ -472,19 +473,7 @@ onUnmounted(() => {
           aria-label="任务记录分页"
         >
           <span class="muted">共 {{ taskTotal }} 条 · 每页 {{ taskPageSize }} 条</span>
-          <div class="task-page-controls">
-            <n-button
-              :disabled="tasksLoading || taskPage <= 1"
-              @click="loadTasks(taskPage - 1)"
-              >上一页</n-button
-            >
-            <span aria-live="polite">第 {{ taskPage }} / {{ taskPageCount }} 页</span>
-            <n-button
-              :disabled="tasksLoading || taskPage >= taskPageCount"
-              @click="loadTasks(taskPage + 1)"
-              >下一页</n-button
-            >
-          </div>
+          <ListPagination :page="taskPage" :page-count="taskPageCount" :disabled="tasksLoading" @change="loadTasks" />
         </nav></div></template
       ><People v-else-if="section === 'people'" /><Review
         v-else-if="section === 'review'"
@@ -651,14 +640,11 @@ onUnmounted(() => {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.task-pagination,
-.task-page-controls {
+.task-pagination {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-}
-.task-pagination {
   justify-content: space-between;
   margin-top: 20px;
   font-variant-numeric: tabular-nums;
