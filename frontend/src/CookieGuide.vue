@@ -1,28 +1,18 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { NButton, NModal } from "naive-ui";
-import { X } from "@lucide/vue";
 
 const show = ref(false);
+const title = "Cookie 导出指南";
 </script>
 
 <template>
   <button class="text-button" aria-haspopup="dialog" @click="show = true">
-    Cookie 导出指南
+    {{ title }}
   </button>
-  <n-modal v-model:show="show">
-    <div
-      class="form-dialog cookie-guide"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="cookie-guide-title"
-    >
-      <header class="guide-header">
-        <h2 id="cookie-guide-title">Cookie 导出指南</h2>
-        <n-button quaternary aria-label="关闭导出指南" @click="show = false">
-          <template #icon><X :size="20" /></template>
-        </n-button>
-      </header>
+  <n-modal v-model:show="show" preset="card" style="width: min(560px, calc(100vw - 32px)); max-height: 90dvh" closable close-focusable
+    :title="title" :aria-label="title" :bordered="false" :segmented="{ footer: true }"
+    :content-style="{ minHeight: 0, overflowY: 'auto' }" :footer-style="{ textAlign: 'right' }">
       <div class="guide-content">
         <p class="muted guide-intro">
           在已登录平台的浏览器中导出文件，再上传到这里。浏览器可以与图库运行在不同设备上。
@@ -108,35 +98,15 @@ const show = ref(false);
           Cookie 包含登录凭据，请像密码一样保管，只上传到自己信任的图库，勿分享或提交到代码仓库
         </p>
       </div>
-      <footer class="guide-footer">
+      <template #footer>
         <n-button @click="show = false">关闭指南</n-button>
-      </footer>
-    </div>
+      </template>
   </n-modal>
 </template>
 
 <style scoped>
-.cookie-guide {
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  overflow: hidden;
-}
-.guide-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 20px 12px 24px;
-}
-.guide-header h2 {
-  margin: 0;
-}
 .guide-content {
-  min-height: 0;
-  overflow-y: auto;
   overflow-wrap: anywhere;
-  padding: 0 24px;
 }
 .guide-intro {
   margin-top: 0;
@@ -171,11 +141,5 @@ const show = ref(false);
   border-top: 1px solid var(--line);
   padding-top: 16px;
   margin: 0 0 16px;
-}
-.guide-footer {
-  display: flex;
-  justify-content: flex-end;
-  border-top: 1px solid var(--line);
-  padding: 12px 24px;
 }
 </style>
