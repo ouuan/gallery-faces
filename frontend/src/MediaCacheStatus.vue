@@ -40,6 +40,7 @@ onMounted(refresh);
       <p v-if="!status.config">尚未收到 worker 的缓存配置。</p>
       <p v-else-if="status.config.low_bytes === null">自动清理未启用。</p>
       <p v-else>自动清理已启用：每块盘低于 <strong>{{ size(status.config.low_bytes) }}</strong> 时开始，清至 <strong>{{ size(status.config.target_bytes) }}</strong> 可用空间。</p>
+      <p v-if="status.config">近期使用保护：<strong>{{ status.config.min_idle_seconds == null ? '未上报' : status.config.min_idle_seconds === 0 ? '已关闭（0 小时）' : `${status.config.min_idle_seconds / 3600} 小时` }}</strong></p>
       <table><caption>源站缓存读取（最近 24 小时）</caption>
         <thead><tr><th scope="col">类型</th><th scope="col">命中率</th><th scope="col">命中</th><th scope="col">未命中</th><th scope="col">成功恢复</th></tr></thead>
         <tbody><tr v-for="item in status.activity_24h" :key="item.folder"><th scope="row">{{ label(item.folder) }}</th><td>{{ hitRate(item.hits, item.misses) }}</td><td>{{ number.format(item.hits) }}</td><td>{{ number.format(item.misses) }}</td><td>{{ number.format(item.recoveries) }}</td></tr></tbody>
@@ -60,7 +61,7 @@ onMounted(refresh);
         </template>
         <p v-else class="hint">暂无清理记录。</p>
       </div>
-      <details><summary>淘汰规则</summary><p>闲置不足 24 小时的文件不淘汰。展示图按闲置天数 × 4 评分；原图按闲置天数 × 0.25 至 1 评分，发布日期越近，权重越低。同盘优先淘汰高分文件。</p><p>最短闲置天数和最低分分别取自当次实际淘汰的文件，不是固定配置。</p></details>
+      <details><summary>淘汰规则</summary><p>文件闲置达到保护时长后才可淘汰。展示图按闲置天数 × 4 评分；原图按闲置天数 × 0.25 至 1 评分，发布日期越近，权重越低。同盘优先淘汰高分文件。</p><p>最短闲置天数和最低分分别取自当次实际淘汰的文件，不是固定配置。</p></details>
     </template>
   </section>
 </template>

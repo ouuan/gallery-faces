@@ -30,7 +30,8 @@ def photo(tmp_path, number=1, color='red'):
 
 def evict(row, variant):
     path = cache.asset_path(row, variant)
-    cache.evict(row['id'], variant, path.stat().st_dev, time.time())
+    now = time.time()
+    cache.evict(row['id'], variant, path.stat().st_dev, now, now - cache.DAY)
     return path
 
 
@@ -112,7 +113,7 @@ def test_cleanup_skips_inaccessible_candidate(client, tmp_path, monkeypatch):
         return real_open(candidate, *args, **kwargs)
     monkeypatch.setattr(type(blocked), 'open', deny)
     monkeypatch.setattr(cache, 'free_bytes', lambda root: 1 if available.exists() else 10)
-    cache.clean(5, 10)
+    cache.clean(5, 10, cache.DAY)
     assert blocked.exists() and not available.exists()
 
 
@@ -147,12 +148,15 @@ def test_admin_cache_inventory_and_cleanup_history(client, tmp_path, monkeypatch
     with db.connect(True) as conn:
         conn.execute('UPDATE images SET image_used=?,original_used=?', (now - 7 * cache.DAY, now))
     assert client.get(endpoint).json()['config'] is None
-    cache_status.report_config((5, 10))
+    cache_status.record('config', dict(reported_at=now, low_bytes=5, target_bytes=10))
+    assert 'min_idle_seconds' not in client.get(endpoint).json()['config']
+    cache_status.report_config((5, 10), 1800)
     path = cache.asset_path(row, 'image')
     monkeypatch.setattr(cache, 'free_bytes', lambda root: 4 if path.exists() else 12)
-    cache.clean(5, 10)
+    cache.clean(5, 10, cache.DAY)
     result = client.get(endpoint).json()
     assert result['config']['low_bytes'] == 5 and result['config']['target_bytes'] == 10
+    assert result['config']['min_idle_seconds'] == 1800
     volume, = result['volumes']
     assert volume['folders'] == ['data', 'images', 'originals'] and volume['free_bytes'] == 12
     history = volume['last_cleanup']
@@ -162,13 +166,14 @@ def test_admin_cache_inventory_and_cleanup_history(client, tmp_path, monkeypatch
     assert history['removals']['originals'] == dict(count=0, min_score=None, min_idle_days=None)
     assert result['inventory'][0] == dict(folder='images', present=0, evicted=1, lost=0, missing=0, unknown=0)
     assert not path.exists()
-    cache.clean(5, 10)
+    cache.clean(5, 10, cache.DAY)
     with cache.asset(row, 'image'):
         pass
     cache.asset_path(row, 'original').unlink()
-    cache_status.report_config(None)
+    cache_status.report_config(None, 0)
     result = client.get(endpoint).json()
     assert result['config']['low_bytes'] is None
+    assert result['config']['min_idle_seconds'] == 0
     assert result['volumes'][0]['last_cleanup'] == history
     assert result['inventory'][0]['present'] == result['inventory'][1]['missing'] == 1
     with db.connect(True) as conn:
@@ -210,7 +215,7 @@ def test_cache_status_distinguishes_volumes_and_unreadable_files(client, tmp_pat
     monkeypatch.setattr(cache, 'free_bytes', lambda path: 1 if path.name == 'originals' else 100)
     with db.connect(True) as conn:
         conn.execute('UPDATE images SET original_used=?', (time.time(),))
-    cache.clean(5, 10)
+    cache.clean(5, 10, cache.DAY)
     (db.DATA / 'images').rename(db.DATA / 'offline')
     result = client.get('/api/v1/admin/media-cache').json()
     assert result['inventory'][0]['unknown'] == 1
@@ -235,7 +240,7 @@ def test_filesystem_local_watermarks(client, tmp_path, monkeypatch, layout, low_
 
     monkeypatch.setattr(cache, 'device', device)
     monkeypatch.setattr(cache, 'free_bytes', lambda root: 1 if device(root) == low_disk and all(path.exists() for path in paths.values()) else 10)
-    cache.clean(5, 10)
+    cache.clean(5, 10, cache.DAY)
     assert {variant for variant, path in paths.items() if not path.exists()} == ({removed} if removed else set())
     assert (db.DATA / 'thumbs' / row['filename']).exists()
 
@@ -270,15 +275,42 @@ def test_publication_and_legacy_access_time(client, tmp_path):
         conn.execute('UPDATE posts SET published_at=NULL')
     original = cache.asset_path(row, 'original')
     os.utime(original, (used, used))
-    assert cache.candidates(['original'], now)[0][0] == 7
+    assert cache.candidates(['original'], now, now - cache.DAY)[0][0] == 7
     with db.connect(True) as conn:
         conn.execute("UPDATE posts SET published_at=datetime(?, 'unixepoch')", (now - 40 * cache.DAY,))
-    assert cache.candidates(['original'], now)[0][0] == 28
+    assert cache.candidates(['original'], now, now - cache.DAY)[0][0] == 28
     assert cache.cold_score('image', now - 7 * cache.DAY, now, now) == 28
     with db.connect(True) as conn:
         post = conn.execute("INSERT INTO posts(platform,post_key,published_at) VALUES('x','new',datetime(?,'unixepoch'))", (now + 100,)).lastrowid
         conn.execute("INSERT INTO sources(image_id,post_id,media_key) VALUES(?,?,'1')", (row['id'], post))
-    assert cache.candidates(['original'], now)[0][0] == 7
+    assert cache.candidates(['original'], now, now - cache.DAY)[0][0] == 7
+
+
+@pytest.mark.parametrize('hours,seconds', [(None, cache.DAY), ('0', 0), ('0.5', 1800), ('48', 172800)])
+def test_min_idle_cutoff(client, tmp_path, monkeypatch, hours, seconds):
+    if hours is None:
+        monkeypatch.delenv('MEDIA_CACHE_MIN_IDLE_HOURS', raising=False)
+    else:
+        monkeypatch.setenv('MEDIA_CACHE_MIN_IDLE_HOURS', hours)
+    now = time.time()
+    row, _ = photo(tmp_path)
+    cutoff = now - seconds
+    with db.connect(True) as conn:
+        conn.execute('UPDATE images SET image_used=?, original_used=?', (cutoff, cutoff + 1))
+    monkeypatch.setattr(time, 'time', lambda: now)
+    monkeypatch.setattr(cache, 'free_bytes', lambda root: 1)
+    cache.clean(5, 10, cache.min_idle_seconds())
+    assert not cache.asset_path(row, 'image').exists()
+    original = cache.asset_path(row, 'original')
+    cache.evict(row['id'], 'original', original.stat().st_dev, now, cutoff)
+    assert original.exists()
+
+
+@pytest.mark.parametrize('value', ['-1', 'invalid', 'nan', 'inf', '1e308'])
+def test_invalid_min_idle_hours(monkeypatch, value):
+    monkeypatch.setenv('MEDIA_CACHE_MIN_IDLE_HOURS', value)
+    with pytest.raises(ValueError, match='MEDIA_CACHE_MIN_IDLE_HOURS'):
+        cache.min_idle_seconds()
 
 
 def test_evicted_image_urls_and_local_dedup(client, tmp_path, monkeypatch):

@@ -19,7 +19,7 @@ def test_invalid_idle_timeout_fails_before_dispatch(monkeypatch, value):
     monkeypatch.setenv("WORKER_CONCURRENCY", "1")
     monkeypatch.setenv("WORKER_IDLE_TIMEOUT_SECONDS", value)
     with pytest.raises(ValueError, match="WORKER_IDLE_TIMEOUT_SECONDS"):
-        worker.run_worker(None)
+        worker.run_worker(None, None, 0)
 
 
 @pytest.mark.parametrize("kind", ["detect", "rematch", "import", "download"])
@@ -70,7 +70,7 @@ def test_idle_release_and_resume(monkeypatch, kind, timeout, arrival):
     monkeypatch.setattr(worker, "claim", claim)
     monkeypatch.setattr(worker, "cleanup_deleted_files", lambda: None)
     monkeypatch.setattr(worker, "release_idle_memory", lambda: releases.append(clock.now))
-    worker.run_worker(Stop())
+    worker.run_worker(Stop(), None, 0)
     assert claimed == [kind]
     expected = [300, 1301] if arrival == 601 else [1301]
     assert releases == (expected if timeout == "300" else [])
@@ -85,7 +85,7 @@ def test_shutdown_skips_idle_release(monkeypatch):
     monkeypatch.setattr(worker, "claim", lambda _: stop.set())
     monkeypatch.setattr(worker, "cleanup_deleted_files", lambda: None)
     monkeypatch.setattr(worker, "release_idle_memory", lambda: pytest.fail("released during shutdown"))
-    worker.run_worker(stop)
+    worker.run_worker(stop, None, 0)
 
 
 @pytest.fixture(autouse=True)

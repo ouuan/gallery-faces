@@ -1046,6 +1046,8 @@ export interface components {
             low_bytes: number | null;
             /** Target Bytes */
             target_bytes: number | null;
+            /** Min Idle Seconds */
+            min_idle_seconds?: number;
         };
         /** CacheStatus */
         CacheStatus: {

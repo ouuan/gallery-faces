@@ -78,6 +78,17 @@ def watermarks():
     raise ValueError('MEDIA_CACHE_LOW_FREE_GIB and MEDIA_CACHE_TARGET_FREE_GIB must satisfy 0 < low < target')
 
 
+def min_idle_seconds():
+    value = os.getenv('MEDIA_CACHE_MIN_IDLE_HOURS') or '24'
+    try:
+        seconds = float(value) * 3600
+        if math.isfinite(seconds) and seconds >= 0:
+            return seconds
+    except ValueError:
+        pass
+    raise ValueError('MEDIA_CACHE_MIN_IDLE_HOURS must be a finite non-negative number')
+
+
 def asset_path(row, variant):
     name = row['filename' if variant == 'image' else 'original_filename']
     if not name or '/' in name or name in ('.', '..'):
@@ -411,7 +422,7 @@ def cold_score(variant, used, published, now):
     return idle * (4 if variant == 'image' else 0.25 + 0.75 * min(published_days / 30, 1))
 
 
-def candidates(variants, now):
+def candidates(variants, now, cutoff):
     with storage.connect() as db:
         rows = db.execute('''SELECT i.*, coalesce((SELECT max(unixepoch(p.published_at)) FROM sources s
             JOIN posts p ON p.id=s.post_id WHERE s.image_id=i.id), unixepoch(i.created_at), ?) AS published
@@ -429,7 +440,7 @@ def candidates(variants, now):
             except PermissionError as error:
                 logger.warning('Skipping inaccessible cache file %s: %s', path, error)
                 continue
-            if used <= now - DAY and path.is_file():
+            if used <= cutoff and path.is_file():
                 result.append((cold_score(variant, used, row['published'], now), row['id'], variant))
     return sorted(result, reverse=True)
 
@@ -467,7 +478,7 @@ def eviction_proof(db, row, variant, path):
             return EvictionSource(path=source, signature=before, relative=relative)
 
 
-def evict(identifier, variant, volume, now):
+def evict(identifier, variant, volume, now, cutoff):
     with stripe_lock(identifier % 256) as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -495,7 +506,7 @@ def evict(identifier, variant, volume, now):
                 return (asset_path(latest, variant) == path and latest['original_filename'] == row['original_filename']
                         and latest['sha256'] == row['sha256'] and latest['image_sha256'] == row['image_sha256']
                         and not (variant == 'image' and latest['original_failures'])
-                        and (latest[variant + '_used'] or info.st_mtime) <= now - DAY
+                        and (latest[variant + '_used'] or info.st_mtime) <= cutoff
                         and not path.is_symlink() and stamp(path) == before and os.path.samestat(path.stat(), info)
                         and device(path.parent) == volume and proof.registered(db, latest))
             with storage.connect(True) as db:
@@ -511,7 +522,7 @@ def evict(identifier, variant, volume, now):
                 return (now - (row[variant + '_used'] or info.st_mtime)) / DAY
 
 
-def clean(low, target):
+def clean(low, target, min_idle):
     volumes = {}
     for variant, folder in [*FOLDERS.items(), (None, '.')]:
         path = storage.DATA / folder
@@ -530,15 +541,16 @@ def clean(low, target):
             if before >= low:
                 continue
             now = time.time()
+            cutoff = now - min_idle
             report = Cleanup(finished_at=now, before_bytes=before, after_bytes=None, target_bytes=target, outcome='error',
                              removals={FOLDERS[key]: Evictions(count=0, min_idle_days=None, min_score=None) for key in variants})
-            for score, identifier, variant in candidates(variants, now) if variants else ():
+            for score, identifier, variant in candidates(variants, now, cutoff) if variants else ():
                 if device(root) != volume:
                     raise OSError('Cache mount changed')
                 if free_bytes(root) >= target:
                     break
                 try:
-                    days = evict(identifier, variant, volume, now)
+                    days = evict(identifier, variant, volume, now, cutoff)
                 except FileNotFoundError:
                     continue
                 except PermissionError as error:

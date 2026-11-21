@@ -565,9 +565,10 @@ def main():
 
     with (DATA / "worker.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        from .media_cache import watermarks
+        from .media_cache import min_idle_seconds, watermarks
         from .cache_status import report_config
-        report_config(watermarks())
+        limits, min_idle = watermarks(), min_idle_seconds()
+        report_config(limits, min_idle)
         stop = threading.Event()
         for signum in (signal.SIGTERM, signal.SIGINT):
             signal.signal(signum, lambda *_: stop.set())
@@ -575,7 +576,7 @@ def main():
         cleanup_interrupted_files()
         from .importer import recover_deduplications
         recover_deduplications(stop)
-        run_worker(stop)
+        run_worker(stop, limits, min_idle)
 
 
 def cleanup_interrupted_files():
@@ -664,9 +665,8 @@ def worker_idle_timeout():
     return int(value)
 
 
-def run_worker(stop):
-    from .media_cache import watermarks, clean
-    limits = watermarks()
+def run_worker(stop, limits, min_idle):
+    from .media_cache import clean
     next_clean = 0
     cleaning = None
     concurrency = worker_concurrency()
@@ -684,7 +684,7 @@ def run_worker(stop):
             if limits and time.monotonic() >= next_clean and (cleaning is None or cleaning.done()):
                 if cleaning is not None:
                     cleaning.result()
-                cleaning = maintenance.submit(clean, *limits)
+                cleaning = maintenance.submit(clean, *limits, min_idle)
                 next_clean = time.monotonic() + 60
             if time.monotonic() >= next_schedule:
                 from .monitors import schedule_due

@@ -3182,6 +3182,10 @@
               }
             ],
             "title": "Target Bytes"
+          },
+          "min_idle_seconds": {
+            "type": "number",
+            "title": "Min Idle Seconds"
           }
         },
         "type": "object",

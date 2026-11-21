@@ -1,7 +1,7 @@
 import json
 import os
 import time
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 from . import db as storage
 
@@ -10,6 +10,7 @@ class CacheConfig(TypedDict):
     reported_at: float
     low_bytes: int | None
     target_bytes: int | None
+    min_idle_seconds: NotRequired[float]
 
 
 class Inventory(TypedDict):
@@ -61,9 +62,9 @@ def record(key, value):
         db.execute('INSERT OR REPLACE INTO private_config VALUES(?,?)', ('media-cache:' + key, json.dumps(value)))
 
 
-def report_config(limits):
+def report_config(limits, min_idle):
     low, target = limits or (None, None)
-    record('config', CacheConfig(reported_at=time.time(), low_bytes=low, target_bytes=target))
+    record('config', CacheConfig(reported_at=time.time(), low_bytes=low, target_bytes=target, min_idle_seconds=min_idle))
 
 
 def count_activity(db, now, variant, *, hits=0, misses=0, recoveries=0):

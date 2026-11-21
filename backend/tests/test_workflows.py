@@ -1364,7 +1364,7 @@ def test_worker_parallel_slots_and_order(client, monkeypatch):
         stop.set()
     monkeypatch.setattr(worker, 'rematch', rematch)
     with ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(worker.run_worker, stop)
+        future = pool.submit(worker.run_worker, stop, limits=None, min_idle=0)
         try:
             with entered:
                 assert entered.wait_for(lambda: len(history) == 3, timeout=5)
