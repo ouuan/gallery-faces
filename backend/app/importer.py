@@ -84,46 +84,47 @@ def import_file(path, raw, start=None, end=None, *, counts=None):
     if not in_date_range(meta, start, end):
         return None
     with connect(True) as db:
-        known = source_image(db, meta)
-        if known and known["hidden"]:
-            save_source(db, known["id"], meta)
-            record_location(db, known["id"], path)
-            if counts is not None:
-                counts["skipped_trashed" if known["hidden"] else "skipped_existing"] += 1
-            return known["id"]
-        digest = file_hash(path)
-        if known and known["sha256"] != digest:
-            raise ValueError("该来源的文件已变化，不能覆盖已收录的审核记录")
-        image = db.execute("SELECT * FROM images WHERE sha256=?", (digest,)).fetchone()
-        if image and image["hidden"]:
-            save_source(db, image["id"], meta)
-            record_location(db, image["id"], path)
-            if counts is not None:
-                counts["skipped_trashed"] += 1
-            return image["id"]
-        filename, width, height, original_name = write_assets(path, digest)
-        target = DATA / "images" / filename
-        if image:
-            image_id = image["id"]
-        else:
-            group = db.execute("INSERT INTO duplicate_groups DEFAULT VALUES").lastrowid
-            image_id = db.execute(
-                "INSERT INTO images(sha256,filename,width,height,phash,group_id,file_size) VALUES(?,?,?,?,?,?,?)",
-                (digest, filename, width, height, phash(target), group, path.stat().st_size),
-            ).lastrowid
-            from .db import schedule_detection
-            schedule_detection(db, image_id)
-            db.execute("INSERT INTO pending_deduplications(image_id) VALUES(?)", (image_id,))
-        db.execute(
-            "UPDATE images SET image_evicted=0,original_evicted=0,cache_retry_at=0,original_failures=0,original_lost=0,image_used=unixepoch(),original_used=unixepoch(),image_sha256=?,thumbnail_sha256=?,original_filename=?,file_size=? WHERE id=?",
-            (file_hash(target), file_hash(DATA / "thumbs" / filename), original_name, path.stat().st_size, image_id),
-        )
-        save_source(db, image_id, meta)
-        record_location(db, image_id, path)
-        if counts is not None:
-            counts["skipped_existing" if image else "imported"] += 1
-    finish_deduplication(image_id)
+        image_id, outcome = import_media(db, path, meta)
+    if counts is not None:
+        counts[outcome] += 1
+    if outcome != 'skipped_trashed':
+        finish_deduplication(image_id)
     return image_id
+
+
+def import_media(db, path, meta):
+    known = source_image(db, meta)
+    if known and known['hidden']:
+        image = known
+    else:
+        digest = file_hash(path)
+        if known and known['sha256'] != digest:
+            raise ValueError('该来源的文件已变化，不能覆盖已收录的审核记录')
+        image = db.execute('SELECT * FROM images WHERE sha256=?', (digest,)).fetchone()
+    if image and image['hidden']:
+        save_source(db, image['id'], meta)
+        record_location(db, image['id'], path)
+        return image['id'], 'skipped_trashed'
+    filename, width, height, original_name = write_assets(path, digest)
+    target = DATA / 'images' / filename
+    if image:
+        image_id = image['id']
+    else:
+        group = db.execute('INSERT INTO duplicate_groups DEFAULT VALUES').lastrowid
+        image_id = db.execute(
+            'INSERT INTO images(sha256,filename,width,height,phash,group_id,file_size) VALUES(?,?,?,?,?,?,?)',
+            (digest, filename, width, height, phash(target), group, path.stat().st_size),
+        ).lastrowid
+        from .db import schedule_detection
+        schedule_detection(db, image_id)
+        db.execute('INSERT INTO pending_deduplications(image_id) VALUES(?)', (image_id,))
+    db.execute(
+        'UPDATE images SET image_evicted=0,original_evicted=0,cache_retry_at=0,original_failures=0,original_lost=0,image_used=unixepoch(),original_used=unixepoch(),image_sha256=?,thumbnail_sha256=?,original_filename=?,file_size=? WHERE id=?',
+        (file_hash(target), file_hash(DATA / 'thumbs' / filename), original_name, path.stat().st_size, image_id),
+    )
+    save_source(db, image_id, meta)
+    record_location(db, image_id, path)
+    return image_id, 'skipped_existing' if image else 'imported'
 
 
 def finish_deduplication(image_id):

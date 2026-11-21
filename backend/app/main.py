@@ -34,6 +34,7 @@ from .security import download_url, cookie_bytes, save_cookie
 from .importer import validate_url, safe_directory
 from .vision import MODEL_VERSION, Vision, candidates, models_ready, validate_embedding
 from .db import schedule_detection, ACTIVE_REFERENCE
+from .download_round import ROUND_SECONDS
 from .trash import require_active, require_active_face
 from .representatives import complete_source_sql, representative_sql, require_representative, require_representative_face
 from .archives import stream_zip
@@ -1976,7 +1977,7 @@ def task_action(
             fail("任务不存在", 404)
         if action == "cancel":
             db.execute(
-                "UPDATE tasks SET cancel_requested=1,finished_at=CASE WHEN status='queued' THEN strftime('%Y-%m-%dT%H:%M:%SZ','now') ELSE finished_at END,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END WHERE id=? AND status IN ('queued','running')",
+                "UPDATE tasks SET cancel_requested=1,finished_at=CASE WHEN status='queued' THEN strftime('%Y-%m-%dT%H:%M:%SZ','now') ELSE finished_at END,stage=CASE WHEN status='queued' THEN '已取消' ELSE stage END,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END WHERE id=? AND status IN ('queued','running')",
                 (task_id,),
             )
         elif row["status"] in ("failed", "cancelled"):
@@ -1997,8 +1998,8 @@ def task_action(
             ):
                 fail("该图片已有同类活动任务", 409)
             db.execute(
-                "UPDATE tasks SET status='queued',finished_at=NULL,stage='等待重试',error=NULL,cancel_requested=0,done=0,total=0,speed=0 WHERE id=?",
-                (task_id,),
+                "UPDATE tasks SET status='queued',finished_at=NULL,stage='等待重试',error=NULL,cancel_requested=0,stalled_rounds=0,done=CASE WHEN kind='download' THEN done ELSE 0 END,total=0,speed=0,queue_rank_at=unixepoch()+CASE WHEN rounds>0 THEN ? ELSE 0 END WHERE id=?",
+                (ROUND_SECONDS, task_id),
             )
         else:
             fail("只能重试失败或已取消的任务")

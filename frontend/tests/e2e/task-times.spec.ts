@@ -4,7 +4,7 @@ test.use({ timezoneId: "Asia/Shanghai" });
 
 test("task records show creation and available finish times and download bounds", async ({ page }) => {
   const items = ["done", "failed", "cancelled", "queued", "running"].map((status, i) => ({
-    id: i + 1, kind: "download", status, stage: status, done: 0, total: 1, speed: 0,
+    id: i + 1, kind: "download", status, stage: status === "queued" ? "等待下一轮" : status, rounds: i, done: 0, total: 1, speed: 0,
     payload: JSON.stringify({
       url: "https://x.com/example",
       start: i === 0 || i === 1 ? "2026-11-17T16:00:00Z" : null,
@@ -30,6 +30,7 @@ test("task records show creation and available finish times and download bounds"
   await expect(rows.nth(1)).toContainText("下载范围：自 2026/11/18 00:00:00 起");
   await expect(rows.nth(2)).toContainText("下载范围：截至 2026/11/19 00:00:00（不含）");
   await expect(rows.nth(3)).not.toContainText("下载范围");
+  await expect(rows.nth(3)).toContainText("等待下一轮 · 第 3 轮");
   await expect(rows.nth(4)).not.toContainText("下载范围");
   await expect(rows.nth(3).locator("time")).toHaveCount(1);
   await expect(rows.nth(4).locator("time")).toHaveCount(1);

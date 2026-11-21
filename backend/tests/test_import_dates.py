@@ -69,8 +69,8 @@ def test_worker_passes_date_options(client, monkeypatch):
         def poll(self): return 0
     monkeypatch.setattr(worker.subprocess, 'Popen', Process)
     result = client.post('/api/v1/admin/import', json={'urls': ['https://x.com/alice'], 'hashtags': ['#Live'], 'start': '2026-11-18T00:00:00+08:00', 'end': '2026-11-19T00:00:00+08:00'}).json()[0]
-    with db.connect() as conn:
-        task = dict(conn.execute('SELECT * FROM tasks WHERE id=?', (result['task_id'],)).fetchone())
+    task = worker.claim(('download',))
+    assert task['id'] == result['task_id']
     worker.import_task(task)
     assert captured[captured.index('--date-after') + 1] == '2026-11-17T15:59:59+00:00'
     assert captured[captured.index('--date-before') + 1] == '2026-11-18T16:00:00Z'

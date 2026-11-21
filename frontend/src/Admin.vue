@@ -437,6 +437,7 @@ onUnmounted(() => {
                 </td>
                 <td>
                   {{ task.stage }}
+                  <span v-if="task.rounds && ['download', 'monitor'].includes(task.kind)" class="hint"> · 第 {{ task.rounds }} 轮</span>
                   <p class="hint">{{ task.status }}</p>
                 </td>
                 <td class="task-metric">

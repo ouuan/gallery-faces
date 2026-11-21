@@ -115,6 +115,39 @@ def init():
             if 'name_ja' not in {row[1] for row in db.execute(f'PRAGMA table_info({table})')}:
                 db.execute(f'ALTER TABLE {table} ADD COLUMN name_ja TEXT')
         task_columns = {row[1] for row in db.execute("PRAGMA table_info(tasks)")}
+        if 'rounds' not in task_columns:
+            db.execute('ALTER TABLE tasks ADD COLUMN rounds INTEGER NOT NULL DEFAULT 0')
+        if 'queue_rank_at' not in task_columns:
+            db.execute('ALTER TABLE tasks ADD COLUMN queue_rank_at INTEGER')
+            db.execute('UPDATE tasks SET queue_rank_at=unixepoch(created_at)')
+        db.execute('''CREATE TRIGGER IF NOT EXISTS task_queue_rank AFTER INSERT ON tasks
+            WHEN NEW.queue_rank_at IS NULL BEGIN UPDATE tasks SET queue_rank_at=unixepoch() WHERE id=NEW.id; END''')
+        db.execute("CREATE INDEX IF NOT EXISTS task_queue ON tasks(queue_rank_at,rounds,id) WHERE status='queued'")
+        db.execute('CREATE TABLE IF NOT EXISTS download_cursors(task_id INTEGER PRIMARY KEY REFERENCES tasks ON DELETE CASCADE, cursor TEXT NOT NULL)')
+        db.execute('''CREATE TABLE IF NOT EXISTS download_items(task_id INTEGER REFERENCES tasks ON DELETE CASCADE,
+            platform TEXT, post_key TEXT, media TEXT, image_id INTEGER REFERENCES images,
+            PRIMARY KEY(task_id,platform,post_key,media)) WITHOUT ROWID''')
+        db.execute('''CREATE TABLE IF NOT EXISTS download_ready(task_id INTEGER PRIMARY KEY REFERENCES tasks ON DELETE CASCADE,
+            filename TEXT NOT NULL UNIQUE, meta TEXT NOT NULL)''')
+        db.execute('''CREATE TABLE IF NOT EXISTS download_parts(task_id INTEGER PRIMARY KEY REFERENCES tasks ON DELETE CASCADE,
+            media TEXT NOT NULL, filename TEXT NOT NULL UNIQUE, validator TEXT)''')
+        if 'resume_offset' not in {row[1] for row in db.execute('PRAGMA table_info(download_parts)')}:
+            db.execute('ALTER TABLE download_parts ADD COLUMN resume_offset INTEGER NOT NULL DEFAULT 0')
+        db.execute('''CREATE TABLE IF NOT EXISTS download_item_errors(task_id INTEGER REFERENCES tasks ON DELETE CASCADE,
+            platform TEXT, post_key TEXT, media TEXT, reason TEXT NOT NULL,
+            PRIMARY KEY(task_id,platform,post_key,media)) WITHOUT ROWID''')
+        if 'stalled_rounds' not in task_columns:
+            db.execute('ALTER TABLE tasks ADD COLUMN stalled_rounds INTEGER NOT NULL DEFAULT 0')
+            db.execute('DROP TRIGGER IF EXISTS download_terminal')
+            db.execute("DELETE FROM download_items WHERE task_id IN (SELECT id FROM tasks WHERE kind='monitor' AND status IN ('done','cancelled','failed'))")
+            db.execute("DELETE FROM download_cursors WHERE task_id IN (SELECT id FROM tasks WHERE rtrim(json_extract(payload,'$.url'),'/') LIKE '%/media')")
+        db.execute('''CREATE TRIGGER IF NOT EXISTS download_terminal AFTER UPDATE OF status ON tasks
+            WHEN NEW.kind IN ('download','monitor') AND NEW.status IN ('done','cancelled','failed') BEGIN
+            DELETE FROM download_ready WHERE task_id=NEW.id;
+            DELETE FROM download_parts WHERE task_id=NEW.id;
+            DELETE FROM download_cursors WHERE task_id=NEW.id;
+            DELETE FROM download_item_errors WHERE task_id=NEW.id;
+            DELETE FROM download_items WHERE task_id=NEW.id AND (NEW.status='done' OR NEW.kind='monitor'); END''')
         for column in ("finished_at",):
             if column not in task_columns:
                 db.execute(f"ALTER TABLE tasks ADD COLUMN {column} TEXT")
@@ -176,7 +209,7 @@ def init():
             WHEN OLD.platform IS NOT NEW.platform OR OLD.url IS NOT NEW.url BEGIN
             UPDATE posts SET embed_id=post_identity(NEW.platform,NEW.url) WHERE id=NEW.id; END''')
         db.execute('CREATE INDEX IF NOT EXISTS image_review_group ON images(group_id,file_size DESC,id) WHERE hidden=0')
-        db.execute('UPDATE schema_version SET version=11 WHERE version<11')
+        db.execute('UPDATE schema_version SET version=13 WHERE version<13')
         # Recover files written by a restore interrupted before its transaction
         # committed, including tasks cancelled during process recovery.
         for row in db.execute("SELECT * FROM images WHERE hidden=1").fetchall():

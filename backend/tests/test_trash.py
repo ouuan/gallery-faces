@@ -212,14 +212,13 @@ def test_migration_only_existing_hidden_members_and_idempotent(client, tmp_path,
     assert (db.DATA / "images" / rows[1]["filename"]).exists()
 
 
-def test_skip_report_updates_metadata_and_zero_files_is_success(client, tmp_path, monkeypatch):
-    identifier, _, raw = photo(tmp_path, monkeypatch)
+def test_download_skip_updates_metadata_and_zero_files_is_success(client, tmp_path, monkeypatch):
+    from app.download_round import DownloadRound
+    _, _, raw = photo(tmp_path, monkeypatch)
     def download(task, payload, attempt, restore_id=None):
-        directory = attempt / "media"
-        directory.mkdir()
         meta = importer.metadata({**raw, "content": "updated caption"}, "")
-        (attempt / "skipped.jsonl").write_text(json.dumps({"image_id": identifier, "meta": meta}) + "\n")
-        return directory
+        active = DownloadRound(task['id'], task['rounds'])
+        assert active.skip(meta) and active.skip(meta)
     monkeypatch.setattr(worker, "download_media", download)
     task_id = client.post("/api/v1/admin/import", json={"urls": ["https://x.com/alice"]}).json()[0]["task_id"]
     worker.execute(worker.claim(("download",)))

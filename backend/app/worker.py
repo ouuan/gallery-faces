@@ -23,6 +23,7 @@ from .vision import (
     release_idle_memory,
 )
 from .importer import EXTENSIONS, import_file, safe_directory
+from .download_round import KINDS as DOWNLOAD_KINDS, ROUND_SECONDS, EMPTY_RESULT, STALL_LIMIT, RoundProgress, YieldRound, cleanup_ready, item_error_summary
 
 
 def rematch(task):
@@ -199,6 +200,7 @@ def import_task(task):
 
 
 def download_media(task, payload, attempt, restore_id=None):
+    sliced = task is not None and task['kind'] in DOWNLOAD_KINDS
     payload = dict(payload)
     platform, payload["url"] = download_url(payload["url"])
     directory = attempt / "media"
@@ -207,15 +209,16 @@ def download_media(task, payload, attempt, restore_id=None):
         sys.executable,
         "-m",
         "app.downloader",
-        "--write-metadata",
         "--ignore-config",
         "-D",
         str(directory),
         "-o",
         "skip=false",
         "--filter",
-        "extension not in ('mp4', 'webm', 'gif')",
+        (f"extension.lower() in {tuple(sorted(ext[1:] for ext in EXTENSIONS))!r}" if sliced else "extension not in ('mp4', 'webm', 'gif')"),
     ]
+    if not sliced:
+        command.insert(3, '--write-metadata')
     from .downloader import date_options
     command += date_options(payload.get("start"), payload.get("end"))
     cookie = DATA / "cookies" / f"{platform}.txt"
@@ -228,10 +231,13 @@ def download_media(task, payload, attempt, restore_id=None):
     # Never capture downloader output: it can contain cookies, signed URLs, or credentials.
     # The separate report contains only a policy reason and network destination.
     with subprocess.Popen(
-        command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=sliced,
         env={
             **os.environ,
             "DATA_DIR": str(DATA),
+            'GALLERY_FACES_PARENT': str(os.getpid()),
+            'GALLERY_FACES_ROUND': f"{task['id']}:{task['rounds']}" if sliced else '',
+            'GALLERY_FACES_MEDIA_DIR': str(directory),
             "GALLERY_FACES_POLICY_REPORT": str(policy_report),
             "GALLERY_FACES_SKIPPED_REPORT": str(attempt / "skipped.jsonl"),
             "GALLERY_FACES_HASHTAGS": json.dumps(payload.get("hashtags", [])),
@@ -239,9 +245,21 @@ def download_media(task, payload, attempt, restore_id=None):
             "GALLERY_FACES_CACHE_POST": payload['url'] if task is None and restore_id is not None else '',
         },
     ) as process:
-        deadline = time.monotonic() + 120 if task is None else None
+        deadline = task['_deadline'] if sliced else time.monotonic() + 120 if task is None else None
         while process.poll() is None:
             if (deadline is not None and time.monotonic() >= deadline) or (task is not None and cancelled(task["id"])):
+                if sliced:
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    process.wait()
+                    cleanup_asset_temporaries()
+                    if cancelled(task['id']):
+                        raise DetectionCancelled()
+                    if policy_report.is_file():
+                        raise ValueError(policy_report.read_text().strip() or '下载被安全策略拒绝')
+                    raise YieldRound()
                 process.terminate()
                 try:
                     process.wait(timeout=10)
@@ -250,7 +268,9 @@ def download_media(task, payload, attempt, restore_id=None):
                 if task is None:
                     raise ValueError('缓存原图下载超时')
                 raise DetectionCancelled()
-            time.sleep(0.5)
+            time.sleep(0.5 if deadline is None else max(0, min(0.5, deadline - time.monotonic())))
+        if sliced and process.returncode == 75 and not policy_report.exists():
+            raise YieldRound()
         if process.returncode:
             try:
                 policy_reason = policy_report.read_text(encoding="utf-8").strip()
@@ -272,20 +292,10 @@ def download_media(task, payload, attempt, restore_id=None):
 def _import_task(task, attempt=None):
     payload = json.loads(task["payload"])
     counts = {"imported": 0, "skipped_existing": 0, "skipped_trashed": 0}
-    if task["kind"] in ("download", "monitor"):
-        directory = download_media(task, payload, attempt)
-        report = attempt / "skipped.jsonl"
-        if report.is_file():
-            from .metadata import save_source, in_date_range
-            with connect(True) as db:
-                for line in report.read_text().splitlines():
-                    entry = json.loads(line)
-                    row = db.execute("SELECT * FROM images WHERE id=?", (entry["image_id"],)).fetchone()
-                    if row and in_date_range(entry["meta"], payload.get("start"), payload.get("end")):
-                        save_source(db, row["id"], entry["meta"])
-                        counts["skipped_trashed" if row["hidden"] else "skipped_existing"] += 1
-    else:
-        directory = safe_directory(payload["directory"])
+    if task['kind'] in DOWNLOAD_KINDS:
+        download_media(task, payload, attempt)
+        return
+    directory = safe_directory(payload['directory'])
     paths = sorted(
         p
         for p in directory.rglob("*")
@@ -316,12 +326,6 @@ def _import_task(task, attempt=None):
             if not sidecar.resolve().is_relative_to(directory.resolve()):
                 raise ValueError("Sidecar 不在导入目录中")
             raw = json.loads(sidecar.read_text())
-            if task["kind"] in ("download", "monitor"):
-                from urllib.parse import urlparse
-
-                raw["collected_account"] = (
-                    urlparse(payload["url"]).path.strip("/").split("/")[0]
-                )
             import_file(path, raw, payload.get("start"), payload.get("end"), counts=counts)
         except Exception as error:
             errors.append(f"{path.name}: {type(error).__name__}")
@@ -416,6 +420,7 @@ def restore_task(task):
 def claim(kinds=("detect", "rematch", "import", "download", "restore", "monitor")):
     with connect(True) as db:
         placeholders = ",".join("?" for _ in kinds)
+        ordering = 't.id' if set(kinds) <= {'detect', 'rematch'} else 't.queue_rank_at,t.rounds,t.id'
         task = db.execute(
             f"""
             SELECT t.* FROM tasks t WHERE t.status='queued' AND t.kind IN ({placeholders})
@@ -423,13 +428,22 @@ def claim(kinds=("detect", "rematch", "import", "download", "restore", "monitor"
             AND NOT EXISTS (SELECT 1 FROM tasks prior WHERE prior.image_id=t.image_id
                 AND prior.status IN ('queued','running') AND prior.id<t.id)
             AND NOT EXISTS (SELECT 1 FROM tasks running WHERE running.image_id=t.image_id AND running.status='running')
-            ORDER BY t.id LIMIT 1
+            ORDER BY {ordering} LIMIT 1
         """,
             kinds,
         ).fetchone()
         if not task:
             return None
         task = dict(task)
+        if task['kind'] in DOWNLOAD_KINDS:
+            task['rounds'] += 1
+            task['_deadline'] = time.monotonic() + ROUND_SECONDS
+            db.execute("""UPDATE tasks SET status='running',rounds=?,finished_at=NULL,stage='下载并导入',speed=0,
+                done=CASE WHEN rounds=0 THEN 0 ELSE done END,total=0,
+                result=CASE WHEN rounds=0 OR result='{}' THEN ? ELSE result END WHERE id=?""",
+                       (task['rounds'], json.dumps(EMPTY_RESULT), task['id']))
+            task['_progress'] = RoundProgress.read(db, task['id'])
+            return task
         db.execute(
             "UPDATE tasks SET status='running',finished_at=NULL,stage=?,done=0,speed=0,total=CASE WHEN kind='detect' THEN 1 ELSE 0 END WHERE id=?",
             ("检测人脸" if task["kind"] == "detect" else "开始处理", task["id"]),
@@ -445,7 +459,53 @@ def step():
     return True
 
 
+def requeue_round(db, task_id):
+    return db.execute("""UPDATE tasks SET status='queued',finished_at=NULL,stage='等待下一轮',speed=0,
+        queue_rank_at=unixepoch()+? WHERE id=? AND status='running' AND cancel_requested=0""",
+                      (ROUND_SECONDS, task_id)).rowcount
+
+
+def execute_download(task):
+    status, error = 'done', None
+    try:
+        if cancelled(task['id']):
+            raise DetectionCancelled()
+        import_task(task)
+    except YieldRound:
+        status = 'queued'
+    except DetectionCancelled:
+        status = 'cancelled'
+    except Exception as exc:
+        status, error = 'failed', str(exc) if isinstance(exc, ValueError) else type(exc).__name__
+    with connect(True) as db:
+        row = db.execute("SELECT cancel_requested FROM tasks WHERE id=? AND rounds=? AND status='running'",
+                         (task['id'], task['rounds'])).fetchone()
+        if not row:
+            return
+        if row['cancel_requested']:
+            status, error = 'cancelled', None
+        if status == 'queued':
+            progress = RoundProgress.read(db, task['id'])
+            stalled = 0 if progress.advanced_from(task['_progress']) else task['stalled_rounds'] + 1
+            db.execute('UPDATE tasks SET stalled_rounds=? WHERE id=?', (stalled, task['id']))
+            if stalled < STALL_LIMIT:
+                requeue_round(db, task['id'])
+                return
+            status, error = 'failed', f'连续 {stalled} 轮没有可恢复的下载进度，请检查网络或来源后重试'
+        elif status == 'done' and (error := item_error_summary(db, task['id'])):
+            status = 'failed'
+        stage = {'done': '已完成', 'cancelled': '已取消', 'failed': '处理失败'}[status]
+        db.execute("""UPDATE tasks SET status=?,stage=?,error=?,total=CASE WHEN ?='done' THEN done ELSE total END,
+            finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=?""", (status, stage, error, status, task['id']))
+        if task['kind'] == 'monitor':
+            from .monitors import finish
+            finish(db, task)
+
+
 def execute(task):
+    if task['kind'] in DOWNLOAD_KINDS:
+        execute_download(task)
+        return True
     try:
         if cancelled(task["id"]):
             raise DetectionCancelled()
@@ -464,18 +524,12 @@ def execute(task):
                 "UPDATE tasks SET status=CASE WHEN cancel_requested THEN 'cancelled' ELSE 'done' END,finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),stage=CASE WHEN cancel_requested THEN '已取消' ELSE '已完成' END WHERE id=?",
                 (task["id"],),
             )
-            if task["kind"] == "monitor":
-                from .monitors import finish
-                finish(db, task)
     except DetectionCancelled:
         with connect(True) as db:
             db.execute(
                 "UPDATE tasks SET status='cancelled',finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),stage='已取消' WHERE id=?",
                 (task["id"],),
             )
-            if task["kind"] == "monitor":
-                from .monitors import finish
-                finish(db, task)
     except Exception as error:
         with connect(True) as db:
             message = (
@@ -485,9 +539,6 @@ def execute(task):
                 "UPDATE tasks SET status='failed',finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),stage='处理失败',error=? WHERE id=?",
                 (message, task["id"]),
             )
-            if task["kind"] == "monitor":
-                from .monitors import finish
-                finish(db, task)
             if task["kind"] == "detect":
                 db.execute(
                     "UPDATE images SET detection='failed',error=? WHERE id=?",
@@ -515,8 +566,8 @@ def main():
         stop = threading.Event()
         for signum in (signal.SIGTERM, signal.SIGINT):
             signal.signal(signum, lambda *_: stop.set())
-        cleanup_interrupted_files()
         recover_tasks()
+        cleanup_interrupted_files()
         from .importer import recover_deduplications
         recover_deduplications(stop)
         run_worker(stop)
@@ -528,6 +579,7 @@ def cleanup_interrupted_files():
     from .media_cache import cleanup_fetches
 
     cleanup_fetches()
+    cleanup_ready()
 
     for path in (DATA / "downloads").iterdir():
         if path.name.startswith(("attempt-", "restore-local-", "restore-remote-")):
@@ -535,6 +587,10 @@ def cleanup_interrupted_files():
                 shutil.rmtree(path)
             else:
                 path.unlink(missing_ok=True)
+    cleanup_asset_temporaries()
+
+
+def cleanup_asset_temporaries():
     # Asset writers and cleanup share the database write lock.
     with connect(True):
         for folder in ("images", "thumbs", "originals"):
@@ -544,8 +600,10 @@ def cleanup_interrupted_files():
 
 def recover_tasks():
     with connect(True) as db:
+        for row in db.execute("SELECT id FROM tasks WHERE kind IN ('download','monitor') AND status='running' AND cancel_requested=0").fetchall():
+            requeue_round(db, row['id'])
         db.execute(
-            "UPDATE tasks SET status=CASE WHEN cancel_requested THEN 'cancelled' ELSE 'queued' END,finished_at=CASE WHEN cancel_requested THEN strftime('%Y-%m-%dT%H:%M:%SZ','now') ELSE NULL END WHERE status='running'"
+            "UPDATE tasks SET status=CASE WHEN cancel_requested THEN 'cancelled' ELSE 'queued' END,stage=CASE WHEN cancel_requested THEN '已取消' ELSE '等待处理' END,finished_at=CASE WHEN cancel_requested THEN strftime('%Y-%m-%dT%H:%M:%SZ','now') ELSE NULL END WHERE status='running'"
         )
 
 
@@ -625,6 +683,7 @@ def run_worker(stop):
             if time.monotonic() >= next_schedule:
                 from .monitors import schedule_due
                 schedule_due()
+                cleanup_ready()
                 next_schedule = time.monotonic() + 30
             for executor, limit, kinds in (
                 (compute, concurrency, ("detect", "rematch")),

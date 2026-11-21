@@ -47,7 +47,7 @@ def enqueue(db, mid, start=None, end=None, retry=None):
     return db.execute("INSERT INTO tasks(kind,payload) VALUES('monitor',?)", (json.dumps(payload),)).lastrowid
 
 def cancel(db, mid):
-    db.execute("UPDATE tasks SET cancel_requested=1,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,finished_at=CASE WHEN status='queued' THEN ? ELSE finished_at END WHERE kind='monitor' AND json_extract(payload,'$.monitor_id')=? AND status IN ('queued','running')", (now(), mid))
+    db.execute("UPDATE tasks SET cancel_requested=1,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,stage=CASE WHEN status='queued' THEN '已取消' ELSE stage END,finished_at=CASE WHEN status='queued' THEN ? ELSE finished_at END WHERE kind='monitor' AND json_extract(payload,'$.monitor_id')=? AND status IN ('queued','running')", (now(), mid))
 
 def finish(db, task):
     payload = json.loads(task['payload'])

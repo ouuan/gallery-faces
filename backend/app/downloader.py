@@ -48,27 +48,32 @@ def normalize_twitter_text(tweet):
     return result
 
 
-def install_policy():
+def install_policy(report_path=None):
     from gallery_dl.extractor.common import Extractor
     from gallery_dl.extractor.twitter import TwitterExtractor
     from gallery_dl.extractor.instagram import InstagramExtractor
     from .security import public_user, public_post
 
     state = {"denied": False}
+    def deny(message):
+        state['denied'] = True
+        if report_path:
+            from pathlib import Path
+            Path(report_path).write_text(message, encoding='utf-8')
+        raise ValueError(message) from None
+
     def check(callback, *args):
         try:
             return callback(*args)
         except Exception:
-            state["denied"] = True
-            raise ValueError("账号非公开或无法确认公开状态") from None
+            deny('账号非公开或无法确认公开状态')
 
     initialize = Extractor.initialize
     def guarded_initialize(self):
         allowed = {"twitter": {"user", "tweets", "media", "tweet", "list"},
                    "instagram": {"user", "posts", "photos", "reels", "post", "reel"}}
         if self.subcategory not in allowed.get(self.category, set()):
-            state["denied"] = True
-            raise ValueError("不支持的下载入口")
+            deny('不支持的下载入口')
         return initialize(self)
     Extractor.initialize = guarded_initialize
 
@@ -112,7 +117,7 @@ def install_policy():
     return state
 
 
-def install_library_filter(report_path=None, restore_id=None, hashtags=(), cache_post=None):
+def install_library_filter(report_path=None, restore_id=None, hashtags=(), cache_post=None, active=None, directory=None, denied=None):
     """Runs after gallery-dl's date/media filters, before any media request."""
     import json
     from gallery_dl.job import DownloadJob
@@ -138,6 +143,28 @@ def install_library_filter(report_path=None, restore_id=None, hashtags=(), cache
         meta = metadata({**raw, "category": self.extractor.category}, "")
         if not matches_hashtags(wanted, raw, meta):
             return
+        if active:
+            from .metadata import in_date_range
+            if denied():
+                raise ValueError('下载被安全策略拒绝')
+            if not in_date_range(meta, active.payload.get('start'), active.payload.get('end')) or active.skip(meta):
+                return
+            def completed(pathfmt):
+                if denied():
+                    raise ValueError('下载被安全策略拒绝')
+                active.stage(pathfmt.path, meta, directory)
+                active.import_ready()
+            if not self.hooks:
+                self.hooks = {}
+            callbacks = self.hooks.setdefault('after', [])
+            callbacks.append(completed)
+            try:
+                original(self, url, raw)
+                if self.status:
+                    raise ValueError('媒体下载失败')
+            finally:
+                callbacks.remove(completed)
+            return
         if cache_post:
             keys = (meta['key'], raw.get('post_shortcode'), raw.get('shortcode'))
             if meta['platform'] == platform and post_key in keys:
@@ -160,25 +187,78 @@ def install_library_filter(report_path=None, restore_id=None, hashtags=(), cache
     DownloadJob.handle_url = handle_url
 
 
+def install_cursors(active, denied):
+    from gallery_dl.extractor.instagram import InstagramExtractor
+    from gallery_dl.extractor.twitter import TwitterExtractor, TwitterMediaExtractor
+
+    TwitterMediaExtractor.tweets = lambda extractor: extractor.api.user_media_photos(extractor.user)
+
+    feeds = {'tweets', 'media', 'list', 'posts', 'photos', 'reels'}
+    def wrap(cls):
+        initial, update = cls._init_cursor, cls._update_cursor
+        def start(extractor):
+            if extractor.subcategory in feeds and active.cursor:
+                active.started_from_cursor = True
+                return active.cursor
+            return initial(extractor)
+        def advance(extractor, cursor):
+            if cursor and extractor.subcategory in feeds and not denied():
+                active.checkpoint(cursor)
+            return update(extractor, cursor)
+        cls._init_cursor, cls._update_cursor = start, advance
+    wrap(InstagramExtractor)
+    wrap(TwitterExtractor)
+
+
+def bind_parent(expected_pid):
+    import ctypes
+    import os
+    import signal
+    import sys
+    if sys.platform.startswith('linux'):
+        if ctypes.CDLL(None, use_errno=True).prctl(1, signal.SIGKILL, 0, 0, 0) != 0:
+            raise OSError(ctypes.get_errno(), 'prctl')
+    if os.getppid() != expected_pid:
+        raise SystemExit(1)
+
+
 def main():
     import json
     import os
     import sys
+    if parent := os.environ.get('GALLERY_FACES_PARENT'):
+        bind_parent(int(parent))
     import gallery_dl
     from .security import download_url
     from .download_transport import install
     platform, _ = download_url(sys.argv[-1])
     network = install(platform, os.environ.get('GALLERY_FACES_POLICY_REPORT'))
-    state = install_policy()
+    state = install_policy(os.environ.get('GALLERY_FACES_POLICY_REPORT'))
+    active = directory = None
+    def denied():
+        return state['denied'] or network['denied']
+    if claim := os.environ.get('GALLERY_FACES_ROUND'):
+        from pathlib import Path
+        from .download_round import DownloadRound
+        active = DownloadRound(*map(int, claim.split(':')))
+        active.resume()
+        from .download_part import install as install_parts
+        install_parts(active)
+        directory = Path(os.environ['GALLERY_FACES_MEDIA_DIR'])
+        install_cursors(active, denied)
     restore_id = os.environ.get("GALLERY_FACES_RESTORE_IMAGE")
     install_library_filter(os.environ.get("GALLERY_FACES_SKIPPED_REPORT"), int(restore_id) if restore_id else None,
-                           json.loads(os.environ.get("GALLERY_FACES_HASHTAGS", "[]")), os.environ.get('GALLERY_FACES_CACHE_POST'))
+                           json.loads(os.environ.get("GALLERY_FACES_HASHTAGS", "[]")), os.environ.get('GALLERY_FACES_CACHE_POST'),
+                           active, directory, denied)
     options = ["cookies-update=false", "netrc=false",
                "retweets=false", "quoted=false", "cards=false", "twitpic=false",
                "articles=false", "videos=false", "audio=false", "previews=false"]
     for option in options:
         sys.argv[1:1] = ["-o", option]
     result = gallery_dl.main()
+    if result and active and active.started_from_cursor and not active.advanced and not active.saw_item and not denied():
+        active.checkpoint(None)
+        return 75
     return 20 if state["denied"] else 21 if network["denied"] else result
 
 

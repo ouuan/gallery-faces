@@ -85,6 +85,8 @@ def test_partial_batch_retry_and_recovery(client, monkeypatch):
     worker.recover_tasks()
     assert get_task(task['id'])['status'] == 'queued'
     assert monitors.listing()[1]['progress_at'] is None
+    run(monkeypatch)
+    assert get_task(result[1]['task_id'])['status'] == 'done'
     run(monkeypatch, failure=True)
     response = client.post(f"/api/v1/admin/tasks/{task['id']}/retry",json={})
     assert response.status_code == 200
