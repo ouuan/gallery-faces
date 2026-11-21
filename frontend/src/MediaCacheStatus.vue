@@ -39,8 +39,8 @@ onMounted(refresh);
       <p v-else-if="status.config.low_bytes === null">自动清理未启用。</p>
       <p v-else>自动清理已启用：每块盘低于 <strong>{{ size(status.config.low_bytes) }}</strong> 时开始，清至 <strong>{{ size(status.config.target_bytes) }}</strong> 可用空间。</p>
       <table><caption>当前文件数（不含回收站）</caption>
-        <thead><tr><th scope="col">类型</th><th scope="col">在盘</th><th scope="col">已淘汰</th><th scope="col">缺失</th><th v-if="status.inventory?.some(item => item.unknown)" scope="col">未核实</th></tr></thead>
-        <tbody><tr v-for="item in status.inventory" :key="item.folder"><th scope="row">{{ label(item.folder) }}</th><td>{{ number.format(item.present) }}</td><td>{{ number.format(item.evicted) }}</td><td>{{ number.format(item.missing) }}</td><td v-if="status.inventory.some(row => row.unknown)">{{ number.format(item.unknown) }}</td></tr></tbody>
+        <thead><tr><th scope="col">类型</th><th scope="col">在盘</th><th scope="col">已淘汰</th><th scope="col">已丢失</th><th scope="col">缺失</th><th v-if="status.inventory?.some(item => item.unknown)" scope="col">未核实</th></tr></thead>
+        <tbody><tr v-for="item in status.inventory" :key="item.folder"><th scope="row">{{ label(item.folder) }}</th><td>{{ number.format(item.present) }}</td><td>{{ number.format(item.evicted) }}</td><td>{{ item.folder === 'originals' ? number.format(item.lost) : '—' }}</td><td>{{ number.format(item.missing) }}</td><td v-if="status.inventory.some(row => row.unknown)">{{ number.format(item.unknown) }}</td></tr></tbody>
       </table>
       <div v-for="volume in status.volumes" :key="volume.folders.join('/')" class="volume">
         <div class="volume-heading"><h3>{{ volume.folders.join(' · ') }}</h3><span>可用 {{ size(volume.free_bytes) }}</span></div>

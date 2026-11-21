@@ -160,7 +160,7 @@ def test_admin_cache_inventory_and_cleanup_history(client, tmp_path, monkeypatch
     removed = history['removals']['images']
     assert removed['count'] == 1 and removed['min_idle_days'] == pytest.approx(7) and removed['min_score'] == pytest.approx(28)
     assert history['removals']['originals'] == dict(count=0, min_score=None, min_idle_days=None)
-    assert result['inventory'][0] == dict(folder='images', present=0, evicted=1, missing=0, unknown=0)
+    assert result['inventory'][0] == dict(folder='images', present=0, evicted=1, lost=0, missing=0, unknown=0)
     assert not path.exists()
     cache.clean(5, 10)
     with cache.asset(row, 'image'):
@@ -454,6 +454,8 @@ def test_exponential_backoff_lost_fallback_and_reimport(client, tmp_path, monkey
     prepared = client.post('/api/v1/gallery/downloads', json={'group_ids': [row['group_id']]})
     with ZipFile(io.BytesIO(client.get(prepared.json()['download_url']).content)) as archive:
         assert archive.read(f'{row["group_id"]}-{row["filename"]}') == thumb.read_bytes()
+    inventory = client.get('/api/v1/admin/media-cache').json()['inventory'][1]
+    assert inventory['lost'] == 1 and inventory['missing'] == inventory['evicted'] == 0
     thumb.unlink()
     assert client.get(urls['download_url']).status_code == 404
     assert len(calls) == 12

@@ -1324,6 +1324,8 @@ export interface components {
             present: number;
             /** Evicted */
             evicted: number;
+            /** Lost */
+            lost: number;
             /** Missing */
             missing: number;
             /** Unknown */

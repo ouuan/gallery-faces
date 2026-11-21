@@ -12,7 +12,7 @@ test('cache monitoring is read-only and refresh preserves settings edits', async
       expect(route.request().method()).toBe('GET');
       return route.fulfill({ json: {
         config: { reported_at: 1760000000, low_bytes: 5 * gib, target_bytes: 10 * gib },
-        inventory: [{ folder: 'images', present: refreshed ? 81 : 80, evicted: refreshed ? 19 : 20, missing: 0, unknown: 0 }, { folder: 'originals', present: 96, evicted: 3, missing: 1, unknown: 0 }],
+        inventory: [{ folder: 'images', present: refreshed ? 81 : 80, evicted: refreshed ? 19 : 20, lost: 0, missing: 0, unknown: 0 }, { folder: 'originals', present: 94, evicted: 3, lost: 2, missing: 1, unknown: 0 }],
         volumes: [{ folders: ['data', 'images'], free_bytes: 12 * gib, last_cleanup: { finished_at: 1760000000, before_bytes: 4 * gib, after_bytes: 10 * gib, target_bytes: 10 * gib, outcome: 'target', removals: { images: { count: 20, min_idle_days: 8.25, min_score: 33 } } } }, { folders: ['originals'], free_bytes: 20 * gib, last_cleanup: null }],
       } });
     }
@@ -20,6 +20,8 @@ test('cache monitoring is read-only and refresh preserves settings edits', async
   });
   await page.goto('/admin/settings');
   const panel = page.getByRole('region', { name: '图片磁盘缓存' });
+  await expect(panel.getByRole('columnheader', { name: '已丢失' })).toBeVisible();
+  await expect(panel.getByRole('row', { name: /原图/ }).getByRole('cell', { name: '2', exact: true })).toBeVisible();
   await expect(panel.getByText('8.25 天')).toBeVisible();
   await expect(panel.getByText('暂无清理记录。')).toBeVisible();
   const input = page.getByRole('textbox', { name: '人脸检测阈值' });

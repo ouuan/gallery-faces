@@ -3891,6 +3891,10 @@
             "type": "integer",
             "title": "Evicted"
           },
+          "lost": {
+            "type": "integer",
+            "title": "Lost"
+          },
           "missing": {
             "type": "integer",
             "title": "Missing"
@@ -3905,6 +3909,7 @@
           "folder",
           "present",
           "evicted",
+          "lost",
           "missing",
           "unknown"
         ],

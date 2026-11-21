@@ -16,6 +16,7 @@ class Inventory(TypedDict):
     folder: str
     present: int
     evicted: int
+    lost: int
     missing: int
     unknown: int
 
@@ -70,10 +71,11 @@ def status() -> CacheStatus:
                     names = {entry.name for entry in entries if entry.is_file()}
             except OSError:
                 names = None
-            counts = Inventory(folder=folder, present=0, evicted=0, missing=0, unknown=0)
+            counts = Inventory(folder=folder, present=0, evicted=0, lost=0, missing=0, unknown=0)
             column = 'filename' if variant == 'image' else 'original_filename'
-            for name, evicted in db.execute(f'SELECT {column},{variant}_evicted FROM images WHERE hidden=0'):
-                bucket = 'unknown' if names is None else 'present' if name in names else 'evicted' if evicted else 'missing'
+            for name, evicted, lost in db.execute(f'SELECT {column},{variant}_evicted,original_lost FROM images WHERE hidden=0'):
+                bucket = ('lost' if variant == 'original' and lost else 'unknown' if names is None else
+                          'present' if name in names else 'evicted' if evicted else 'missing')
                 counts[bucket] += 1
             inventory.append(counts)
     for folder in ('data', *FOLDERS.values()):
