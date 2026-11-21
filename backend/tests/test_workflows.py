@@ -1518,6 +1518,60 @@ def test_detail_sources_dimensions(client):
     assert detail["sources"][1]["images"] == [{"image_id": second, "width": 200, "height": 100}]
 
 
+@pytest.mark.parametrize('separate_first', [False, True])
+@pytest.mark.parametrize('automatic', [False, True])
+def test_duplicate_review_follows_current_groups(client, monkeypatch, separate_first, automatic):
+    url = '/api/v1/admin/duplicates'
+    with db.connect(True) as conn:
+        left, other, copy = [image(conn) for _ in range(3)]
+        conn.execute("UPDATE images SET phash='0'")
+        conn.executemany("INSERT INTO duplicate_decisions VALUES(?,?,'pending',?)", [
+            (left, other, .95), (other, copy, .8),
+        ])
+        config = db.settings(conn)
+
+    def decide(first, second, action):
+        assert client.post(url, json={'a': first, 'b': second, 'action': action}).status_code == 200
+
+    def pending():
+        return [(row['a'], row['b']) for row in client.get(url, params={'decision': 'pending'}).json()]
+
+    if separate_first:
+        decide(left, other, 'separate')
+        assert pending() == [(other, copy)]
+    if automatic:
+        (db.DATA / 'images' / 'fixture.jpg').touch()
+        monkeypatch.setattr(importer, 'pair_score', lambda *_: 1)
+        importer.consider_pair(left, copy, config)
+    else:
+        decide(left, copy, 'merge')
+    if not separate_first:
+        assert pending() == [(left, other)]
+        assert client.get(url + '?decision=pending&page=2&page_size=1').json()['total'] == 1
+        decide(left, other, 'separate')
+    assert pending() == []
+    assert [row['decision'] for row in client.get(url).json()] == ['separate', 'auto' if automatic else 'merge']
+    decide(left, copy, 'separate')
+    assert pending() == [(other, copy)]
+
+
+def test_duplicate_review_ranks_eligible_pairs_only(client):
+    with db.connect(True) as conn:
+        first, second = image(conn), image(conn)
+        third = image(conn, group=first)
+        fourth = image(conn, group=second)
+        conn.executemany("INSERT INTO duplicate_decisions VALUES(?,?,'pending',?)", [
+            (first, second, None), (first, third, 1), (first, fourth, .9), (second, third, .9),
+        ])
+    url = '/api/v1/admin/duplicates?decision=pending'
+    assert [(row['a'], row['b']) for row in client.get(url).json()] == [(first, fourth)]
+    with db.connect(True) as conn:
+        conn.execute('UPDATE images SET hidden=1 WHERE id=?', (fourth,))
+    assert [(row['a'], row['b']) for row in client.get(url).json()] == [(second, third)]
+    assert client.post('/api/v1/admin/duplicates', json={'a': second, 'b': third, 'action': 'merge'}).status_code == 200
+    assert client.get(url).json() == []
+
+
 def test_duplicate_thresholds_and_status_filters(client):
     endpoint = '/api/v1/admin/settings'
     config = client.get(endpoint).json()

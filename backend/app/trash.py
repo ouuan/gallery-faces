@@ -60,22 +60,34 @@ def recycle(ids, token):
         rows, actual = scope(db, ids)
         if not token or token != actual:
             raise HTTPException(409, "重复组成员或回收状态已变化，请刷新后重新确认")
-        if db.execute("SELECT 1 FROM tasks WHERE status='running' AND kind IN ('download','import')").fetchone():
-            raise HTTPException(409, "下载或导入任务正在运行，请等待完成或取消后重试")
-        for row in rows:
-            if db.execute("SELECT 1 FROM tasks WHERE image_id=? AND status='running'", (row["id"],)).fetchone():
-                raise HTTPException(409, "组内图片正在处理，请等待完成或取消后重试")
-        changed = [r for r in rows if not r["hidden"]]
-        references_changed = has_references(db, [row["id"] for row in changed])
-        for row in rows:
-            db.execute("UPDATE tasks SET status='cancelled',stage='已取消',cancel_requested=1,finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE image_id=? AND status='queued'", (row["id"],))
-        for row in changed:
-            db.execute("UPDATE images SET hidden=1,trashed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?", (row["id"],))
-            storage.queue_image_cleanup(db, row)
-        if references_changed:
-            storage.schedule_rematch(db)
-    pending = storage.cleanup_deleted_files()
-    return {"ok": True, "deleted": len(changed), "ids": [r["id"] for r in rows], "cleanup_pending": pending}
+        result = recycle_rows(db, rows)
+    return {**result, "cleanup_pending": storage.cleanup_deleted_files()}
+
+
+def recycle_pair(first, second, action):
+    with storage.connect(True) as db:
+        left, right = require_active(db, first), require_active(db, second)
+        rows = {"delete_a": [left], "delete_b": [right], "delete_both": [left, right]}[action]
+        result = recycle_rows(db, rows)
+    return {**result, "cleanup_pending": storage.cleanup_deleted_files()}
+
+
+def recycle_rows(db, rows):
+    if db.execute("SELECT 1 FROM tasks WHERE status='running' AND kind IN ('download','import')").fetchone():
+        raise HTTPException(409, "下载或导入任务正在运行，请等待完成或取消后重试")
+    for row in rows:
+        if db.execute("SELECT 1 FROM tasks WHERE image_id=? AND status='running'", (row["id"],)).fetchone():
+            raise HTTPException(409, "图片正在处理，请等待完成或取消后重试")
+    changed = [r for r in rows if not r["hidden"]]
+    references_changed = has_references(db, [row["id"] for row in changed])
+    for row in rows:
+        db.execute("UPDATE tasks SET status='cancelled',stage='已取消',cancel_requested=1,finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE image_id=? AND status='queued'", (row["id"],))
+    for row in changed:
+        db.execute("UPDATE images SET hidden=1,trashed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?", (row["id"],))
+        storage.queue_image_cleanup(db, row)
+    if references_changed:
+        storage.schedule_rematch(db)
+    return {"ok": True, "deleted": len(changed), "ids": [r["id"] for r in rows]}
 
 
 def enqueue_restore(ids, directory=None):

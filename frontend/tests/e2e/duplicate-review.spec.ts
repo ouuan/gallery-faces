@@ -181,6 +181,46 @@ for (const scenario of [
   expect(posts).toBe(1);
 });
 
+for (const [action, label, targets] of [
+  ['delete_a', '仅左图 #1', '左图 #1'], ['delete_b', '仅右图 #2', '右图 #2'], ['delete_both', '两张都删', '左图 #1 和右图 #2'],
+]) test(`duplicate review confirms the exact images for ${action}`, async ({ page }) => {
+  if (action !== 'delete_a') await page.setViewportSize({ width: 390, height: 844 });
+  const posts: unknown[] = [];
+  let refreshFailed = false;
+  await page.route('**/api/v1/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/duplicates')) {
+      if (route.request().method() === 'POST') {
+        posts.push(route.request().postDataJSON());
+        refreshFailed = true;
+        return route.fulfill({ json: { ok: true } });
+      }
+      if (refreshFailed) return route.fulfill({ status: 503, json: { detail: '暂时不可用' } });
+      return route.fulfill({ json: (posts.length ? [3] : [1, 3]).map(a => ({ a, b: a + 1, decision: 'pending', score: .9, images: [] })) });
+    }
+    return route.fulfill({ json: /\/(session|site)$/.test(path) ? {} : [] });
+  });
+  await page.goto('/admin/duplicates');
+  const menu = page.getByRole('button', { name: '移入回收站' });
+  const dialog = page.getByRole('dialog');
+  await menu.click();
+  await page.getByText(label, { exact: true }).click();
+  await expect(dialog).toContainText(`将${targets}移入回收站`);
+  await dialog.getByRole('button', { name: '取消' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(posts).toEqual([]);
+  await expect(page.locator('.duplicate-heading')).toContainText('#1 与 #2');
+  await menu.click();
+  await page.getByText(label, { exact: true }).click();
+  await dialog.getByRole('button', { name: '确认', exact: true }).click();
+  await expect(page.getByText(/已保存，列表刷新失败/)).toBeVisible();
+  await expect(menu).toBeDisabled();
+  refreshFailed = false;
+  await page.getByRole('button', { name: '重试加载' }).click();
+  await expect(page.locator('.duplicate-heading')).toContainText('#3 与 #4');
+  expect(posts).toEqual([{ a: 1, b: 2, action }]);
+});
+
 test('duplicate status changes ignore stale responses', async ({ page }) => {
   let release: (() => void) | undefined;
   let initialDone: (() => void) | undefined;

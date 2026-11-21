@@ -131,13 +131,16 @@ def test_dense_gallery_date_spans_pages_and_falls_through_to_other_dates(client,
 
 def test_admin_page_reads_are_bounded(client, monkeypatch):
     with db.connect(True) as conn:
+        groups = []
         for number in range(60):
             first = image(conn)
             group = conn.execute('SELECT group_id FROM images WHERE id=?', (first,)).fetchone()[0]
             second = image(conn, group=group)
-            conn.execute("INSERT INTO duplicate_decisions VALUES(?,?,'pending',1)", (first, second))
+            groups.append((first, second))
             conn.execute('UPDATE images SET hidden=1 WHERE id=?', (image(conn),))
             conn.execute('INSERT INTO people(name) VALUES(?)', (f'person{number}',))
+        for index, (first, _) in enumerate(groups):
+            conn.execute("INSERT INTO duplicate_decisions VALUES(?,?,'pending',1)", sorted((first, groups[index - 1][1])))
     statements = []
 
     @contextmanager

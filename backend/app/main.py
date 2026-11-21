@@ -2109,12 +2109,26 @@ def duplicates(
 ):
     with connect() as db:
         db.execute('BEGIN')
-        conditions = "(decision<>'pending' OR score IS NULL OR score>=?) AND EXISTS(SELECT 1 FROM images WHERE id=a AND hidden=0) AND EXISTS(SELECT 1 FROM images WHERE id=b AND hidden=0)"
-        params = [float(settings(db)["review_ssim_threshold"])]
-        if decision:
-            conditions += f" AND decision IN ({','.join('?' for _ in decision)})"
-            params.extend(decision)
-        matching = ' FROM duplicate_decisions WHERE ' + conditions
+        queries, params = [], []
+        members = '''FROM duplicate_decisions d JOIN images l ON l.id=d.a JOIN images r ON r.id=d.b'''
+        first_group, second_group = 'min(l.group_id,r.group_id)', 'max(l.group_id,r.group_id)'
+        if not decision or 'pending' in decision:
+            queries.append(f'''SELECT a,b,decision,score FROM (
+                SELECT d.*,row_number() OVER (PARTITION BY {first_group},{second_group} ORDER BY score DESC,a,b) AS rank
+                {members} LEFT JOIN (
+                    SELECT DISTINCT {first_group} AS first_id,{second_group} AS second_id
+                    {members} WHERE decision='separate'
+                ) rejected ON rejected.first_id={first_group} AND rejected.second_id={second_group}
+                WHERE decision='pending' AND (score IS NULL OR score>=?) AND rejected.first_id IS NULL
+                AND l.hidden=0 AND r.hidden=0 AND l.group_id<>r.group_id
+            ) WHERE rank=1''')
+            params.append(float(settings(db)['review_ssim_threshold']))
+        history = [state for state in (decision or ['auto', 'merge', 'separate']) if state != 'pending']
+        if history:
+            queries.append(f'''SELECT d.* {members} WHERE l.hidden=0 AND r.hidden=0
+                AND decision IN ({placeholders(history)})''')
+            params.extend(history)
+        matching = ' FROM (' + ' UNION ALL '.join(queries) + ')'
         limit, offset = 500, 0
         if page is not None:
             total = db.execute('SELECT count(*)' + matching, params).fetchone()[0]
@@ -2142,13 +2156,16 @@ def duplicates(
 class DuplicateInput(BaseModel):
     a: int
     b: int
-    action: Literal["merge", "separate"]
+    action: Literal["merge", "separate", "delete_a", "delete_b", "delete_both"]
 
 
 @app.post("/api/v1/admin/duplicates")
 def duplicate_action(body: DuplicateInput, _: None = Depends(admin)):
     if body.a == body.b:
         fail("请选择两张不同图片")
+    if body.action in ('delete_a', 'delete_b', 'delete_both'):
+        from .trash import recycle_pair
+        return recycle_pair(body.a, body.b, body.action)
     with connect(True) as db:
         require_active(db, body.a)
         require_active(db, body.b)

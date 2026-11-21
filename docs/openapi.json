@@ -3393,7 +3393,10 @@
             "type": "string",
             "enum": [
               "merge",
-              "separate"
+              "separate",
+              "delete_a",
+              "delete_b",
+              "delete_both"
             ],
             "title": "Action"
           }

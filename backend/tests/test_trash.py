@@ -31,6 +31,43 @@ def run_restore(client, identifier, directory=None):
         return dict(conn.execute("SELECT * FROM tasks WHERE id=?", (task["id"],)).fetchone())
 
 
+@pytest.mark.parametrize('action', ['delete_a', 'delete_b', 'delete_both'])
+def test_recycle_duplicate_pair_without_deciding(client, tmp_path, monkeypatch, action):
+    monkeypatch.setattr(importer, 'IMPORT', tmp_path)
+    first, _, _ = photo(tmp_path, monkeypatch)
+    second, _, _ = photo(tmp_path, monkeypatch, '2', 'blue')
+    with db.connect(True) as conn:
+        group = conn.execute('SELECT group_id FROM images WHERE id=?', (first,)).fetchone()[0]
+        third = image(conn, group=group)
+        conn.execute("INSERT INTO duplicate_decisions VALUES(?,?,'pending',.9)", (first, second))
+        original_groups = conn.execute('SELECT id,group_id FROM images ORDER BY id').fetchall()
+    url = '/api/v1/admin/duplicates'
+    selected = {'delete_a': [first], 'delete_b': [second], 'delete_both': [first, second]}[action]
+    response = client.post(url, json={'a': first, 'b': second, 'action': action})
+    assert response.status_code == 200 and response.json()['ids'] == selected
+    assert client.get(url).json() == []
+    with db.connect() as conn:
+        assert [row[0] for row in conn.execute('SELECT id FROM images WHERE hidden=1 ORDER BY id')] == selected
+        assert conn.execute('SELECT hidden FROM images WHERE id=?', (third,)).fetchone()[0] == 0
+        assert conn.execute('SELECT id,group_id FROM images ORDER BY id').fetchall() == original_groups
+        assert conn.execute('SELECT decision FROM duplicate_decisions').fetchone()[0] == 'pending'
+    for identifier in selected:
+        assert run_restore(client, identifier)['status'] == 'done'
+    assert [(row['a'], row['b']) for row in client.get(url).json()] == [(first, second)]
+
+
+def test_recycle_duplicate_pair_is_atomic(client):
+    with db.connect(True) as conn:
+        first, second = image(conn), image(conn)
+        conn.execute("INSERT INTO tasks(kind,image_id,status) VALUES('detect',?,'running')", (second,))
+    pair = {'a': first, 'b': second}
+    url = '/api/v1/admin/duplicates'
+    assert client.post(url, json={**pair, 'action': 'delete_both'}).status_code == 409
+    assert client.get('/api/v1/admin/trash').json()['total'] == 0
+    assert client.post(url, json={**pair, 'action': 'delete_a'}).status_code == 200
+    assert client.post(url, json={**pair, 'action': 'delete_b'}).status_code == 409
+
+
 def test_group_scope_over_page_limit_and_stale_confirmation(client):
     with db.connect(True) as conn:
         first = image(conn, faces=False)

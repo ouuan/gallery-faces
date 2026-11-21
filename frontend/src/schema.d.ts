@@ -1125,7 +1125,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "merge" | "separate";
+            action: "merge" | "separate" | "delete_a" | "delete_b" | "delete_both";
         };
         /** DuplicatePage */
         DuplicatePage: {

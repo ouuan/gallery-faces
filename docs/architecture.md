@@ -69,7 +69,9 @@ Public representatives use the same size/ID ordering among members that are acti
 
 Recognition review reuses the gallery filters in a draft modal (people with any/all matching, publishers and publication dates; no no-face toggle). Applying saves the filters in the URL and resets the page; canceling discards the draft. People match non-ignored faces on the review representative. Publisher and date conditions must match the same source on an active group member, before pagination. Partial group refreshes retain the filters.
 
-`GET /api/v1/admin/duplicates` accepts `page` and `page_size` (default 50, maximum 100) and returns `items`, `total`, `page`, and `page_size`. Without `page` it still returns the legacy array of up to 500 pairs. Related data for review, trash, and duplicate lists is loaded in batches for the requested page.
+`GET /api/v1/admin/duplicates` accepts `page` and `page_size` (default 50, maximum 100) and returns `items`, `total`, `page`, and `page_size`. Without `page` it still returns the legacy array of up to 500 pairs. Before pagination, pending candidates are reduced to the highest-scoring eligible active pair per two distinct current groups (ties use image IDs). A manual separation between any members rules out that group pair. Raw comparisons and review history remain intact, so splitting a group can reveal undecided pairs again. Related data for review, trash, and duplicate lists is loaded in batches for the requested page.
+
+Unlike whole-group recycling in recognition review, `POST /api/v1/admin/duplicates` actions `delete_a`, `delete_b`, and `delete_both` recycle only the indicated images of the displayed pair. Both must still be active. Recycling is atomic and does not change group membership or record a duplicate decision.
 
 ## Publisher monitoring
 

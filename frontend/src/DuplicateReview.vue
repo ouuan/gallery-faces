@@ -2,8 +2,10 @@
 import LoadingOverlay from "./LoadingOverlay.vue";
 import { useReviewShortcuts } from "./review-shortcuts";
 import { computed, ref, watch, onUnmounted } from "vue";
-import { NButton, NModal, NSelect, NAlert, useMessage } from "naive-ui";
-import { Copy } from "@lucide/vue";
+import { NButton, NDropdown, NModal, NSelect, NAlert, useMessage } from "naive-ui";
+import { Copy, ChevronDown } from "@lucide/vue";
+import { useConfirm } from "./confirm";
+import type { components } from "./schema";
 import { api, send, platformLabel, dateLabel, type Source } from "./api";
 import { useLibrary } from "./store";
 import { useReviewImages } from "./use-review-images";
@@ -14,18 +16,20 @@ type CandidateImage = {
   people: { name: string }[]; sources: Source[];
 };
 type Candidate = { a: number; b: number; decision: string; score: number | null; images: CandidateImage[] };
-const store = useLibrary(), message = useMessage();
+type Action = components["schemas"]["DuplicateInput"]["action"];
+const store = useLibrary(), message = useMessage(), confirm = useConfirm();
 const rows = ref<Candidate[]>([]), statuses = ref<string[]>(["pending"]);
 const statusOptions = [
   { value: "pending", label: "待审核" }, { value: "auto", label: "自动合并" },
   { value: "merge", label: "人工合并" }, { value: "separate", label: "不是重复／已拆分" },
 ];
-const current = ref(0), saving = ref(false), loading = ref(false), error = ref("");
+const current = ref(0), saving = ref<Action | null>(null), loading = ref(false), error = ref("");
+const menuOpen = ref(false);
 const pageSize = 50, page = ref(1), total = ref(0);
 const position = computed(() => (page.value - 1) * pageSize + current.value);
 const details = ref<CandidateImage | null>(null);
 const row = computed(() => rows.value[current.value]);
-const blocked = computed(() => saving.value || loading.value || !!error.value);
+const blocked = computed(() => !!saving.value || loading.value || !!error.value);
 const { urls: imageUrls, failed: failedImages } = useReviewImages(() => row.value?.images.map(image => image.id) ?? []);
 const people = (image: CandidateImage) => image.people.map(p => p.name).join("、") || "未知人物";
 function publishers(image: CandidateImage) {
@@ -84,12 +88,16 @@ useReviewShortcuts({
   arrowright: { run: () => moveGroup(current.value + 1), enabled: () => position.value < total.value - 1 },
   m: { run: () => decide("merge") },
   x: { run: () => decide("separate") },
-}, () => !!row.value && !blocked.value && !details.value);
-async function decide(action: "merge" | "separate") {
+}, () => !!row.value && !blocked.value && !details.value && !menuOpen.value);
+async function decide(action: Action) {
   if (blocked.value || !row.value) return;
-  saving.value = true;
+  saving.value = action;
   const { a, b } = row.value;
   try {
+    if (action === "delete_a" || action === "delete_b" || action === "delete_both") {
+      const targets = action === "delete_a" ? `左图 #${a}` : action === "delete_b" ? `右图 #${b}` : `左图 #${a} 和右图 #${b}`;
+      if (!await confirm(`将${targets}移入回收站？不影响其他图片或重复分组。原图和大图将被清理，恢复需要重新获取原文件。`)) return;
+    }
     await send("/admin/duplicates", { a, b, action });
     successors = rows.value.slice(current.value + 1);
     targetIndex = current.value;
@@ -97,14 +105,14 @@ async function decide(action: "merge" | "separate") {
   } catch (e) {
     message.error((e as Error).message);
   } finally {
-    saving.value = false;
+    saving.value = null;
   }
 }
 </script>
 
 <template>
   <div class="duplicate-filter"><label for="duplicate-status">审核状态</label>
-    <n-select id="duplicate-status" v-model:value="statuses" multiple clearable :disabled="saving" :options="statusOptions" placeholder="全部状态" :input-props="{ 'aria-label': '审核状态' }" />
+    <n-select id="duplicate-status" v-model:value="statuses" multiple clearable :disabled="!!saving" :options="statusOptions" placeholder="全部状态" :input-props="{ 'aria-label': '审核状态' }" />
   </div>
   <n-alert v-if="error" type="error">{{ error }} <n-button @click="load()">重试加载</n-button></n-alert>
   <div class="duplicate-content loading-region" :aria-busy="loading">
@@ -139,8 +147,14 @@ async function decide(action: "merge" | "separate") {
       </section>
     </div>
     <div class="duplicate-actions">
-      <n-button class="stable-loading-button" type="primary" :disabled="blocked" :loading="saving" aria-label="合并为一组" aria-keyshortcuts="m" @click="decide('merge')">合并为一组<kbd class="shortcut-key" aria-hidden="true">M</kbd></n-button>
+      <n-button class="stable-loading-button" type="primary" :disabled="blocked" :loading="saving === 'merge'" aria-label="合并为一组" aria-keyshortcuts="m" @click="decide('merge')">合并为一组<kbd class="shortcut-key" aria-hidden="true">M</kbd></n-button>
       <n-button :disabled="blocked" :aria-label="row.images[0]?.group_id === row.images[1]?.group_id ? '拆分图片' : '不是重复'" aria-keyshortcuts="x" @click="decide('separate')">{{ row.images[0]?.group_id === row.images[1]?.group_id ? '拆分图片' : '不是重复' }}<kbd class="shortcut-key" aria-hidden="true">X</kbd></n-button>
+      <n-dropdown v-model:show="menuOpen" trigger="click" placement="top-end" :options="[
+        { key: 'delete_a', label: `仅左图 #${row.a}` }, { key: 'delete_b', label: `仅右图 #${row.b}` },
+        { key: 'delete_both', label: '两张都删' },
+      ]" @select="decide">
+        <n-button :disabled="blocked" aria-haspopup="menu" :aria-expanded="menuOpen">移入回收站<ChevronDown :size="14" aria-hidden="true" /></n-button>
+      </n-dropdown>
     </div>
   </article>
   </div>
@@ -167,6 +181,8 @@ async function decide(action: "merge" | "separate") {
 .duplicate-review { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
 .duplicate-navigation, .duplicate-heading, .duplicate-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 .duplicate-navigation { justify-content: space-between; font-variant-numeric: tabular-nums; }
+.duplicate-actions { flex-wrap: wrap; }
+.duplicate-actions > :last-child { margin-left: auto; }
 .duplicate-heading { justify-content: space-between; font-size: 13px; }
 .duplicate-pair { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .duplicate-photo { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
