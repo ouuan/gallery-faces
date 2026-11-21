@@ -23,8 +23,10 @@ for (const width of [390, 1280]) {
     await expect(heading).toBeInViewport();
     await expect(close).toBeInViewport();
     await close.click();
+    await expect(guide).toBeHidden();
     await expect(trigger).toBeFocused();
     await trigger.press("Enter");
+    await expect(guide.locator(":focus")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(guide).toBeHidden();
   });
