@@ -3593,6 +3593,7 @@ export interface operations {
                 people?: string;
                 match?: "any" | "all" | "exact" | "subset";
                 publishers?: string;
+                sort?: "default" | "newest" | "oldest" | "confidence";
                 /** @description Request a page instead of the legacy list. */
                 page?: number | null;
                 page_size?: number;

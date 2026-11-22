@@ -1,4 +1,5 @@
 """Review records belong to physical images; presentation follows representatives."""
+import json
 import pytest
 from PIL import Image
 from app import db, importer
@@ -24,6 +25,32 @@ def listing(client, state='review', **params):
     result = client.get('/api/v1/admin/images', params={'state': state, **params})
     assert result.status_code == 200, result.text
     return result.json()
+
+
+def test_review_sort_before_pagination(client):
+    member, rep, _, person, other = seed()
+    with db.connect(True) as conn:
+        missing = image(conn, date=None)
+        later = image(conn, date='2026-02-01T00:00:00Z')
+        tied = image(conn, date='2026-02-01T00:00:00Z')
+        conn.execute("UPDATE posts SET published_at='2026-03-01T00:00:00Z' WHERE id IN (SELECT post_id FROM sources WHERE image_id=?)", (rep,))
+        for image_id, score in [(member, 0.1), (rep, 0.9), (later, 0.7), (tied, 0.7)]:
+            conn.execute('UPDATE faces SET person_id=?,candidates=? WHERE image_id=?',
+                         (person, json.dumps([{'person_id': person, 'score': score}]), image_id))
+        conn.execute('UPDATE faces SET candidates=? WHERE image_id=?',
+                     (json.dumps([{'person_id': other, 'score': 0.95}, {'person_id': person, 'score': 0.7}]), later))
+        conn.execute('UPDATE faces SET person_id=?,candidates=? WHERE image_id=?',
+                     (person, json.dumps([{'person_id': other, 'score': 0.1}]), missing))
+        for image_id, score, locked, ignored, identity in [
+            (rep, 0.8, 0, 0, person), (tied, 0.6, 0, 0, person), (rep, 0.1, 1, 0, person),
+            (rep, 0.2, 0, 1, person), (rep, 0.3, 0, 0, None),
+        ]:
+            conn.execute("INSERT INTO faces(image_id,box,person_id,candidates,locked,ignored) VALUES(?,'[0,0,10,10]',?,?,?,?)",
+                         (image_id, identity, json.dumps([{'person_id': person, 'score': score}]), locked, ignored))
+    for sort, expected in [('default', [rep, missing, later, tied]), ('newest', [later, tied, rep, missing]),
+                           ('oldest', [rep, later, tied, missing]), ('confidence', [tied, later, rep, missing])]:
+        pages = [listing(client, 'all', sort=sort, page=number, page_size=2) for number in (1, 2)]
+        assert [item['id'] for page in pages for item in page['items']] == expected
 
 
 def test_confirm_only_representative_and_resolve_member_links(client):

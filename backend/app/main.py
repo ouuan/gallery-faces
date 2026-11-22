@@ -1504,24 +1504,33 @@ def admin_images(
     state: str = "review", image_id: int | None = None,
     start: str = "", end: str = "", people: str = "",
     match: PeopleMatch = "any", publishers: str = "",
+    sort: Literal['default', 'newest', 'oldest', 'confidence'] = 'default',
     page: int | None = Query(None, ge=1, description="Request a page instead of the legacy list."),
     page_size: int = Query(50, ge=1, le=100), _: None = Depends(admin)
 ):
     with connect() as db:
         db.execute("BEGIN")
         grouped, base, where, params = review_selection(state, image_id, start, end, people, match, publishers)
-        order = 'g.group_id' if grouped else 'i.id'
+        owner = 'g.group_id' if grouped else 'i.id'
+        representative = 'g.representative' if grouped else 'i.id'
+        key, order = owner, 'sort_key'
+        if sort in ('newest', 'oldest'):
+            links, scope = ('review_group_posts', 'link.group_id=g.group_id') if grouped else ('sources', 'link.image_id=i.id')
+            key = f'(SELECT min(p.published_at) FROM {links} link JOIN posts p ON p.id=link.post_id WHERE {scope})'
+            order = ('sort_key DESC' if sort == 'newest' else 'sort_key ASC') + ' NULLS LAST,owner_id'
+        elif sort == 'confidence':
+            key = f'''(SELECT min(json_extract(candidate.value,'$.score'))
+                FROM faces f CROSS JOIN json_each(f.candidates) candidate WHERE f.image_id={representative}
+                AND f.ignored=0 AND f.locked=0 AND f.person_id=json_extract(candidate.value,'$.person_id'))'''
+            order = 'sort_key ASC NULLS LAST,owner_id'
         limit, offset = 500, 0
         if page is not None:
             total = db.execute(f'SELECT count(*) FROM {base}' + where, params).fetchone()[0]
             page = min(page, max(1, (total + page_size - 1) // page_size))
             limit, offset = page_size, (page - 1) * page_size
-        if grouped:
-            sql = f'''WITH page AS MATERIALIZED (SELECT g.group_id,g.representative FROM {base}{where}
-                ORDER BY {order} LIMIT ? OFFSET ?) SELECT i.* FROM page CROSS JOIN images i ON i.id=page.representative
-                ORDER BY page.group_id'''
-        else:
-            sql = f'SELECT i.* FROM {base}{where} ORDER BY {order} LIMIT ? OFFSET ?'
+        sql = f'''WITH page AS MATERIALIZED (SELECT {owner} AS owner_id,{representative} AS image_id,{key} AS sort_key
+            FROM {base}{where} ORDER BY {order} LIMIT ? OFFSET ?)
+            SELECT i.* FROM page CROSS JOIN images i ON i.id=page.image_id ORDER BY {order}'''
         rows = db.execute(sql, [*params, limit, offset])
         items = review_images(db, rows, grouped=grouped)
         if page is None:

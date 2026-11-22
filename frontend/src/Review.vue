@@ -54,13 +54,29 @@ const state = computed({
 });
 const filter = computed(() => ({ ...fromQuery(route.query), include_no_faces: false, sort: "newest" as const }));
 const filterQuery = computed(() => toQuery(filter.value));
+const sortOptions = [
+  { value: 'default', label: '默认顺序' },
+  { value: 'newest', label: '发布时间：最新优先' },
+  { value: 'oldest', label: '发布时间：最早优先' },
+  { value: 'confidence', label: '识别置信度：最低优先' },
+];
+const sort = computed(() => sortOptions.find(option => option.value === route.query.sort)?.value ?? 'default');
+async function changeSort(value: string) {
+  if ((dirty.value || Object.keys(facePeople.value).length) && !await confirm('有未保存的修改，确定更改排序并放弃吗？')) return;
+  box.value = '';
+  boxPerson.value = null;
+  sourceEdit.value = null;
+  newPersonFace.value = null;
+  facePeople.value = {};
+  await router.replace({ query: { ...route.query, sort: value === 'default' ? undefined : value, page: undefined, image: undefined } });
+}
 const page = computed(() => {
   const value = typeof route.query.page === "string" ? Number(route.query.page) : 1;
   return Number.isSafeInteger(value) && value > 0 ? value : 1;
 });
 const pageCount = ref(1);
 const total = ref(0);
-const pageKey = (number: number) => JSON.stringify([state.value, filterQuery.value, number]);
+const pageKey = (number: number) => JSON.stringify([state.value, filterQuery.value, sort.value, number]);
 const queryKey = computed(() => pageKey(page.value));
 const showFilters = ref(false);
 const draftFilter = ref(emptyFilter());
@@ -273,7 +289,7 @@ async function load() {
   await loadImages(false);
 }
 async function loadCurrent() {
-  await loadImages(true);
+  await loadImages(sort.value === 'default');
 }
 async function loadImages(currentOnly: boolean) {
   if (suggestionsView.value) return;
@@ -284,6 +300,7 @@ async function loadImages(currentOnly: boolean) {
   const requestedKey = queryKey.value;
   let actualPage = page.value;
   const filters = new URLSearchParams(filterQuery.value);
+  if (sort.value !== 'default') filters.set('sort', sort.value);
   const filtersQuery = filters.size ? `&${filters}` : "";
   const requestedImage = targetImage.value;
   const previousGroup = loadedQuery === requestedKey && requestedImage === active.value?.id
@@ -610,6 +627,8 @@ onMounted(load);
           { value: 'all', label: '全部在库图片' },
         ]"
       />
+      <n-select v-if="state !== 'trash' && state !== 'image'" aria-label="审核图片排序"
+        :value="sort" :options="sortOptions" :disabled="navigationDisabled" @update:value="changeSort" />
       <n-button v-if="state !== 'trash'" :disabled="navigationDisabled" @click="openFilters">
         {{ hasFilters(filter) ? '筛选（已启用）' : '筛选' }}
       </n-button>

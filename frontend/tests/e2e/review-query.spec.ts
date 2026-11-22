@@ -73,6 +73,27 @@ test("pages through filtered groups, scopes selection and restores the last avai
   await expect(page).toHaveURL(/state=unknown&people=7&image=1$/);
 });
 
+test("changing review order resets the page, keeps filters and survives reload", async ({ page }) => {
+  await page.route("**/api/v1/admin/images?**", route => {
+    const params = new URL(route.request().url()).searchParams;
+    const number = Number(params.get('page'));
+    const id = params.get('sort') === 'confidence' ? 22 : number;
+    return route.fulfill({ json: { items: [{ id, faces: [], sources: [] }], page: number, page_size: 1, total: 2 } });
+  });
+  await page.goto('/admin/review?state=all&people=7&page=2&image=2');
+  const order = page.getByLabel('审核图片排序');
+  await order.click();
+  await page.getByText('识别置信度：最低优先', { exact: true }).click();
+  await expect(page).toHaveURL(/state=all&people=7&sort=confidence&image=22$/);
+  await page.reload();
+  await expect(order).toContainText('识别置信度：最低优先');
+  await expect(page.getByRole('heading', { name: /图片 #22/ })).toBeVisible();
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.locator('.review-toolbar').screenshot({ path: `/tmp/gallery-faces/review-sort-${width}.png` });
+  }
+});
+
 test("opens explicit single-image links and records category changes and empty lists", async ({ page }) => {
   await page.goto("/admin/review?state=image&image=22");
   await expect(page.locator('[aria-label="审核状态"]')).toContainText("当前图片");

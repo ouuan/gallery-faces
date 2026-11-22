@@ -1851,6 +1851,22 @@
             }
           },
           {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "default",
+                "newest",
+                "oldest",
+                "confidence"
+              ],
+              "type": "string",
+              "default": "default",
+              "title": "Sort"
+            }
+          },
+          {
             "name": "page",
             "in": "query",
             "required": false,
