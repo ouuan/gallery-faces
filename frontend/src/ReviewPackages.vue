@@ -34,8 +34,7 @@ const page = computed(() => {
   const value = Number(route.query.suggestion_page);
   return Number.isSafeInteger(value) && value > 0 ? value : 1;
 });
-const result = ref<Result>({ items: [], total: 0, page: 1, page_size: 20 });
-const pageCount = computed(() => Math.max(1, Math.ceil(result.value.total / result.value.page_size)));
+const result = ref<Result>({ items: [], total: 0, total_images: 0, page: 1, page_count: 1, page_size: 20 });
 const groups = computed(() => {
   const grouped = new Map<number, Suggestion[]>();
   for (const item of result.value.items) {
@@ -74,8 +73,7 @@ async function load() {
   try {
     const data = await api<Result>(`${root}/suggestions?status=${status.value.value}&page=${page.value}&page_size=20`, { signal });
     if (signal.aborted) return;
-    const actual = Math.max(1, Math.min(data.page, Math.ceil(data.total / data.page_size)));
-    if (actual !== page.value) { await navigate(status.value.value, actual); return; }
+    if (data.page !== page.value) { await navigate(status.value.value, data.page); return; }
     result.value = data;
     selected.value = selected.value.filter(id => data.items.some(item => item.id === id));
     for (const item of data.items) {
@@ -88,7 +86,7 @@ async function load() {
 }
 watch([status, page], () => {
   selected.value = []; faceChoices.value = {}; failures.value = []; confirmation.value = []; actionError.value = '';
-  result.value = { items: [], total: 0, page: page.value, page_size: 20 };
+  result.value = { items: [], total: 0, total_images: 0, page: page.value, page_count: 1, page_size: 20 };
   void load();
 }, { immediate: true });
 
@@ -195,7 +193,7 @@ function externalSource(item: Suggestion) {
     <header class="queue-tools">
       <div class="controls">
         <n-select aria-label="建议状态" :options="statuses" :value="status.value" :disabled="busy" @update:value="navigate($event, 1)" />
-        <span v-if="!loading && !loadError" class="muted">共 {{ result.total }} 条记录</span>
+        <span v-if="!loading && !loadError" class="muted">共 {{ result.total_images }} 张图片，{{ result.total }} 条记录</span>
       </div>
       <div class="controls">
         <n-button :disabled="busy" aria-label="刷新建议" title="刷新建议" @click="load"><template #icon><RefreshCw /></template></n-button>
@@ -213,7 +211,7 @@ function externalSource(item: Suggestion) {
     <n-alert v-if="loadError" type="error">{{ loadError }} <n-button @click="load">重试加载</n-button></n-alert>
     <template v-else>
       <div v-if="selectedItems.length" class="controls selection-tools" aria-label="批量决定">
-        <strong>已选 {{ selectedItems.length }} 条</strong>
+        <strong>已选 {{ selectedItems.length }} 条<span v-if="selectedItems.length >= 100">（单次上限）</span></strong>
         <n-button type="primary" :disabled="busy || !selectedItems.every(canAccept)" @click="decide('accept', selectedItems)">接受所选</n-button>
         <n-button :disabled="busy" @click="decide('reject', selectedItems)">拒绝所选</n-button>
         <n-button quaternary :disabled="busy" @click="selected = []">取消选择</n-button>
@@ -237,7 +235,7 @@ function externalSource(item: Suggestion) {
                   <component :is="confidenceTiers[item.proposal.confidence].icon" :size="16" aria-hidden="true" />Agent 置信度：{{ confidenceTiers[item.proposal.confidence].label }}
                 </span>
               </div>
-              <n-checkbox v-if="actionable(item)" :disabled="busy"
+              <n-checkbox v-if="actionable(item)" :disabled="busy || (selected.length >= 100 && !selected.includes(item.id))"
                 :checked="selected.includes(item.id)" @update:checked="toggle(item.id, $event)">选择<span class="sr-only">建议 #{{ item.id }}</span></n-checkbox>
             </header>
             <p v-if="item.proposal.kind === 'review_outcome'">{{ item.proposed }}</p>
@@ -275,7 +273,7 @@ function externalSource(item: Suggestion) {
           </article>
         </div>
       </section>
-      <nav v-if="pageCount > 1" class="controls pagination" aria-label="建议分页"><ListPagination :page="page" :page-count="pageCount" :disabled="busy" @change="navigate(status.value, $event)" /></nav>
+      <nav v-if="result.page_count > 1" class="controls pagination" aria-label="建议分页"><ListPagination :page="page" :page-count="result.page_count" :disabled="busy" @change="navigate(status.value, $event)" /></nav>
     </template>
     <n-modal :show="!!confirmation.length" @update:show="!$event && (confirmation = [])">
       <section class="form-dialog confirm-scope" role="dialog" aria-modal="true" aria-labelledby="confirm-scope-heading">

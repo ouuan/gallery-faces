@@ -398,7 +398,9 @@ class QueueItem(BaseModel):
 class QueuePage(BaseModel):
     items: list[QueueItem]
     total: int
+    total_images: int
     page: int
+    page_count: int
     page_size: int
 
 
@@ -709,6 +711,20 @@ JOIN_SNAPSHOT = (
 )
 
 
+def queue_pages(image_counts, page_size):
+    images = []
+    records = 0
+    for image_id, count in image_counts:
+        if images and records + count > page_size:
+            yield images, records
+            images = []
+            records = 0
+        images.append(image_id)
+        records += count
+    if images:
+        yield images, records
+
+
 def install(app, admin):
     router = APIRouter(prefix=PREFIX, dependencies=[Depends(admin)])
 
@@ -740,20 +756,31 @@ def install(app, admin):
     def review_queue(
         status: Literal['review', 'pending', 'accepted', 'rejected', 'acknowledged'] = 'review',
         page: int = Query(1, ge=1),
-        page_size: int = Query(20, ge=1, le=100),
+        page_size: int = Query(20, ge=1, le=100, description='每页目标记录数；单张图片的记录不拆分'),
     ):
         with storage.connect() as db:
             db.execute('BEGIN')
             condition, params = ("status IN ('pending','recorded')", ()) if status == 'review' else ('status=?', (status,))
-            total = db.execute('SELECT count(*) FROM review_suggestions WHERE ' + condition, params).fetchone()[0]
-            page = min(page, max(1, (total + page_size - 1) // page_size))
+            image_counts = db.execute(
+                f'SELECT image_id,count(*) FROM review_suggestions WHERE {condition} GROUP BY image_id ORDER BY image_id',
+                params,
+            )
+            total = total_images = 0
+            page_count = 1
+            selected_images = []
+            for page_count, (images, records) in enumerate(queue_pages(image_counts, page_size), 1):
+                total += records
+                total_images += len(images)
+                if page_count <= page:
+                    selected_images = images
             rows = db.execute(
                 'SELECT s.*,snap.snapshot '
                 + JOIN_SNAPSHOT
-                + f' WHERE {condition} ORDER BY s.image_id,s.id LIMIT ? OFFSET ?',
-                (*params, page_size, (page - 1) * page_size),
+                + f' WHERE {condition} AND s.image_id IN (SELECT value FROM json_each(?)) ORDER BY s.image_id,s.id',
+                (*params, encode(selected_images)),
             )
-            return QueuePage(items=[queue_item(db, row) for row in rows], total=total, page=page, page_size=page_size)
+            return QueuePage(items=[queue_item(db, row) for row in rows], total=total, total_images=total_images,
+                             page=min(page, page_count), page_count=page_count, page_size=page_size)
 
     @router.get(
         '/suggestions/{identifier}/attachment',

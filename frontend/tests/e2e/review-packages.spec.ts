@@ -43,13 +43,16 @@ const external = { ...item, id: 102, proposal: { id: 'ref', image_id: 41, kind: 
 const recycle = { ...item, id: 103, image_id: 53, proposal: { id: 'recycle', image_id: 53, kind: 'recycle', reason: '符合本批回收标准。' },
   current: '在库 3 张', proposed: '整组 3 张移入回收站', scope_token: 'exact-group', member_ids: [53, 54, 55], box: null, reference_ids: [] } satisfies Fixture;
 const label = '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#afb8c3"/><text x="400" y="440" text-anchor="middle" font-size="24">布局示例</text></svg>';
-async function mockQueue(page: Page, items: Fixture[]) {
+async function mockQueue(page: Page, ...pages: Fixture[][]) {
   await page.route(`**${root}/suggestions?**`, route => {
     const params = new URL(route.request().url()).searchParams;
     const status = params.get('status');
-    const filtered = items.filter(entry => status === 'review' ? ['pending', 'recorded'].includes(entry.status) : entry.status === status);
-    const number = Math.min(Number(params.get('page')), Math.max(1, Math.ceil(filtered.length / 20)));
-    return route.fulfill({ json: { items: filtered.slice((number - 1) * 20, number * 20), total: filtered.length, page: number, page_size: 20 } });
+    const filtered = pages.map(items => items.filter(entry => status === 'review' ? ['pending', 'recorded'].includes(entry.status) : entry.status === status)).filter(items => items.length);
+    const all = filtered.flat();
+    const page_count = Math.max(1, filtered.length);
+    const number = Math.min(Number(params.get('page')), page_count);
+    return route.fulfill({ json: { items: filtered[number - 1] ?? [], total: all.length,
+      total_images: new Set(all.map(entry => entry.image_id)).size, page: number, page_count, page_size: 20 } });
   });
 }
 test.beforeEach(async ({ page }) => {
@@ -217,14 +220,18 @@ test('offers a manual download when the automatic link is blocked', async ({ pag
 });
 
 test('clears selection on page changes and restores the queue page on reload', async ({ page }) => {
-  await mockQueue(page, Array.from({ length: 21 }, (_, index) => ({ ...item, id: index + 1 })));
+  const pages = [11, 12, 13].map((count, image) => Array.from({ length: count }, (_, index) => ({
+    ...item, id: image * 20 + index + 1, image_id: image + 1, proposal: { ...item.proposal, image_id: image + 1 },
+  })));
+  await mockQueue(page, ...pages);
   await page.goto(queue);
+  await expect(page.getByRole('button', { name: '第 3 页' })).toBeVisible();
   await page.getByRole('checkbox', { name: /建议 #1$/ }).check();
   await page.getByRole('navigation', { name: '建议分页' }).getByRole('button', { name: '下一页' }).click();
   await expect(page.getByRole('article', { name: '建议 #21' })).toBeVisible();
   await expect(page.getByRole('button', { name: '接受所选' })).toHaveCount(0);
   await page.reload();
-  await expect(page.getByRole('article')).toHaveCount(1);
+  await expect(page.getByRole('article')).toHaveCount(12);
   await expect(page.getByRole('article', { name: '建议 #21' })).toBeVisible();
 });
 

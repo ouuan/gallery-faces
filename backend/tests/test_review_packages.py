@@ -73,6 +73,40 @@ def decide(client, item, action='accept', **params):
     return client.post(BASE + '/decisions', json=dict(decision=action, items=[dict(id=item['id'], **params)])).json()
 
 
+@pytest.mark.parametrize(('counts', 'pages'), [
+    ([], []),
+    ([8, 12, 1], [([1, 2], 20), ([3], 1)]),
+    ([11, 12, 13], [([1], 11), ([2], 12), ([3], 13)]),
+    ([2, 21, 1, 4], [([1], 2), ([2], 21), ([3, 4], 5)]),
+])
+def test_queue_pages_budget_records_without_splitting_images(counts, pages):
+    assert list(results.queue_pages(enumerate(counts, 1), 20)) == pages
+
+
+def test_queue_paginates_filtered_images_across_batches(client):
+    first, second = seed(2)
+    batch = export(client, ids=[first, second])
+    notes = [suggestion('review_outcome', f'note-{image_id}', image_id, outcome='needs_human')
+             for image_id in (second, first)]
+    assert upload(client, batch, notes)['recorded'] == 2
+    batch = export(client, ids=[first])
+    assert upload(client, batch, [suggestion('recycle', 'remove', first)])['added'] == 1
+
+    def get_page(number, status='review'):
+        response = client.get(BASE + '/suggestions', params=dict(page_size=1, page=number, status=status))
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    page = get_page(1)
+    assert (page['total_images'], page['total'], page['page_count']) == (2, 3, 2)
+    assert [(item['image_id'], item['status']) for item in page['items']] == [(first, 'recorded'), (first, 'pending')]
+    last = get_page(99)
+    assert last['page'] == 2 and [item['image_id'] for item in last['items']] == [second]
+    pending = get_page(2, 'pending')
+    assert (pending['page'], pending['page_count'], pending['total_images'], pending['total']) == (1, 1, 1, 1)
+    assert pending['items'] == page['items'][1:]
+
+
 def test_scope_rules_and_download_once(client):
     ids = seed(52)
     with db.connect(True) as conn:

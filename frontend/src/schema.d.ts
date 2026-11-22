@@ -2141,8 +2141,12 @@ export interface components {
             items: components["schemas"]["QueueItem"][];
             /** Total */
             total: number;
+            /** Total Images */
+            total_images: number;
             /** Page */
             page: number;
+            /** Page Count */
+            page_count: number;
             /** Page Size */
             page_size: number;
         };
@@ -4673,6 +4677,7 @@ export interface operations {
             query?: {
                 status?: "review" | "pending" | "accepted" | "rejected" | "acknowledged";
                 page?: number;
+                /** @description 每页目标记录数；单张图片的记录不拆分 */
                 page_size?: number;
             };
             header?: never;
