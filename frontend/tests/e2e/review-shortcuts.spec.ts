@@ -36,7 +36,7 @@ test("review keyboard navigation, confirmation, deletion and input ownership", a
     return route.fulfill({ json: [] });
   });
   await page.goto("/admin/review?state=all");
-  const heading = page.locator(".review-heading > h3").first();
+  const heading = page.getByRole("heading", { level: 3, name: /^图片 #\d+/ });
   await expect(heading).toHaveText("图片 #1 · 共 1 个版本");
   await page.keyboard.press("ArrowLeft"); await expect(heading).toHaveText("图片 #1 · 共 1 个版本");
   await page.keyboard.press("ArrowRight"); await expect(heading).toHaveText("图片 #2 · 共 1 个版本");
