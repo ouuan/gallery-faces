@@ -5,6 +5,8 @@ import ListPagination from "./ListPagination.vue";
 import Filters from "./Filters.vue";
 import { emptyFilter, fromQuery, toQuery, hasFilters } from "./filters";
 import TrashReview from "./TrashReview.vue";
+import ReviewPackages from "./ReviewPackages.vue";
+import ReviewPackageExport from "./ReviewPackageExport.vue";
 import { useReviewShortcuts } from "./review-shortcuts";
 import { useConfirm } from "./confirm";
 const confirm = useConfirm();
@@ -34,6 +36,7 @@ import { emptyGroup, personGroupPayload, type SelectedGroup } from "./person-gro
 import PersonSelect from "./PersonSelect.vue";
 const route = useRoute();
 const router = useRouter();
+const suggestionsView = computed(() => route.query.view === 'suggestions');
 const targetImage = computed(() => {
   const id = typeof route.query.image === "string" ? Number(route.query.image) : NaN;
   return Number.isSafeInteger(id) && id > 0 ? id : null;
@@ -175,7 +178,7 @@ function confirmLeavingReview() {
   return !(dirty.value || Object.keys(facePeople.value).length) || confirm("有未保存的修改，确定离开吗？");
 }
 onBeforeRouteLeave(confirmLeavingReview);
-onBeforeRouteUpdate((to, from) => to.path === from.path || confirmLeavingReview());
+onBeforeRouteUpdate((to, from) => (to.path === from.path && to.query.view === from.query.view) || confirmLeavingReview());
 function unload(e: BeforeUnloadEvent) {
   if (dirty.value) {
     e.preventDefault();
@@ -210,7 +213,7 @@ useReviewShortcuts({
   arrowright: { run: () => moveImage(current.value + 1), enabled: () => current.value < images.value.length - 1 },
   c: { run: confirmAll, enabled: () => !actionsDisabled.value && pendingFaces.value.length > 0 },
   d: { run: () => deleteImages(actionIds.value), enabled: () => state.value !== "trash" && !actionsDisabled.value },
-}, () => state.value !== "trash" && !!active.value && !navigationDisabled.value && !sourceEdit.value && !newPersonFace.value && moreFace.value === null);
+}, () => !suggestionsView.value && state.value !== "trash" && !!active.value && !navigationDisabled.value && !sourceEdit.value && !newPersonFace.value && moreFace.value === null);
 const visibleFaces = computed(() =>
   active.value?.faces.filter((face: any) => !face.ignored) ?? [],
 );
@@ -258,7 +261,7 @@ let loadVersion = 0;
 const imageRequest = useLatestRequest();
 let loadedQuery: string | null = null;
 function syncQuery(actualPage = page.value) {
-  if (state.value === "trash" || loading.value || error.value || loadedQuery !== queryKey.value) return;
+  if (suggestionsView.value || state.value === "trash" || loading.value || error.value || loadedQuery !== queryKey.value) return;
   const image = active.value ? String(active.value.id) : undefined;
   const pageParam = actualPage > 1 ? String(actualPage) : undefined;
   if (route.query.state === state.value && route.query.image === image && route.query.page === pageParam) return;
@@ -273,6 +276,7 @@ async function loadCurrent() {
   await loadImages(true);
 }
 async function loadImages(currentOnly: boolean) {
+  if (suggestionsView.value) return;
   let refreshedImage = currentOnly ? active.value : null;
   const signal = imageRequest.start();
   const version = ++loadVersion;
@@ -339,7 +343,18 @@ async function loadImages(currentOnly: boolean) {
     }
   }
 }
-watch([queryKey, targetImage], () => {
+watch([queryKey, targetImage, suggestionsView], () => {
+  if (suggestionsView.value) {
+    imageRequest.cancel();
+    loadVersion++;
+    loadedQuery = null;
+    images.value = [];
+    selected.value = [];
+    sourceEdit.value = null;
+    newPersonFace.value = null;
+    loading.value = false;
+    return;
+  }
   if (loadedQuery !== queryKey.value || loading.value || error.value ||
       (state.value === "image" && targetImage.value !== (active.value?.id ?? null))) {
     void load();
@@ -570,6 +585,12 @@ async function refresh() {
 onMounted(load);
 </script>
 <template>
+  <nav class="review-views" aria-label="审核工作区">
+    <router-link :aria-current="!suggestionsView ? 'page' : undefined" :to="{query: {...route.query, view: undefined}}">图片审核</router-link>
+    <router-link :aria-current="suggestionsView ? 'page' : undefined" :to="{query: {...route.query, view: 'suggestions'}}">建议复核</router-link>
+  </nav>
+  <ReviewPackages v-if="suggestionsView" />
+  <template v-else>
   <div class="review-toolbar">
     <div class="review-filter">
       <n-select
@@ -605,6 +626,8 @@ onMounted(load);
       <n-button :disabled="actionsDisabled" @click="selected = selected.length === images.length ? [] : images.map(image => image.id)">
         {{ images.length && selected.length === images.length ? "取消全选" : pageCount > 1 ? "全选本页" : "全选" }}
       </n-button>
+      <ReviewPackageExport :disabled="actionsDisabled" :ids="selected" :state="state" :filters="filterQuery"
+        :image-id="state === 'image' ? active?.id : null" :total="state === 'image' ? images.length : total" />
       <n-button :disabled="actionsDisabled" @click="action('redetect')"
         >重新检测</n-button
       >
@@ -955,8 +978,12 @@ onMounted(load);
     </div></n-modal
   >
   </template>
+  </template>
 </template>
 <style scoped>
+.review-views { display: flex; gap: 24px; margin-bottom: 20px; border-bottom: 1px solid var(--line); }
+.review-views a { display: inline-flex; align-items: center; min-height: 44px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; }
+.review-views a[aria-current="page"] { color: var(--accent); border-color: currentColor; font-weight: 600; }
 .review-toolbar {
   justify-content: space-between;
   gap: 16px 24px;

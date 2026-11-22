@@ -416,6 +416,13 @@ onUnmounted(() => {
               :disabled="savingSettings"
           /></label>
           <p class="hint">显示在页面顶部和浏览器标签页，最多 100 个字符</p>
+          <h2>图片审核包</h2>
+          <label class="field-label">Agent 审核规则<n-input
+            v-model:value="settings.agent_review_rules" type="textarea"
+            :input-props="{ 'aria-label': 'Agent 审核规则', 'aria-describedby': 'review-rules-help' }"
+            :autosize="{ minRows: 3, maxRows: 12 }" maxlength="4000" show-count :disabled="savingSettings"
+          /></label>
+          <p id="review-rules-help" class="hint">保存后随新导出的审核包发送。未明确指定回收标准时，agent 不应建议回收图片。</p>
           <h2>链接分享（Open Graph）</h2>
           <p class="hint">分别设置两个前端的分享卡片。标题留空时使用站点标题，其余留空则不提供对应信息。</p>
           <OpenGraphSettings v-model="settings" label="中文前端" suffix="" :disabled="savingSettings" />

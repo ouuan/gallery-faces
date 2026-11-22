@@ -22,6 +22,7 @@ test("sharing settings save independently for both frontends and can be cleared"
     return route.fulfill({ json: [] });
   });
   await page.goto("/admin/settings");
+  await page.getByRole('textbox', { name: 'Agent 审核规则' }).fill('只建议有可核实依据的匹配。');
   for (const [label, suffix] of [["中文前端", ""], ["日语只读前端", "_ja"]]) {
     await page.getByRole("textbox", { name: label + "分享标题", exact: true }).fill(label + "分享");
     await page.getByRole("textbox", { name: label + "分享描述", exact: true }).fill(label + "说明");
@@ -40,6 +41,7 @@ test("sharing settings save independently for both frontends and can be cleared"
     for (const theme of ["light", "dark"]) {
       await page.evaluate(theme => localStorage.setItem("theme", theme), theme);
       await page.reload();
+      await expect(page.getByRole('textbox', { name: 'Agent 审核规则' })).toHaveValue('只建议有可核实依据的匹配。');
       await expect(page.getByRole("textbox", { name: "中文前端分享标题", exact: true })).toHaveValue("中文前端分享");
       await expect(page.getByRole("textbox", { name: "日语只读前端分享标题", exact: true })).toHaveValue("日语只读前端分享");
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

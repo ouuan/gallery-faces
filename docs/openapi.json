@@ -3113,6 +3113,299 @@
           }
         }
       }
+    },
+    "/api/v1/admin/review-packages/exports": {
+      "post": {
+        "summary": "Export Review",
+        "operationId": "export_review_api_v1_admin_review_packages_exports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/review-packages/exports/{batch}": {
+      "get": {
+        "summary": "Export Status",
+        "operationId": "export_status_api_v1_admin_review_packages_exports__batch__get",
+        "parameters": [
+          {
+            "name": "batch",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Batch"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/review-packages/exports/{batch}/download": {
+      "get": {
+        "summary": "Download Review",
+        "operationId": "download_review_api_v1_admin_review_packages_exports__batch__download_get",
+        "parameters": [
+          {
+            "name": "batch",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Batch"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/zip": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/review-packages/imports": {
+      "post": {
+        "summary": "Import Review",
+        "operationId": "import_review_api_v1_admin_review_packages_imports_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_review_api_v1_admin_review_packages_imports_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportCount"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/review-packages/suggestions": {
+      "get": {
+        "summary": "Review Queue",
+        "operationId": "review_queue_api_v1_admin_review_packages_suggestions_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "pending",
+                "accepted",
+                "rejected"
+              ],
+              "type": "string",
+              "default": "pending",
+              "title": "Status"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuePage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/review-packages/suggestions/{identifier}/attachment": {
+      "get": {
+        "summary": "Review Attachment",
+        "operationId": "review_attachment_api_v1_admin_review_packages_suggestions__identifier__attachment_get",
+        "parameters": [
+          {
+            "name": "identifier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "exclusiveMinimum": 0,
+              "title": "Identifier"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/review-packages/decisions": {
+      "post": {
+        "summary": "Decide",
+        "operationId": "decide_api_v1_admin_review_packages_decisions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Decision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Decisions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3169,6 +3462,216 @@
           "recoveries"
         ],
         "title": "Activity"
+      },
+      "AddFace": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$",
+            "title": "Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Image Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "Agent assessment of this suggestion, independent of face-match scores."
+          },
+          "kind": {
+            "type": "string",
+            "const": "add_face",
+            "title": "Kind"
+          },
+          "box": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Box"
+          },
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^new:[A-Za-z0-9_-]{1,80}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "image_id",
+          "reason",
+          "kind",
+          "box"
+        ],
+        "title": "AddFace"
+      },
+      "AddReference": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$",
+            "title": "Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Image Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "Agent assessment of this suggestion, independent of face-match scores."
+          },
+          "kind": {
+            "type": "string",
+            "const": "add_reference",
+            "title": "Kind"
+          },
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^new:[A-Za-z0-9_-]{1,80}$"
+              }
+            ],
+            "title": "Person Id"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LibraryReference"
+              },
+              {
+                "$ref": "#/components/schemas/ExternalReference"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "image_id",
+          "reason",
+          "kind",
+          "person_id",
+          "source"
+        ],
+        "title": "AddReference"
+      },
+      "AttachmentPreview": {
+        "properties": {
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "boxes": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Boxes"
+          },
+          "suggested_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Index"
+          }
+        },
+        "type": "object",
+        "required": [
+          "width",
+          "height",
+          "boxes",
+          "suggested_index"
+        ],
+        "title": "AttachmentPreview"
       },
       "Batch": {
         "properties": {
@@ -3356,6 +3859,20 @@
         ],
         "title": "Body_cookie_upload_api_v1_admin_cookies__platform__post"
       },
+      "Body_import_review_api_v1_admin_review_packages_imports_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_review_api_v1_admin_review_packages_imports_post"
+      },
       "Body_reference_upload_api_v1_admin_reference_upload_post": {
         "properties": {
           "file": {
@@ -3513,6 +4030,44 @@
         ],
         "title": "Candidate"
       },
+      "Choice": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Id"
+          },
+          "face_index": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Face Index"
+          },
+          "scope_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "Choice"
+      },
       "Cleanup": {
         "properties": {
           "finished_at": {
@@ -3609,6 +4164,72 @@
         ],
         "title": "Create"
       },
+      "CreatePerson": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$",
+            "title": "Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Image Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "Agent assessment of this suggestion, independent of face-match scores."
+          },
+          "kind": {
+            "type": "string",
+            "const": "create_person",
+            "title": "Kind"
+          },
+          "person_id": {
+            "type": "string",
+            "pattern": "^new:[A-Za-z0-9_-]{1,80}$",
+            "title": "Person Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "image_id",
+          "reason",
+          "kind",
+          "person_id",
+          "name"
+        ],
+        "title": "CreatePerson"
+      },
       "Created": {
         "properties": {
           "task_id": {
@@ -3649,6 +4270,57 @@
           "image_url"
         ],
         "title": "DailyPhoto"
+      },
+      "Decision": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accept",
+              "reject"
+            ],
+            "title": "Decision"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision",
+          "items"
+        ],
+        "title": "Decision"
+      },
+      "Decisions": {
+        "properties": {
+          "applied": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Applied"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/Failure"
+            },
+            "type": "array",
+            "title": "Failures"
+          }
+        },
+        "type": "object",
+        "required": [
+          "applied",
+          "failures"
+        ],
+        "title": "Decisions"
       },
       "DuplicateInput": {
         "properties": {
@@ -3805,6 +4477,128 @@
         ],
         "title": "Evictions"
       },
+      "ExportInput": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "title": "State",
+            "default": "review"
+          },
+          "image_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Id"
+          },
+          "ids": {
+            "items": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "exclusiveMinimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Ids"
+          },
+          "people": {
+            "type": "string",
+            "title": "People",
+            "default": ""
+          },
+          "publishers": {
+            "type": "string",
+            "title": "Publishers",
+            "default": ""
+          },
+          "match": {
+            "type": "string",
+            "enum": [
+              "any",
+              "all",
+              "exact",
+              "subset"
+            ],
+            "title": "Match",
+            "default": "any"
+          },
+          "start": {
+            "type": "string",
+            "title": "Start",
+            "default": ""
+          },
+          "end": {
+            "type": "string",
+            "title": "End",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExportInput"
+      },
+      "ExternalReference": {
+        "properties": {
+          "attachment": {
+            "type": "string",
+            "pattern": "^attachments/[A-Za-z0-9_-]{1,100}\\.(jpg|jpeg|png|webp)$",
+            "title": "Attachment"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "box": {
+            "anyOf": [
+              {
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array",
+                "maxItems": 4,
+                "minItems": 4
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Box"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "attachment"
+        ],
+        "title": "ExternalReference"
+      },
       "FaceEdit": {
         "properties": {
           "person_id": {
@@ -3861,6 +4655,24 @@
           "status"
         ],
         "title": "FaceEditFailure"
+      },
+      "Failure": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "detail"
+        ],
+        "title": "Failure"
       },
       "FeedbackInput": {
         "properties": {
@@ -4266,6 +5078,24 @@
         ],
         "title": "ImageSelection"
       },
+      "ImportCount": {
+        "properties": {
+          "added": {
+            "type": "integer",
+            "title": "Added"
+          },
+          "duplicates": {
+            "type": "integer",
+            "title": "Duplicates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "added",
+          "duplicates"
+        ],
+        "title": "ImportCount"
+      },
       "ImportInput": {
         "properties": {
           "urls": {
@@ -4347,6 +5177,79 @@
         ],
         "title": "Inventory"
       },
+      "Job": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "building",
+              "ready",
+              "downloaded",
+              "expired",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done",
+            "default": 0
+          },
+          "expires": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "total"
+        ],
+        "title": "Job"
+      },
+      "LibraryReference": {
+        "properties": {
+          "face_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Face Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "face_id"
+        ],
+        "title": "LibraryReference"
+      },
       "Login": {
         "properties": {
           "password": {
@@ -4360,6 +5263,83 @@
           "password"
         ],
         "title": "Login"
+      },
+      "Match": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$",
+            "title": "Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Image Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "Agent assessment of this suggestion, independent of face-match scores."
+          },
+          "kind": {
+            "type": "string",
+            "const": "match",
+            "title": "Kind"
+          },
+          "face_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Face Id"
+          },
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^new:[A-Za-z0-9_-]{1,80}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "image_id",
+          "reason",
+          "kind",
+          "face_id",
+          "person_id"
+        ],
+        "title": "Match"
       },
       "Monitor": {
         "properties": {
@@ -4838,6 +5818,226 @@
         ],
         "title": "PublisherCandidate"
       },
+      "QueueItem": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "batch": {
+            "type": "string",
+            "title": "Batch"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "image_id": {
+            "type": "integer",
+            "title": "Image Id"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "proposal": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Match"
+              },
+              {
+                "$ref": "#/components/schemas/Remove"
+              },
+              {
+                "$ref": "#/components/schemas/AddFace"
+              },
+              {
+                "$ref": "#/components/schemas/CreatePerson"
+              },
+              {
+                "$ref": "#/components/schemas/AddReference"
+              },
+              {
+                "$ref": "#/components/schemas/Recycle"
+              }
+            ],
+            "title": "Proposal",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "add_face": "#/components/schemas/AddFace",
+                "add_reference": "#/components/schemas/AddReference",
+                "create_person": "#/components/schemas/CreatePerson",
+                "match": "#/components/schemas/Match",
+                "recycle": "#/components/schemas/Recycle",
+                "remove_face": "#/components/schemas/Remove"
+              }
+            }
+          },
+          "current": {
+            "type": "string",
+            "title": "Current"
+          },
+          "proposed": {
+            "type": "string",
+            "title": "Proposed"
+          },
+          "box": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Box"
+          },
+          "reference_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Reference Ids"
+          },
+          "attachment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttachmentPreview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "member_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Member Ids"
+          },
+          "scope_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "batch",
+          "status",
+          "image_id",
+          "width",
+          "height",
+          "proposal",
+          "current",
+          "proposed",
+          "box",
+          "reference_ids",
+          "attachment",
+          "member_ids",
+          "scope_token"
+        ],
+        "title": "QueueItem"
+      },
+      "QueuePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QueueItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "QueuePage"
+      },
+      "Recycle": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$",
+            "title": "Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Image Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "Agent assessment of this suggestion, independent of face-match scores."
+          },
+          "kind": {
+            "type": "string",
+            "const": "recycle",
+            "title": "Kind"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "image_id",
+          "reason",
+          "kind"
+        ],
+        "title": "Recycle"
+      },
       "ReferenceInput": {
         "properties": {
           "face_id": {
@@ -4850,6 +6050,65 @@
           "face_id"
         ],
         "title": "ReferenceInput"
+      },
+      "Remove": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$",
+            "title": "Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Image Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "Agent assessment of this suggestion, independent of face-match scores."
+          },
+          "kind": {
+            "type": "string",
+            "const": "remove_face",
+            "title": "Kind"
+          },
+          "face_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Face Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "image_id",
+          "reason",
+          "kind",
+          "face_id"
+        ],
+        "title": "Remove"
       },
       "Resume": {
         "properties": {
@@ -5004,6 +6263,12 @@
             "minLength": 1,
             "title": "Site Title",
             "default": "Gallery Faces"
+          },
+          "agent_review_rules": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Agent Review Rules",
+            "default": ""
           },
           "og_title": {
             "type": "string",

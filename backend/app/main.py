@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, field_validator
 from .open_graph import render_open_graph
-from . import daily, list_queries
+from . import daily, list_queries, review_packages
 from .group_index import REVIEW_FLAGS
 from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, cleanup_deleted_files
 from .security import download_url, cookie_bytes, save_cookie
@@ -52,7 +52,8 @@ async def lifespan(app):
     init()
     cleanup_deleted_files()
     feedback_limits()
-    yield
+    with review_packages.service():
+        yield
 
 
 app = FastAPI(title="Gallery Faces", version="1.0.0", lifespan=lifespan)
@@ -118,23 +119,30 @@ def admin(request: Request):
         fail("缺少请求校验", 403)
 
 
-@app.middleware("http")
-async def security_headers(request, call_next):
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["X-Frame-Options"] = "DENY"
-    if response.status_code >= 400:
-        response.headers["Cache-Control"] = "no-store"
-        response.headers["Cloudflare-CDN-Cache-Control"] = "no-store"
-    elif request.url.path.startswith("/assets/"):
-        response.headers["Cache-Control"] = IMMUTABLE
-    elif request.url.path.startswith("/api/"):
-        if not request.url.path.startswith("/api/v1/media/by-hash/"):
-            response.headers["Cache-Control"] = "no-store"
-        else:
-            response.headers.setdefault("Cache-Control", "no-store")
-    return response
+class SecurityHeaders:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        from starlette.datastructures import MutableHeaders
+        async def forward(message):
+            if message['type'] == 'http.response.start':
+                headers = MutableHeaders(scope=message)
+                headers.update({'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY'})
+                path = scope['path']
+                if message['status'] >= 400:
+                    headers.update({'Cache-Control': 'no-store', 'Cloudflare-CDN-Cache-Control': 'no-store'})
+                elif path.startswith('/assets/'):
+                    headers['Cache-Control'] = IMMUTABLE
+                elif path.startswith('/api/v1/media/by-hash/'):
+                    headers.setdefault('Cache-Control', 'no-store')
+                elif path.startswith('/api/'):
+                    headers['Cache-Control'] = 'no-store'
+            await send(message)
+        await self.app(scope, receive, forward)
+
+
+app.add_middleware(SecurityHeaders)
 
 
 class Login(BaseModel):
@@ -1491,35 +1499,10 @@ def admin_images(
     page: int | None = Query(None, ge=1, description="Request a page instead of the legacy list."),
     page_size: int = Query(50, ge=1, le=100), _: None = Depends(admin)
 ):
-    ids, accounts = parse_people_publishers(people, publishers)
     with connect() as db:
         db.execute("BEGIN")
-        if state not in (*REVIEW_FLAGS, 'hidden', 'all'):
-            fail("状态无效")
-        grouped = state != "hidden"
-        conditions = [f'g.{state}=1' if state in REVIEW_FLAGS else ('1' if grouped else 'i.hidden=1')]
-        params = []
-        if image_id is not None:
-            conditions.append('g.group_id=(SELECT group_id FROM images WHERE id=? AND hidden=0)' if grouped else 'i.id=?')
-            params.append(image_id)
-        source, args = source_filter(accounts, *date_bounds(start, end))
-        if source:
-            if grouped:
-                conditions.append(f'g.group_id IN (SELECT link.group_id FROM posts p CROSS JOIN review_group_posts link ON link.post_id=p.id WHERE {source})')
-            else:
-                conditions.append(f'EXISTS(SELECT 1 FROM sources s JOIN posts p ON p.id=s.post_id WHERE s.image_id=i.id AND {source})')
-            params.extend(args)
-        if ids:
-            if grouped:
-                chosen, people_args = list_queries.matching_groups('review', ids, match)
-                clause = f'g.group_id IN ({chosen})'
-            else:
-                clause, people_args = people_condition('i.id', ids, match)
-            conditions.append(clause)
-            params.extend(people_args)
+        grouped, base, where, params = review_selection(state, image_id, start, end, people, match, publishers)
         order = 'g.group_id' if grouped else 'i.id'
-        base = 'review_groups g' if grouped else 'images i'
-        where = ' WHERE ' + ' AND '.join(conditions)
         limit, offset = 500, 0
         if page is not None:
             total = db.execute(f'SELECT count(*) FROM {base}' + where, params).fetchone()[0]
@@ -1536,6 +1519,36 @@ def admin_images(
         if page is None:
             return items
         return ReviewPage(items=items, total=total, page=page, page_size=page_size)
+
+
+def review_selection(state, image_id, start, end, people, match, publishers):
+    ids, accounts = parse_people_publishers(people, publishers)
+    if state not in (*REVIEW_FLAGS, 'hidden', 'all'):
+        fail("状态无效")
+    grouped = state != "hidden"
+    conditions = [f'g.{state}=1' if state in REVIEW_FLAGS else ('1' if grouped else 'i.hidden=1')]
+    params = []
+    if image_id is not None:
+        conditions.append('g.group_id=(SELECT group_id FROM images WHERE id=? AND hidden=0)' if grouped else 'i.id=?')
+        params.append(image_id)
+    source, args = source_filter(accounts, *date_bounds(start, end))
+    if source:
+        if grouped:
+            conditions.append(f'g.group_id IN (SELECT link.group_id FROM posts p CROSS JOIN review_group_posts link ON link.post_id=p.id WHERE {source})')
+        else:
+            conditions.append(f'EXISTS(SELECT 1 FROM sources s JOIN posts p ON p.id=s.post_id WHERE s.image_id=i.id AND {source})')
+        params.extend(args)
+    if ids:
+        if grouped:
+            chosen, people_args = list_queries.matching_groups('review', ids, match)
+            clause = f'g.group_id IN ({chosen})'
+        else:
+            clause, people_args = people_condition('i.id', ids, match)
+        conditions.append(clause)
+        params.extend(people_args)
+    base = 'review_groups g' if grouped else 'images i'
+    where = ' WHERE ' + ' AND '.join(conditions)
+    return grouped, base, where, params
 
 
 @app.get("/api/v1/admin/trash")
@@ -2005,6 +2018,7 @@ def get_settings(_: None = Depends(admin)):
 
 class SettingsInput(BaseModel):
     site_title: str = Field(default="Gallery Faces", min_length=1, max_length=100)
+    agent_review_rules: str = Field(default='', max_length=4000)
     og_title: str = Field(default="", max_length=100)
     og_description: str = Field(default="", max_length=500)
     og_image: str = Field(default="", max_length=2048)
@@ -2174,6 +2188,9 @@ def site_open_graph(locale: Literal["zh", "ja"] = "zh"):
 
 from .monitors import install as install_monitors
 install_monitors(app, admin)
+from .review_results import install as install_review_results
+review_packages.install(app, admin)
+install_review_results(app, admin)
 
 static = Path(os.environ.get("FRONTEND_DIR", "../frontend/dist"))
 

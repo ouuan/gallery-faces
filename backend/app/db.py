@@ -18,6 +18,7 @@ INSERT INTO schema_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM schema_versio
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 INSERT OR IGNORE INTO settings VALUES('reference_version','0'),('threshold','0.5'),('margin','0.1'),('phash_distance','4'),('aspect_tolerance','0.01'),('ssim_threshold','0.98');
 INSERT OR IGNORE INTO settings VALUES('site_title','Gallery Faces');
+INSERT OR IGNORE INTO settings VALUES('agent_review_rules','');
 INSERT OR IGNORE INTO settings VALUES('og_title',''),('og_description',''),('og_image',''),('og_url',''),('og_title_ja',''),('og_description_ja',''),('og_image_ja',''),('og_url_ja','');
 INSERT OR IGNORE INTO settings VALUES('detection_threshold','0.5');
 INSERT OR IGNORE INTO settings SELECT 'review_ssim_threshold',CAST(min(0.5,CAST(value AS REAL)) AS TEXT) FROM settings WHERE key='ssim_threshold';
@@ -40,6 +41,16 @@ CREATE TABLE IF NOT EXISTS duplicate_decisions(a INTEGER REFERENCES images, b IN
 CREATE INDEX IF NOT EXISTS decision_right_image ON duplicate_decisions(b,a);
 CREATE TABLE IF NOT EXISTS review_history(id INTEGER PRIMARY KEY, face_id INTEGER REFERENCES faces, before_json TEXT NOT NULL, after_revision INTEGER NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, expires REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS review_batches(id TEXT PRIMARY KEY, status TEXT NOT NULL, instructions TEXT NOT NULL, total INTEGER NOT NULL, done INTEGER NOT NULL DEFAULT 0, expires REAL, error TEXT);
+CREATE TABLE IF NOT EXISTS review_snapshots(batch TEXT REFERENCES review_batches, image_id INTEGER NOT NULL, snapshot TEXT NOT NULL, PRIMARY KEY(batch,image_id));
+CREATE TABLE IF NOT EXISTS review_roster(batch TEXT REFERENCES review_batches, exported_id INTEGER NOT NULL, person_id INTEGER REFERENCES people ON DELETE SET NULL, PRIMARY KEY(batch,exported_id));
+CREATE TABLE IF NOT EXISTS review_face_identity(face_id INTEGER PRIMARY KEY REFERENCES faces ON DELETE CASCADE, token TEXT NOT NULL DEFAULT (lower(hex(randomblob(16)))));
+CREATE TABLE IF NOT EXISTS review_attachments(digest TEXT PRIMARY KEY, jpeg BLOB NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, detections TEXT NOT NULL, model TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS review_suggestions(id INTEGER PRIMARY KEY, batch TEXT NOT NULL, key TEXT NOT NULL, image_id INTEGER NOT NULL, payload TEXT NOT NULL, fingerprint TEXT NOT NULL, attachment TEXT REFERENCES review_attachments, chosen_face INTEGER, status TEXT NOT NULL DEFAULT 'pending', created_person INTEGER REFERENCES people ON DELETE SET NULL, UNIQUE(batch,key), UNIQUE(batch,fingerprint), FOREIGN KEY(batch,image_id) REFERENCES review_snapshots(batch,image_id));
+CREATE INDEX IF NOT EXISTS review_suggestions_page ON review_suggestions(status,image_id,id);
+CREATE TABLE IF NOT EXISTS review_result_keys(batch TEXT NOT NULL, key TEXT NOT NULL, content TEXT NOT NULL, suggestion INTEGER NOT NULL REFERENCES review_suggestions, PRIMARY KEY(batch,key));
+CREATE TABLE IF NOT EXISTS review_match_versions(suggestion INTEGER PRIMARY KEY REFERENCES review_suggestions, face_id INTEGER REFERENCES faces ON DELETE SET NULL, revision INTEGER NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS review_person_keys ON review_suggestions(batch,json_extract(payload,'$.person_id')) WHERE json_extract(payload,'$.kind')='create_person';
 CREATE TABLE IF NOT EXISTS pending_file_deletions(path TEXT PRIMARY KEY, sha256 TEXT NOT NULL, filename TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS pending_deduplications(image_id INTEGER PRIMARY KEY REFERENCES images ON DELETE CASCADE);
 CREATE TABLE IF NOT EXISTS feedback(id INTEGER PRIMARY KEY AUTOINCREMENT, image_id INTEGER NOT NULL REFERENCES images ON DELETE CASCADE, content TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','resolved')), created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')), resolved_at TEXT);

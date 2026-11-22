@@ -968,6 +968,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/review-packages/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export Review */
+        post: operations["export_review_api_v1_admin_review_packages_exports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/review-packages/exports/{batch}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Status */
+        get: operations["export_status_api_v1_admin_review_packages_exports__batch__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/review-packages/exports/{batch}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Review */
+        get: operations["download_review_api_v1_admin_review_packages_exports__batch__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/review-packages/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Review */
+        post: operations["import_review_api_v1_admin_review_packages_imports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/review-packages/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Review Queue */
+        get: operations["review_queue_api_v1_admin_review_packages_suggestions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/review-packages/suggestions/{identifier}/attachment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Review Attachment */
+        get: operations["review_attachment_api_v1_admin_review_packages_suggestions__identifier__attachment_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/review-packages/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide */
+        post: operations["decide_api_v1_admin_review_packages_decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -992,6 +1111,68 @@ export interface components {
             misses: number;
             /** Recoveries */
             recoveries: number;
+        };
+        /** AddFace */
+        AddFace: {
+            /** Id */
+            id: string;
+            /** Image Id */
+            image_id: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Confidence
+             * @description Agent assessment of this suggestion, independent of face-match scores.
+             */
+            confidence?: ("low" | "medium" | "high") | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "add_face";
+            /** Box */
+            box: [
+                number,
+                number,
+                number,
+                number
+            ];
+            /** Person Id */
+            person_id?: number | string | null;
+        };
+        /** AddReference */
+        AddReference: {
+            /** Id */
+            id: string;
+            /** Image Id */
+            image_id: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Confidence
+             * @description Agent assessment of this suggestion, independent of face-match scores.
+             */
+            confidence?: ("low" | "medium" | "high") | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "add_reference";
+            /** Person Id */
+            person_id: number | string;
+            /** Source */
+            source: components["schemas"]["LibraryReference"] | components["schemas"]["ExternalReference"];
+        };
+        /** AttachmentPreview */
+        AttachmentPreview: {
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** Boxes */
+            boxes: number[][];
+            /** Suggested Index */
+            suggested_index: number | null;
         };
         /** Batch */
         Batch: {
@@ -1060,6 +1241,11 @@ export interface components {
             /** File */
             file: string;
         };
+        /** Body_import_review_api_v1_admin_review_packages_imports_post */
+        Body_import_review_api_v1_admin_review_packages_imports_post: {
+            /** File */
+            file: string;
+        };
         /** Body_reference_upload_api_v1_admin_reference_upload_post */
         Body_reference_upload_api_v1_admin_reference_upload_post: {
             /** File */
@@ -1101,6 +1287,15 @@ export interface components {
             username: string;
             /** Label */
             label: string | null;
+        };
+        /** Choice */
+        Choice: {
+            /** Id */
+            id: number;
+            /** Face Index */
+            face_index?: number | null;
+            /** Scope Token */
+            scope_token?: string | null;
         };
         /** Cleanup */
         Cleanup: {
@@ -1144,6 +1339,29 @@ export interface components {
              */
             start: string;
         };
+        /** CreatePerson */
+        CreatePerson: {
+            /** Id */
+            id: string;
+            /** Image Id */
+            image_id: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Confidence
+             * @description Agent assessment of this suggestion, independent of face-match scores.
+             */
+            confidence?: ("low" | "medium" | "high") | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "create_person";
+            /** Person Id */
+            person_id: string;
+            /** Name */
+            name: string;
+        };
         /** Created */
         Created: {
             /** Task Id */
@@ -1159,6 +1377,23 @@ export interface components {
             group_id: number;
             /** Image Url */
             image_url: string;
+        };
+        /** Decision */
+        Decision: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "accept" | "reject";
+            /** Items */
+            items: components["schemas"]["Choice"][];
+        };
+        /** Decisions */
+        Decisions: {
+            /** Applied */
+            applied: number[];
+            /** Failures */
+            failures: components["schemas"]["Failure"][];
         };
         /** DuplicateInput */
         DuplicateInput: {
@@ -1208,6 +1443,58 @@ export interface components {
             /** Min Score */
             min_score: number | null;
         };
+        /** ExportInput */
+        ExportInput: {
+            /**
+             * State
+             * @default review
+             */
+            state: string;
+            /** Image Id */
+            image_id?: number | null;
+            /** Ids */
+            ids?: number[];
+            /**
+             * People
+             * @default
+             */
+            people: string;
+            /**
+             * Publishers
+             * @default
+             */
+            publishers: string;
+            /**
+             * Match
+             * @default any
+             * @enum {string}
+             */
+            match: "any" | "all" | "exact" | "subset";
+            /**
+             * Start
+             * @default
+             */
+            start: string;
+            /**
+             * End
+             * @default
+             */
+            end: string;
+        };
+        /** ExternalReference */
+        ExternalReference: {
+            /** Attachment */
+            attachment: string;
+            /** Source Url */
+            source_url?: string | null;
+            /** Box */
+            box?: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+        };
         /** FaceEdit */
         FaceEdit: {
             /** Person Id */
@@ -1233,6 +1520,13 @@ export interface components {
             detail: string;
             /** Status */
             status: number;
+        };
+        /** Failure */
+        Failure: {
+            /** Id */
+            id: number;
+            /** Detail */
+            detail: string;
         };
         /** FeedbackInput */
         FeedbackInput: {
@@ -1374,6 +1668,13 @@ export interface components {
             /** Ids */
             ids: number[];
         };
+        /** ImportCount */
+        ImportCount: {
+            /** Added */
+            added: number;
+            /** Duplicates */
+            duplicates: number;
+        };
         /** ImportInput */
         ImportInput: {
             /**
@@ -1411,10 +1712,59 @@ export interface components {
             /** Unknown */
             unknown: number;
         };
+        /** Job */
+        Job: {
+            /** Id */
+            id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "building" | "ready" | "downloaded" | "expired" | "failed";
+            /** Total */
+            total: number;
+            /**
+             * Done
+             * @default 0
+             */
+            done: number;
+            /** Expires */
+            expires?: number | null;
+            /** Error */
+            error?: string | null;
+        };
+        /** LibraryReference */
+        LibraryReference: {
+            /** Face Id */
+            face_id: number;
+        };
         /** Login */
         Login: {
             /** Password */
             password: string;
+        };
+        /** Match */
+        Match: {
+            /** Id */
+            id: string;
+            /** Image Id */
+            image_id: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Confidence
+             * @description Agent assessment of this suggestion, independent of face-match scores.
+             */
+            confidence?: ("low" | "medium" | "high") | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "match";
+            /** Face Id */
+            face_id: number;
+            /** Person Id */
+            person_id: number | string | null;
         };
         /** Monitor */
         Monitor: {
@@ -1583,8 +1933,89 @@ export interface components {
             /** Label */
             label: string;
         };
+        /** QueueItem */
+        QueueItem: {
+            /** Id */
+            id: number;
+            /** Batch */
+            batch: string;
+            /** Status */
+            status: string;
+            /** Image Id */
+            image_id: number;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** Proposal */
+            proposal: components["schemas"]["Match"] | components["schemas"]["Remove"] | components["schemas"]["AddFace"] | components["schemas"]["CreatePerson"] | components["schemas"]["AddReference"] | components["schemas"]["Recycle"];
+            /** Current */
+            current: string;
+            /** Proposed */
+            proposed: string;
+            /** Box */
+            box: number[] | null;
+            /** Reference Ids */
+            reference_ids: number[];
+            attachment: components["schemas"]["AttachmentPreview"] | null;
+            /** Member Ids */
+            member_ids: number[];
+            /** Scope Token */
+            scope_token: string | null;
+        };
+        /** QueuePage */
+        QueuePage: {
+            /** Items */
+            items: components["schemas"]["QueueItem"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** Recycle */
+        Recycle: {
+            /** Id */
+            id: string;
+            /** Image Id */
+            image_id: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Confidence
+             * @description Agent assessment of this suggestion, independent of face-match scores.
+             */
+            confidence?: ("low" | "medium" | "high") | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "recycle";
+        };
         /** ReferenceInput */
         ReferenceInput: {
+            /** Face Id */
+            face_id: number;
+        };
+        /** Remove */
+        Remove: {
+            /** Id */
+            id: string;
+            /** Image Id */
+            image_id: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Confidence
+             * @description Agent assessment of this suggestion, independent of face-match scores.
+             */
+            confidence?: ("low" | "medium" | "high") | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "remove_face";
             /** Face Id */
             face_id: number;
         };
@@ -1677,6 +2108,11 @@ export interface components {
              * @default Gallery Faces
              */
             site_title: string;
+            /**
+             * Agent Review Rules
+             * @default
+             */
+            agent_review_rules: string;
             /**
              * Og Title
              * @default
@@ -3845,6 +4281,231 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BatchResult"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_review_api_v1_admin_review_packages_exports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_status_api_v1_admin_review_packages_exports__batch__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_review_api_v1_admin_review_packages_exports__batch__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_review_api_v1_admin_review_packages_imports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_review_api_v1_admin_review_packages_imports_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportCount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_queue_api_v1_admin_review_packages_suggestions_get: {
+        parameters: {
+            query?: {
+                status?: "pending" | "accepted" | "rejected";
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueuePage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_attachment_api_v1_admin_review_packages_suggestions__identifier__attachment_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identifier: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_api_v1_admin_review_packages_decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Decision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Decisions"];
                 };
             };
             /** @description Validation Error */
