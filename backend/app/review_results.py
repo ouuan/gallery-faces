@@ -121,7 +121,7 @@ def attachment_pixels(name, raw):
         raise HTTPException(400, '无法读取附件图片') from error
 
 
-def prepare_attachment(raw, threshold):
+def prepare_attachment(raw):
     try:
         with Image.open(io.BytesIO(raw)) as source:
             oriented = ImageOps.exif_transpose(source).convert('RGB')
@@ -129,7 +129,10 @@ def prepare_attachment(raw, threshold):
             oriented.save(output, 'JPEG', quality=94)
     except (OSError, ValueError, Image.DecompressionBombError, UnidentifiedImageError) as error:
         raise HTTPException(400, '无法读取附件图片') from error
-    jpeg = output.getvalue()
+    return output.getvalue(), oriented.width, oriented.height
+
+
+def detect_attachment(jpeg, threshold):
     with tempfile.TemporaryDirectory(dir=storage.DATA) as temp:
         path = Path(temp) / 'source.jpg'
         path.write_bytes(jpeg)
@@ -144,7 +147,7 @@ def prepare_attachment(raw, threshold):
         except ValueError:
             continue
         faces.append(dict(box=box, embedding=base64.b64encode(embedding).decode()))
-    return jpeg, oriented.width, oriented.height, encode(faces), MODEL_VERSION
+    return encode(faces)
 
 
 def face_identifier(op):
@@ -196,31 +199,43 @@ def import_file(file):
         fail('附件总像素过多，请分次导入', 413)
     with tempfile.TemporaryDirectory(dir=storage.DATA) as temp:
         prepared = {}
+        detections = {}
         for path, raw in attachments.items():
             key = hashes[path]
+            if key in detections:
+                continue
             with storage.connect() as db:
-                if key in prepared or db.execute('SELECT 1 FROM review_attachments WHERE digest=?', (key,)).fetchone():
+                if db.execute('SELECT 1 FROM review_detections WHERE attachment=? AND model=? AND threshold=?',
+                              (key, MODEL_VERSION, threshold)).fetchone():
                     continue
-            jpeg, *metadata = prepare_attachment(raw, threshold)
-            staging = Path(temp) / key
-            staging.write_bytes(jpeg)
-            prepared[key] = staging, metadata
+                existing = db.execute('SELECT jpeg FROM review_attachments WHERE digest=?', (key,)).fetchone()
+            if existing:
+                jpeg = existing[0]
+            else:
+                jpeg, width, height = prepare_attachment(raw)
+                staging = Path(temp) / key
+                staging.write_bytes(jpeg)
+                prepared[key] = staging, width, height
+            detections[key] = detect_attachment(jpeg, threshold)
         with storage.connect(True) as db:
-            for key, (staging, metadata) in prepared.items():
+            for key, (staging, width, height) in prepared.items():
                 db.execute(
-                    'INSERT OR IGNORE INTO review_attachments VALUES(?,?,?,?,?,?)',
-                    (key, staging.read_bytes(), *metadata),
+                    'INSERT OR IGNORE INTO review_attachments VALUES(?,?,?,?)',
+                    (key, staging.read_bytes(), width, height),
                 )
+            db.executemany('INSERT OR IGNORE INTO review_detections(attachment,model,threshold,detections) VALUES(?,?,?,?)',
+                           ((key, MODEL_VERSION, threshold, faces) for key, faces in detections.items()))
             for op in result.suggestions:
                 payload = op.model_dump(mode='json')
                 if op.confidence is None:
                     payload.pop('confidence')
                 key = None
+                detection_id = None
                 identity = {k: v for k, v in payload.items() if k not in ('id', 'reason', 'confidence')}
                 if isinstance(op, AddReference) and isinstance(op.source, ExternalReference):
                     key = hashes[op.source.attachment]
-                    width, height = db.execute(
-                        'SELECT width,height FROM review_attachments WHERE digest=?', (key,)
+                    width, height, detection_id = db.execute(
+                        'SELECT width,height,id FROM review_attachments JOIN review_detections ON attachment=digest WHERE digest=? AND model=? AND threshold=?', (key, MODEL_VERSION, threshold)
                     ).fetchone()
                     if op.source.box and not fits(op.source.box, width, height):
                         fail('目标人脸框超出附件范围')
@@ -243,9 +258,9 @@ def import_file(file):
                     if isinstance(op, CreatePerson) and temporary_person(db, batch, op.person_id):
                         fail('临时人物编号已被使用', 409)
                     identifier = db.execute(
-                        '''INSERT INTO review_suggestions(batch,key,image_id,payload,fingerprint,attachment)
-                        VALUES(?,?,?,?,?,?)''',
-                        (batch, op.id, op.image_id, encode(payload), fingerprint, key),
+                        '''INSERT INTO review_suggestions(batch,key,image_id,payload,fingerprint,attachment,detection_id)
+                        VALUES(?,?,?,?,?,?,?)''',
+                        (batch, op.id, op.image_id, encode(payload), fingerprint, key, detection_id),
                     ).lastrowid
                     added += 1
                 db.execute('INSERT INTO review_result_keys VALUES(?,?,?,?)', (batch, op.id, content, identifier))
@@ -259,6 +274,11 @@ def temporary_person(db, batch, key):
     ).fetchone()
 
 
+def roster_person(db, batch, key):
+    row = db.execute('SELECT person_id FROM review_roster WHERE batch=? AND exported_id=?', (batch, key)).fetchone()
+    return row[0] if row else None
+
+
 def resolve_person(db, batch, key):
     if key is None:
         return None
@@ -267,10 +287,10 @@ def resolve_person(db, batch, key):
         if not row or row['status'] != 'accepted' or not row['created_person']:
             fail('请先单独接受新建人物建议，或检查人物是否已删除', 409)
         return row['created_person']
-    row = db.execute('SELECT person_id FROM review_roster WHERE batch=? AND exported_id=?', (batch, key)).fetchone()
-    if not row or not row[0]:
+    person = roster_person(db, batch, key)
+    if person is None:
         fail('目标人物已不存在', 409)
-    return row[0]
+    return person
 
 
 def suggested_index(detections, box):
@@ -306,6 +326,7 @@ class QueueItem(BaseModel):
     current: str
     proposed: str
     box: list[float] | None
+    face_token: str | None = None
     reference_ids: list[int]
     attachment: AttachmentPreview | None
     member_ids: list[int]
@@ -326,6 +347,15 @@ def name(db, key):
     return f'{row[0]} (#{key})' if row else f'已删除人物 #{key}'
 
 
+def snapshot_face(db, image, face_id):
+    old = next((item for item in image['faces'] if item['id'] == face_id), None)
+    if not old:
+        return None, None
+    face = db.execute('''SELECT f.* FROM faces f JOIN review_face_identity ON face_id=f.id
+        WHERE f.id=? AND image_id=? AND token=?''', (face_id, image['id'], old['token'])).fetchone()
+    return old, face
+
+
 def queue_item(db, row):
     payload = json.loads(row['payload'])
     image = json.loads(row['snapshot'])
@@ -335,6 +365,10 @@ def queue_item(db, row):
         temporary = temporary_person(db, batch, person)
         target = f"{temporary['name']} ({person})" if temporary else person
         person = temporary['created_person'] if temporary else None
+    elif isinstance(person, int):
+        exported_id = person
+        person = roster_person(db, batch, exported_id)
+        target = name(db, person) if person is not None else f'已删除人物 #{exported_id}'
     else:
         target = name(db, person)
     refs = [
@@ -346,13 +380,12 @@ def queue_item(db, row):
     ]
     source = payload.get('source', {})
     face_id = payload.get('face_id') or source.get('face_id')
-    face = db.execute('SELECT * FROM faces WHERE id=? AND image_id=?', (face_id, row['image_id'])).fetchone()
-    old = next((item for item in image['faces'] if item['id'] == face_id), {})
-    box = json.loads(face['box']) if face else payload.get('box') or old.get('box')
+    old, face = snapshot_face(db, image, face_id)
+    box = json.loads(face['box']) if face else old['box'] if old else payload.get('box')
     attachment = None
     if row['attachment']:
         data = db.execute(
-            'SELECT width,height,detections FROM review_attachments WHERE digest=?', (row['attachment'],)
+            'SELECT width,height,detections FROM review_detections JOIN review_attachments ON digest=attachment WHERE id=?', (row['detection_id'],)
         ).fetchone()
         detections = json.loads(data['detections'])
         index = row['chosen_face'] if row['chosen_face'] is not None else suggested_index(detections, source.get('box'))
@@ -381,10 +414,14 @@ def queue_item(db, row):
             f'SELECT count(*) FROM reference_images WHERE person_id=? AND {storage.ACTIVE_REFERENCE}', (person,)
         ).fetchone()[0]
         current, proposed = f'{target} · {count} 张参考图', f'添加至 {target} 的参考图'
+        if face_id and not face:
+            current += ' · 原人脸不存在'
     elif kind == 'create_person':
         current, proposed = ('已创建' if person else '未创建'), payload['name']
     elif kind == 'add_face':
         current, proposed = '未标注此框', f'补画人脸 · {target}'
+    elif row['status'] == 'accepted':
+        current, proposed = '已执行整组回收', f'整组 {len(members)} 张移入回收站'
     else:
         scope = trash.preview(db, [row['image_id']])
         members, token = scope['ids'], scope['scope_token']
@@ -400,6 +437,7 @@ def queue_item(db, row):
         current=current,
         proposed=proposed,
         box=box,
+        face_token=old['token'] if face else None,
         reference_ids=refs,
         attachment=attachment,
         member_ids=members,
@@ -442,12 +480,8 @@ def apply(db, row, choice, created_files):
     source = payload.get('source', {})
     face_id = payload.get('face_id') or source.get('face_id')
     if face_id:
-        face = db.execute(
-            'SELECT f.*,identity.token FROM faces f JOIN review_face_identity identity ON identity.face_id=f.id WHERE f.id=? AND f.image_id=?',
-            (face_id, image_id),
-        ).fetchone()
-        old = next(item for item in snap['faces'] if item['id'] == face_id)
-        if not face or face['token'] != old['token'] or json.loads(face['box']) != old['box']:
+        old, face = snapshot_face(db, snap, face_id)
+        if not face or json.loads(face['box']) != old['box']:
             fail('目标人脸已变化', 409)
         if face['revision'] != old['revision']:
             accepted = (
@@ -504,7 +538,7 @@ def apply(db, row, choice, created_files):
             )
             storage.schedule_rematch(db)
     else:
-        data = db.execute('SELECT * FROM review_attachments WHERE digest=?', (row['attachment'],)).fetchone()
+        data = db.execute('SELECT jpeg,detections,model FROM review_detections JOIN review_attachments ON digest=attachment WHERE id=?', (row['detection_id'],)).fetchone()
         faces = json.loads(data['detections'])
         index = choice.face_index if choice.face_index is not None else suggested_index(faces, source.get('box'))
         if index is None or index >= len(faces):

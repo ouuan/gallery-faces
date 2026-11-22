@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Literal
 
+from anyio import CancelScope, to_thread
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -142,6 +143,14 @@ def write_json(archive, name, value):
     archive.writestr(name, json.dumps(value, ensure_ascii=False, indent=2), compress_type=zipfile.ZIP_DEFLATED)
 
 
+def snapshot_rows(db, batch):
+    after = 0
+    while rows := db.execute('''SELECT image_id,snapshot FROM review_snapshots
+        WHERE batch=? AND image_id>? ORDER BY image_id LIMIT 32''', (batch, after)).fetchall():
+        yield from rows
+        after = rows[-1]['image_id']
+
+
 def build(batch, instructions):
     from .main import MediaRead, people, reference_crop, cropped_image
 
@@ -157,7 +166,7 @@ def build(batch, instructions):
                 for row in db.execute(
                     f'SELECT id FROM reference_images WHERE person_id=? AND {storage.ACTIVE_REFERENCE} ORDER BY id',
                     (person['id'],),
-                ):
+                ).fetchall():
                     try:
                         with MediaRead() as reads:
                             data = reference_crop(row['id'], reads).body
@@ -171,9 +180,7 @@ def build(batch, instructions):
                 roster.append(dict(person, references=refs, missing_references=not refs))
             write_json(archive, 'people.json', roster)
             images = []
-            for identifier, raw in db.execute(
-                'SELECT image_id,snapshot FROM review_snapshots WHERE batch=? ORDER BY image_id', (batch,)
-            ):
+            for identifier, raw in snapshot_rows(db, batch):
                 item = json.loads(raw)
                 item.pop('scope_token')
                 item.pop('sha256')
@@ -225,6 +232,15 @@ def build(batch, instructions):
 
 
 class Download(FileResponse):
+    def finish(self, complete):
+        batch = self.path.stem
+        with lock:
+            transfers.discard(batch)
+            if complete:
+                self.path.unlink(missing_ok=True)
+                with storage.connect(True) as db:
+                    db.execute("UPDATE review_batches SET status='downloaded' WHERE id=?", (batch,))
+
     async def __call__(self, scope, receive, send):
         complete = False
 
@@ -245,13 +261,8 @@ class Download(FileResponse):
                 forward,
             )
         finally:
-            batch = self.path.stem
-            with lock:
-                transfers.discard(batch)
-                if complete:
-                    self.path.unlink(missing_ok=True)
-                    with storage.connect(True) as db:
-                        db.execute("UPDATE review_batches SET status='downloaded' WHERE id=?", (batch,))
+            with CancelScope(shield=True):
+                await to_thread.run_sync(self.finish, complete)
 
 
 def install(app, admin):

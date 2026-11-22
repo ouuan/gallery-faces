@@ -30,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, field_validator
 from .open_graph import render_open_graph
 from . import daily, list_queries, review_packages
+from .review_format import fits
 from .group_index import REVIEW_FLAGS
 from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, cleanup_deleted_files
 from .security import download_url, cookie_bytes, save_cookie
@@ -591,11 +592,12 @@ def references(person_id: int, _: None = Depends(admin)):
 
 
 @app.get("/api/v1/admin/faces/{face_id}/crop")
-def face_crop(face_id: int, reads: MediaReads, _: None = Depends(admin)):
+def face_crop(face_id: int, reads: MediaReads, _: None = Depends(admin), token: str | None = None):
     with connect() as db:
         face = db.execute(
-            "SELECT f.box,i.id FROM faces f JOIN images i ON i.id=f.image_id WHERE f.id=? AND i.hidden=0",
-            (face_id,),
+            '''SELECT f.box,i.id FROM faces f JOIN images i ON i.id=f.image_id WHERE f.id=? AND i.hidden=0
+               AND (? IS NULL OR EXISTS (SELECT 1 FROM review_face_identity WHERE face_id=f.id AND token=?))''',
+            (face_id, token, token),
         ).fetchone()
     if not face:
         fail("人脸不存在", 404)
@@ -610,7 +612,11 @@ def cropped_image(path, box):
         fail("图片不存在", 404)
     x, y, w, h = box
     with Image.open(path) as image:
-        crop = image.crop((x, y, x + w, y + h)).convert("RGB")
+        left = max(0, min(image.width - 1, math.floor(x)))
+        top = max(0, min(image.height - 1, math.floor(y)))
+        right = max(left + 1, min(image.width, math.ceil(x + w)))
+        bottom = max(top + 1, min(image.height, math.ceil(y + h)))
+        crop = image.crop((left, top, right, bottom)).convert("RGB")
         crop.thumbnail((240, 240))
         output = io.BytesIO()
         crop.save(output, format="JPEG")
@@ -1733,15 +1739,7 @@ def add_face(image_id: int, body: BoxInput, _: None = Depends(admin)):
         row = db.execute("SELECT * FROM images WHERE id=?", (image_id,)).fetchone()
     if not row:
         fail("图片不存在", 404)
-    x, y, w, h = body.box
-    if (
-        x < 0
-        or y < 0
-        or w <= 0
-        or h <= 0
-        or x + w > row["width"]
-        or y + h > row["height"]
-    ):
+    if not fits(body.box, row['width'], row['height']):
         fail("人脸框超出图片范围")
     with connect(True) as db:
         require_representative(db, image_id)

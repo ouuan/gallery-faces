@@ -73,7 +73,8 @@ test('exports all filtered groups directly and downloads the finished ZIP', asyn
     expect(route.request().postDataJSON()).toEqual(body);
     return route.fulfill({ json: job });
   });
-  await page.route(`**${root}/exports/batch`, route => route.fulfill({ json: { ...job, status: 'ready', done: 51 } }));
+  let status = 'ready';
+  await page.route(`**${root}/exports/batch`, route => route.fulfill({ json: { ...job, status, done: 51 } }));
   await page.goto(`${archiveServer.origin}/admin/review?state=unknown&people=2,7&publishers=x:someone&match=all&start=2026-01-01&end=2026-02-01`);
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出全部结果 51 张' }).click();
@@ -81,7 +82,11 @@ test('exports all filtered groups directly and downloads the finished ZIP', asyn
   expect(file.suggestedFilename()).toBe('review-test.zip');
   expect(await file.failure()).toBeNull();
   await expect(page.getByRole('link', { name: '手动下载' })).toHaveAttribute('href', `${root}/exports/batch/download`);
+  await page.reload();
+  await expect(page.getByRole('link', { name: '手动下载' })).toBeVisible();
+  status = 'downloaded';
   await page.clock.fastForward(60000);
+  await expect(page.getByRole('link', { name: '手动下载' })).toHaveCount(0);
   expect(archiveServer.requests).toEqual([`GET ${root}/exports/batch/download`]);
   await page.reload();
   await expect(page.getByRole('button', { name: '导出全部结果 51 张' })).toBeVisible();
@@ -89,7 +94,7 @@ test('exports all filtered groups directly and downloads the finished ZIP', asyn
   expect(archiveServer.requests).toHaveLength(1);
 });
 
-test('exports checked representatives or the current image and abandons polling on leave', async ({ page }) => {
+test('resumes the selected export after navigation and permits another after expiry', async ({ page }) => {
   const posts: unknown[] = [];
   let polls = 0;
   await mockQueue(page, []);
@@ -97,7 +102,8 @@ test('exports checked representatives or the current image and abandons polling 
     posts.push(route.request().postDataJSON());
     return route.fulfill({ json: { id: 'new-job', status: 'building', total: 1, done: 0 } });
   });
-  await page.route(`**${root}/exports/new-job`, route => { polls++; return route.fulfill({ json: { id: 'new-job', status: 'building', total: 1, done: 0 } }); });
+  let status = 'building';
+  await page.route(`**${root}/exports/new-job`, route => { polls++; return route.fulfill({ json: { id: 'new-job', status, total: 1, done: 0 } }); });
   await page.clock.install();
   await page.goto('/admin/review?state=all');
   await page.getByRole('button', { name: '全选本页' }).click();
@@ -108,6 +114,11 @@ test('exports checked representatives or the current image and abandons polling 
   await page.clock.fastForward(5000);
   expect(polls).toBe(previous);
   await page.goto('/admin/review?state=image&image=41');
+  await expect(page.getByRole('button', { name: '正在生成 0 / 1' })).toBeDisabled();
+  expect(posts).toHaveLength(1);
+  status = 'expired';
+  await page.clock.fastForward(5000);
+  await expect(page.getByRole('alert').filter({ hasText: '重新导出' })).toBeVisible();
   await page.getByRole('button', { name: '导出当前图片 #41' }).click();
   await expect.poll(() => posts).toEqual([{ state: 'all', ids: [41], image_id: null }, { state: 'all', ids: [], image_id: 41 }]);
 });

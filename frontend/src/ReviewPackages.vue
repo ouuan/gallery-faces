@@ -135,7 +135,7 @@ function positions(items: Suggestion[]) {
 function coords(box: number[]) { return `[${box.join(', ')}]`; }
 function sourceFace(item: Suggestion) {
   const proposal = item.proposal;
-  return proposal.kind === 'add_reference' && 'face_id' in proposal.source ? proposal.source.face_id : null;
+  return item.face_token && proposal.kind === 'add_reference' && 'face_id' in proposal.source ? proposal.source.face_id : null;
 }
 function externalSource(item: Suggestion) {
   const proposal = item.proposal;
@@ -196,7 +196,7 @@ function externalSource(item: Suggestion) {
             <p v-if="item.box" class="hint">定位（x, y, 宽, 高）：{{ coords(item.box) }} px</p>
             <p v-if="item.proposal.kind === 'recycle'" class="hint">整组 {{ item.member_ids.length }} 张：{{ item.member_ids.map(id => `#${id}`).join('、') }}</p>
             <div v-if="sourceFace(item) || item.reference_ids.length" class="references">
-              <figure v-if="sourceFace(item)"><img :src="`/api/v1/admin/faces/${sourceFace(item)}/crop`" alt="拟添加的图库人脸" loading="lazy" /><figcaption>来源人脸 #{{ sourceFace(item) }}</figcaption></figure>
+              <figure v-if="sourceFace(item)"><img :src="`/api/v1/admin/faces/${sourceFace(item)}/crop?token=${item.face_token}`" alt="拟添加的图库人脸" loading="lazy" /><figcaption>来源人脸 #{{ sourceFace(item) }}</figcaption></figure>
               <figure v-for="id in item.reference_ids" :key="id"><img :src="`/api/v1/admin/references/${id}/crop`" :alt="`参考图 #${id}`" loading="lazy" /><figcaption>参考 #{{ id }}</figcaption></figure>
             </div>
             <div v-if="item.attachment" class="attachment">

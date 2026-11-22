@@ -1955,6 +1955,8 @@ export interface components {
             proposed: string;
             /** Box */
             box: number[] | null;
+            /** Face Token */
+            face_token?: string | null;
             /** Reference Ids */
             reference_ids: number[];
             attachment: components["schemas"]["AttachmentPreview"] | null;
@@ -2681,7 +2683,9 @@ export interface operations {
     };
     face_crop_api_v1_admin_faces__face_id__crop_get: {
         parameters: {
-            query?: never;
+            query?: {
+                token?: string | null;
+            };
             header?: never;
             path: {
                 face_id: number;

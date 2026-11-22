@@ -1,6 +1,7 @@
 import asyncio
 import io
 import json
+import threading
 import time
 import zipfile
 from types import SimpleNamespace
@@ -243,8 +244,12 @@ def test_library_reference_conflicts_and_recycle(client):
         assert conn.execute('SELECT count(*) FROM reference_images WHERE face_id=?', (face_id,)).fetchone()[0] == 1
         assert conn.execute('SELECT ignored FROM faces WHERE id=?', (face_id,)).fetchone()[0] == 0
     assert decide(client, recycle, scope_token=recycle['scope_token'])['applied']
-    with db.connect() as conn:
+    with db.connect(True) as conn:
         assert conn.execute('SELECT sum(hidden) FROM images').fetchone()[0] == 2
+        conn.execute('UPDATE images SET hidden=0 WHERE id=?', (identifier,))
+        image(conn, group=group)
+    history = next(item for item in queue(client, 'accepted') if item['id'] == recycle['id'])
+    assert history['member_ids'] == [identifier, member] and history['scope_token'] is None
 
 
 def test_reject_unsafe_archives_and_unknown_faces(client, monkeypatch):
@@ -269,22 +274,131 @@ def test_reject_unsafe_archives_and_unknown_faces(client, monkeypatch):
 
 def test_reused_face_and_changed_recycle_scope_remain_pending(client):
     (identifier,) = seed()
+    with db.connect(True) as conn:
+        person = conn.execute("INSERT INTO people(name) VALUES('Alice')").lastrowid
     batch = export(client)
     with db.connect(True) as conn:
         old = conn.execute('SELECT * FROM faces WHERE image_id=?', (identifier,)).fetchone()
+        token = conn.execute('SELECT token FROM review_face_identity WHERE face_id=?', (old['id'],)).fetchone()[0]
+        conn.execute('DELETE FROM people WHERE id=?', (person,))
+        assert conn.execute("INSERT INTO people(name) VALUES('Replacement')").lastrowid == person
+        conn.execute("INSERT INTO reference_images(person_id,filename,embedding,model_version) VALUES(?,'replacement.jpg',?,?)",
+                     (person, old['embedding'], old['model_version']))
         conn.execute('DELETE FROM faces WHERE id=?', (old['id'],))
-        conn.execute('INSERT INTO faces(id,image_id,box) VALUES(?,?,?)', (old['id'], identifier, old['box']))
+        conn.execute("INSERT INTO faces(id,image_id,box) VALUES(?,?,'[20,20,2,2]')", (old['id'], identifier))
+        conn.execute('INSERT INTO review_face_identity(face_id) VALUES(?)', (old['id'],))
         group = conn.execute('SELECT group_id FROM images WHERE id=?', (identifier,)).fetchone()[0]
         image(conn, group=group)
     ops = [
         suggestion('remove_face', 'remove', identifier, face_id=old['id']),
         suggestion('recycle', 'trash', identifier),
+        suggestion('add_reference', 'ref', identifier, person_id=person, source={'face_id': old['id']}),
     ]
-    assert upload(client, batch, ops).json()['added'] == 2
-    remove, recycle = queue(client)
+    assert upload(client, batch, ops).json()['added'] == 3
+    remove, recycle, ref = queue(client)
+    assert remove['box'] == json.loads(old['box']) and remove['current'] == '人脸不存在'
+    assert ref['face_token'] is None and not ref['reference_ids'] and '已删除人物' in ref['proposed']
+    assert '原人脸不存在' in ref['current']
+    assert client.get(f"/api/v1/admin/faces/{old['id']}/crop?token={token}").status_code == 404
+    assert decide(client, ref, 'reject')['applied']
+    assert queue(client, 'rejected')[0]['reference_ids'] == []
     assert decide(client, remove)['failures']
     assert decide(client, recycle, scope_token=recycle['scope_token'])['failures']
     assert len(queue(client)) == 2
     with db.connect() as conn:
         assert conn.execute('SELECT sum(hidden) FROM images').fetchone()[0] == 0
         assert conn.execute('SELECT sum(ignored) FROM faces').fetchone()[0] == 0
+
+
+def test_attachment_versions_survive_migration_and_reimport(client, monkeypatch):
+    (identifier,) = seed()
+    with db.connect(True) as conn:
+        person = conn.execute("INSERT INTO people(name) VALUES('Alice')").lastrowid
+    photo = io.BytesIO()
+    Image.new('RGB', (20, 20)).save(photo, 'PNG')
+    files = {'attachments/photo.png': photo.getvalue()}
+    ref = suggestion('add_reference', 'ref', identifier, person_id=person, source={'attachment': next(iter(files))})
+    calls = []
+    vector = np.ones(512, dtype='float32').tobytes()
+
+    def detect(path, *, mode, threshold):
+        calls.append((results.MODEL_VERSION, threshold))
+        return [] if threshold >= 0.5 else [([1, 2, 3, 4], vector)]
+
+    monkeypatch.setattr(results, 'Vision', lambda: SimpleNamespace(detect=detect))
+    original_model = results.MODEL_VERSION
+    first = export(client)
+    assert upload(client, first, [ref], files).json()['added'] == 1
+    with db.connect(True) as conn:
+        conn.execute('ALTER TABLE review_attachments ADD COLUMN detections TEXT NOT NULL DEFAULT \'[]\'')
+        conn.execute('ALTER TABLE review_attachments ADD COLUMN model TEXT NOT NULL DEFAULT \'legacy\'')
+        conn.execute('ALTER TABLE review_suggestions DROP COLUMN detection_id')
+        conn.execute('DROP TABLE review_detections')
+    db.init()
+    with db.connect(True) as conn:
+        conn.execute("UPDATE settings SET value='0.3' WHERE key='detection_threshold'")
+    second = export(client)
+    assert upload(client, second, [ref], files).json()['added'] == 1
+    assert upload(client, second, [ref], files).json()['duplicates'] == 1
+    old, new = queue(client)
+    assert old['attachment']['boxes'] == [] and new['attachment']['boxes'] == [[1, 2, 3, 4]]
+    assert decide(client, old, face_index=0)['failures'] and decide(client, new)['applied']
+    with db.connect(True) as conn:
+        conn.execute("UPDATE settings SET value='0.5' WHERE key='detection_threshold'")
+    assert upload(client, export(client), [ref], files).json()['added'] == 1
+    monkeypatch.setattr(results, 'MODEL_VERSION', 'new-model')
+    assert upload(client, export(client), [ref], files).json()['added'] == 1
+    assert calls == [(original_model, 0.5), (original_model, 0.3), (original_model, 0.5), ('new-model', 0.5)]
+    with db.connect() as conn:
+        assert conn.execute('SELECT count(*) FROM review_attachments').fetchone()[0] == 1
+        assert conn.execute('SELECT count(DISTINCT detection_id) FROM review_suggestions').fetchone()[0] == 4
+
+
+def test_subpixel_crop_exports_and_releases_read_snapshot(client, monkeypatch):
+    (identifier,) = seed()
+    box = [5, 5, 0.25, 1]
+    assert client.post(f'/api/v1/admin/images/{identifier}/faces', json={'box': box}).status_code == 200
+    from app import main
+    crop = main.cropped_image
+
+    def crop_after_checkpoint(path, face_box):
+        with db.connect(True) as conn:
+            conn.execute("UPDATE review_batches SET done=1 WHERE status='building'")
+        with db.connect() as conn:
+            _, pages, checkpointed = conn.execute('PRAGMA wal_checkpoint(PASSIVE)').fetchone()
+            assert checkpointed == pages
+        return crop(path, face_box)
+
+    monkeypatch.setattr(main, 'cropped_image', crop_after_checkpoint)
+    batch = export(client)
+    with zipfile.ZipFile(packages.directory() / (batch + '.zip')) as archive:
+        item = json.loads(archive.read(f'images/{identifier}/metadata.json'))
+        face = next(face for face in item['faces'] if face['box'] == box)
+        assert Image.open(io.BytesIO(archive.read(face['crop']))).size == (1, 1)
+
+
+def test_download_finalization_does_not_block_event_loop(client, monkeypatch):
+    seed()
+    batch = export(client)
+    path = packages.directory() / (batch + '.zip')
+    entered = threading.Event()
+    finish = packages.Download.finish
+
+    def observed_finish(response, complete):
+        entered.set()
+        return finish(response, complete)
+
+    async def send(message):
+        pass
+
+    async def run():
+        with db.connect(True):
+            scope = dict(type='http', method='GET', headers=[], asgi={'spec_version': '2.4'})
+            download = asyncio.create_task(packages.Download(path)(scope, None, send))
+            assert await asyncio.to_thread(entered.wait, 2)
+            assert not download.done()
+        await download
+
+    monkeypatch.setattr(packages.Download, 'finish', observed_finish)
+    asyncio.run(run())
+    assert client.get(f'{BASE}/exports/{batch}').json()['status'] == 'downloaded'

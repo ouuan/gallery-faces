@@ -543,6 +543,22 @@
               "type": "integer",
               "title": "Face Id"
             }
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
           }
         ],
         "responses": {
@@ -5899,6 +5915,17 @@
               }
             ],
             "title": "Box"
+          },
+          "face_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Face Token"
           },
           "reference_ids": {
             "items": {

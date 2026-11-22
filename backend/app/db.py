@@ -45,8 +45,9 @@ CREATE TABLE IF NOT EXISTS review_batches(id TEXT PRIMARY KEY, status TEXT NOT N
 CREATE TABLE IF NOT EXISTS review_snapshots(batch TEXT REFERENCES review_batches, image_id INTEGER NOT NULL, snapshot TEXT NOT NULL, PRIMARY KEY(batch,image_id));
 CREATE TABLE IF NOT EXISTS review_roster(batch TEXT REFERENCES review_batches, exported_id INTEGER NOT NULL, person_id INTEGER REFERENCES people ON DELETE SET NULL, PRIMARY KEY(batch,exported_id));
 CREATE TABLE IF NOT EXISTS review_face_identity(face_id INTEGER PRIMARY KEY REFERENCES faces ON DELETE CASCADE, token TEXT NOT NULL DEFAULT (lower(hex(randomblob(16)))));
-CREATE TABLE IF NOT EXISTS review_attachments(digest TEXT PRIMARY KEY, jpeg BLOB NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, detections TEXT NOT NULL, model TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS review_suggestions(id INTEGER PRIMARY KEY, batch TEXT NOT NULL, key TEXT NOT NULL, image_id INTEGER NOT NULL, payload TEXT NOT NULL, fingerprint TEXT NOT NULL, attachment TEXT REFERENCES review_attachments, chosen_face INTEGER, status TEXT NOT NULL DEFAULT 'pending', created_person INTEGER REFERENCES people ON DELETE SET NULL, UNIQUE(batch,key), UNIQUE(batch,fingerprint), FOREIGN KEY(batch,image_id) REFERENCES review_snapshots(batch,image_id));
+CREATE TABLE IF NOT EXISTS review_attachments(digest TEXT PRIMARY KEY, jpeg BLOB NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS review_detections(id INTEGER PRIMARY KEY, attachment TEXT NOT NULL REFERENCES review_attachments, model TEXT NOT NULL, threshold REAL, detections TEXT NOT NULL, UNIQUE(attachment,model,threshold));
+CREATE TABLE IF NOT EXISTS review_suggestions(id INTEGER PRIMARY KEY, batch TEXT NOT NULL, key TEXT NOT NULL, image_id INTEGER NOT NULL, payload TEXT NOT NULL, fingerprint TEXT NOT NULL, attachment TEXT REFERENCES review_attachments, detection_id INTEGER REFERENCES review_detections, chosen_face INTEGER, status TEXT NOT NULL DEFAULT 'pending', created_person INTEGER REFERENCES people ON DELETE SET NULL, UNIQUE(batch,key), UNIQUE(batch,fingerprint), FOREIGN KEY(batch,image_id) REFERENCES review_snapshots(batch,image_id));
 CREATE INDEX IF NOT EXISTS review_suggestions_page ON review_suggestions(status,image_id,id);
 CREATE TABLE IF NOT EXISTS review_result_keys(batch TEXT NOT NULL, key TEXT NOT NULL, content TEXT NOT NULL, suggestion INTEGER NOT NULL REFERENCES review_suggestions, PRIMARY KEY(batch,key));
 CREATE TABLE IF NOT EXISTS review_match_versions(suggestion INTEGER PRIMARY KEY REFERENCES review_suggestions, face_id INTEGER REFERENCES faces ON DELETE SET NULL, revision INTEGER NOT NULL);
@@ -126,6 +127,12 @@ def init():
         db.execute("PRAGMA journal_mode=WAL")
         db.executescript(SCHEMA)
     with connect(True) as db:
+        if 'detection_id' not in {row[1] for row in db.execute('PRAGMA table_info(review_suggestions)')}:
+            db.execute('ALTER TABLE review_suggestions ADD COLUMN detection_id INTEGER REFERENCES review_detections')
+            db.execute('INSERT INTO review_detections(attachment,model,detections) SELECT digest,model,detections FROM review_attachments')
+            db.execute('UPDATE review_suggestions SET detection_id=(SELECT id FROM review_detections d WHERE d.attachment=review_suggestions.attachment) WHERE attachment IS NOT NULL')
+            db.execute('ALTER TABLE review_attachments DROP COLUMN detections')
+            db.execute('ALTER TABLE review_attachments DROP COLUMN model')
         if 'hashtags' not in {row[1] for row in db.execute('PRAGMA table_info(monitors)')}:
             db.execute("ALTER TABLE monitors ADD COLUMN hashtags TEXT NOT NULL DEFAULT '[]'")
         for table in ('people', 'groups'):
