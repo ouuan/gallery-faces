@@ -16,12 +16,16 @@ from pydantic import BaseModel, Field, ValidationError
 
 from . import db as storage, trash
 from .importer import atomic_asset
+from .metadata import post_identity
 from .representatives import require_representative
 from .review_format import (
     AddFace,
+    AddPersonGroup,
     AddReference,
+    CorrectSource,
     CreatePerson,
     ExternalReference,
+    GroupNameJa,
     Identifier,
     LibraryReference,
     Match,
@@ -159,7 +163,7 @@ def face_identifier(op):
 
 
 def roster_groups(db, batch, ids):
-    return {row['exported_id']: row for row in db.execute('''SELECT r.exported_id,r.name,r.group_id,g.name AS current_name
+    return {row['exported_id']: row for row in db.execute('''SELECT r.exported_id,r.name,r.group_id,g.name AS current_name,g.name_ja
         FROM review_group_roster r LEFT JOIN groups g ON g.id=r.group_id
         WHERE batch=? AND exported_id IN (SELECT value FROM json_each(?))''', (batch, encode(ids)))}
 
@@ -182,8 +186,15 @@ def validate_scope(db, batch, op):
         and not db.execute('SELECT 1 FROM review_roster WHERE batch=? AND exported_id=?', (batch, person)).fetchone()
     ):
         fail('目标人物不在本批名册中')
-    if isinstance(op, CreatePerson) and op.group_ids and set(op.group_ids) != roster_groups(db, batch, op.group_ids).keys():
+    group_ids = op.group_ids if isinstance(op, CreatePerson) else [op.group_id] if isinstance(op, (GroupNameJa, AddPersonGroup)) else []
+    if group_ids and set(group_ids) != roster_groups(db, batch, group_ids).keys():
         fail('指定分组不在本批分组名册中，请检查编号或重新导出')
+    if isinstance(op, CorrectSource):
+        post = next((source for source in image.get('sources', []) if source['id'] == op.post_id), None)
+        if not post:
+            fail('来源不在该图片的导出快照中，请重新导出')
+        if op.field == 'url' and not post_identity(post['platform'], op.value):
+            fail('更正链接必须是该来源平台的帖子链接')
 
 
 class ImportCount(BaseModel):
@@ -238,10 +249,21 @@ def import_file(file):
                 if op.confidence is None:
                     payload.pop('confidence')
                 if isinstance(op, CreatePerson):
-                    for field in ('group_ids', 'new_groups'):
-                        if payload[field]:
-                            payload[field] = sorted(set(payload[field]))
-                        else:
+                    if not op.name_ja:
+                        payload.pop('name_ja')
+                    groups = {}
+                    for group in op.new_groups:
+                        label = group if isinstance(group, str) else group.name
+                        localized = None if isinstance(group, str) else group.name_ja
+                        if localized and groups.get(label) not in (None, localized):
+                            fail('同一新分组包含不同的日语名')
+                        groups[label] = localized or groups.get(label)
+                    payload['new_groups'] = [dict(name=label, name_ja=value) if value else label for label, value in sorted(groups.items())]
+                    payload['group_ids'] = sorted(set(op.group_ids))
+                    payload['accounts'] = [dict(platform=platform, username=username) for platform, username in
+                                           sorted({(account.platform, account.username) for account in op.accounts})]
+                    for field in ('group_ids', 'new_groups', 'accounts'):
+                        if not payload[field]:
                             del payload[field]
                 key = None
                 detection_id = None
@@ -370,6 +392,26 @@ def snapshot_face(db, image, face_id):
     return old, face
 
 
+SOURCE_FIELDS = {'author': '发布账号', 'author_name': '发布者名称', 'published_at': '发布时间', 'url': '链接', 'post_text': '正文'}
+OUTCOMES = {'no_change': '无需修改', 'no_faces': '确认无人脸', 'needs_human': '证据不足，请人工复核'}
+
+
+def source_target(db, image, post_id):
+    sources = [source for source in image.get('sources', []) if source['id'] == post_id]
+    if not sources:
+        return None, None
+    old = sources[0]
+    current = db.execute('''SELECT p.* FROM posts p WHERE p.id=? AND p.platform=? AND p.post_key=? AND EXISTS(
+        SELECT 1 FROM sources s JOIN images i ON i.id=s.image_id WHERE s.post_id=p.id AND i.hidden=0 AND i.group_id=?
+        AND i.id IN (SELECT value FROM json_each(?)))''', (post_id, old['platform'], old['post_key'], image['group_id'],
+                                                          encode([source['image_id'] for source in sources]))).fetchone()
+    return old, current
+
+
+def account_label(account):
+    return f"{account['platform']} @{account['username']}"
+
+
 def queue_item(db, row):
     payload = json.loads(row['payload'])
     image = json.loads(row['snapshot'])
@@ -432,6 +474,10 @@ def queue_item(db, row):
             current += ' · 原人脸不存在'
     elif kind == 'create_person':
         current, proposed = ('已创建' if person else '未创建'), payload['name']
+        if payload.get('name_ja'):
+            proposed += ' · 日语名：' + payload['name_ja']
+        if payload.get('accounts'):
+            proposed += ' · 账号：' + '、'.join(map(account_label, payload['accounts']))
         if ids := payload.get('group_ids'):
             groups = roster_groups(db, batch, ids)
             labels = []
@@ -441,10 +487,40 @@ def queue_item(db, row):
                 labels.append(f'{label} (#{identifier})')
             proposed += ' · 加入分组：' + '、'.join(labels)
         if payload.get('new_groups'):
-            proposed += ' · 新建或复用分组：' + '、'.join(payload['new_groups'])
+            proposed += ' · 新建或复用分组：' + '、'.join(group if isinstance(group, str) else
+                f"{group['name']}（日语名：{group['name_ja']}）" for group in payload['new_groups'])
+    elif kind in ('set_group_name_ja', 'add_person_group'):
+        group_id = payload['group_id']
+        group = roster_groups(db, batch, [group_id])[group_id]
+        label = f"{group['current_name'] or group['name']} (#{group_id})"
+        if kind == 'set_group_name_ja':
+            current = f"{label} · {group['name_ja'] or '未填写日语名'}" if group['group_id'] else f'{label} · 已删除'
+            proposed = f"{label} · 日语名：{payload['name_ja']}"
+        else:
+            member = db.execute('SELECT 1 FROM person_groups WHERE person_id=? AND group_id=?', (person, group['group_id'])).fetchone()
+            current = f"{target} · {'已加入' if member else '未加入'}{label}" if group['group_id'] else f'{label} · 已删除'
+            proposed = f'{target} · 加入分组：{label}'
+    elif kind == 'set_person_name_ja':
+        entry = db.execute('SELECT name_ja FROM people WHERE id=?', (person,)).fetchone()
+        current = f"{target} · {entry[0] or '未填写日语名'}" if entry else target
+        proposed = f"{target} · 日语名：{payload['name_ja']}"
+    elif kind == 'add_person_account':
+        account = payload['account']
+        exists = db.execute('SELECT 1 FROM accounts WHERE person_id=? AND platform=? AND username=?',
+                            (person, account['platform'], account['username'])).fetchone()
+        current = f"{target} · {'已关联' if exists else '未关联'} {account_label(account)}"
+        proposed = f'{target} · 关联账号：{account_label(account)}'
+    elif kind == 'correct_source':
+        field = payload['field']
+        _, post = source_target(db, image, payload['post_id'])
+        label = f"帖子 #{payload['post_id']} · {SOURCE_FIELDS[field]}"
+        current = f"{label}：{post[field] or '未填写'}" if post else '来源已移除'
+        proposed = f"{label}：{payload['value'] or '清空'}（所有引用此帖的图片共用）"
+    elif kind == 'review_outcome':
+        current, proposed = '仅记录本批审核结论，不修改图库', OUTCOMES[payload['outcome']]
     elif kind == 'add_face':
         current, proposed = '未标注此框', f'补画人脸 · {target}'
-    elif row['status'] == 'accepted':
+    elif kind == 'recycle' and row['status'] == 'accepted':
         current, proposed = '已执行整组回收', f'整组 {len(members)} 张移入回收站'
     else:
         scope = trash.preview(db, [row['image_id']])
@@ -523,12 +599,39 @@ def apply(db, row, choice, created_files):
         groups = roster_groups(db, batch, ids) if ids else {}
         if any(identifier not in groups or groups[identifier]['group_id'] is None for identifier in ids):
             fail('指定分组已不存在，请重新导出', 409)
-        person = write_person(db, PersonInput(name=payload['name'], group_ids=[groups[identifier]['group_id'] for identifier in ids],
-                                             new_groups=payload.get('new_groups', [])))
+        person = write_person(db, PersonInput(name=payload['name'], name_ja=payload.get('name_ja'), accounts=payload.get('accounts', []),
+                                             group_ids=[groups[identifier]['group_id'] for identifier in ids], new_groups=payload.get('new_groups', [])))
         db.execute('UPDATE review_suggestions SET created_person=? WHERE id=?', (person, choice.id))
         return
     person = resolve_person(db, batch, payload.get('person_id'))
-    if kind in ('match', 'remove_face'):
+    if kind in ('set_group_name_ja', 'add_person_group'):
+        group = roster_groups(db, batch, [payload['group_id']])[payload['group_id']]
+        if group['group_id'] is None:
+            fail('指定分组已不存在，请重新导出', 409)
+        if kind == 'add_person_group':
+            db.execute('INSERT OR IGNORE INTO person_groups(person_id,group_id) VALUES(?,?)', (person, group['group_id']))
+        elif not db.execute('UPDATE groups SET name_ja=? WHERE id=? AND (name_ja IS NULL OR name_ja=?)',
+                            (payload['name_ja'], group['group_id'], payload['name_ja'])).rowcount:
+            fail('分组已有其他日语名，不会覆盖', 409)
+    elif kind == 'set_person_name_ja':
+        if not db.execute('UPDATE people SET name_ja=? WHERE id=? AND (name_ja IS NULL OR name_ja=?)',
+                          (payload['name_ja'], person, payload['name_ja'])).rowcount:
+            fail('人物已有其他日语名，不会覆盖', 409)
+    elif kind == 'add_person_account':
+        account = payload['account']
+        db.execute('INSERT OR IGNORE INTO accounts(person_id,platform,username) VALUES(?,?,?)',
+                   (person, account['platform'], account['username']))
+    elif kind == 'correct_source':
+        old, post = source_target(db, snap, payload['post_id'])
+        field = payload['field']
+        if not post or field not in SOURCE_FIELDS or post[field] not in (old[field], payload['value']):
+            fail('来源已移除或字段已更改，请重新导出', 409)
+        db.execute(f'UPDATE posts SET {field}=? WHERE id=?', (payload['value'], post['id']))
+    elif kind == 'review_outcome':
+        if db.execute('''SELECT 1 FROM review_suggestions WHERE batch=? AND image_id=? AND status='accepted'
+            AND json_extract(payload,'$.kind')='review_outcome' ''', (batch, image_id)).fetchone():
+            fail('本批次的这张图片已有已接受的审核结论', 409)
+    elif kind in ('match', 'remove_face'):
         write_face_edit(
             db, face_id, FaceEdit(person_id=person, ignored=kind == 'remove_face', revision=face['revision'])
         )

@@ -1140,6 +1140,51 @@ export interface components {
             /** Person Id */
             person_id?: number | string | null;
         };
+        /** AddPersonAccount */
+        AddPersonAccount: {
+            /** Id */
+            id: string;
+            /** Image Id */
+            image_id: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Confidence
+             * @description Agent assessment of this suggestion, independent of face-match scores.
+             */
+            confidence?: ("low" | "medium" | "high") | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "add_person_account";
+            /** Person Id */
+            person_id: number;
+            account: components["schemas"]["ReviewAccount"];
+        };
+        /** AddPersonGroup */
+        AddPersonGroup: {
+            /** Id */
+            id: string;
+            /** Image Id */
+            image_id: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Confidence
+             * @description Agent assessment of this suggestion, independent of face-match scores.
+             */
+            confidence?: ("low" | "medium" | "high") | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "add_person_group";
+            /** Person Id */
+            person_id: number;
+            /** Group Id */
+            group_id: number;
+        };
         /** AddReference */
         AddReference: {
             /** Id */
@@ -1317,6 +1362,34 @@ export interface components {
                 [key: string]: components["schemas"]["Evictions"];
             };
         };
+        /** CorrectSource */
+        CorrectSource: {
+            /** Id */
+            id: string;
+            /** Image Id */
+            image_id: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Confidence
+             * @description Agent assessment of this suggestion, independent of face-match scores.
+             */
+            confidence?: ("low" | "medium" | "high") | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "correct_source";
+            /** Post Id */
+            post_id: number;
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "author" | "author_name" | "published_at" | "url" | "post_text";
+            /** Value */
+            value: string | null;
+        };
         /** Create */
         Create: {
             /** Hashtags */
@@ -1361,6 +1434,10 @@ export interface components {
             person_id: string;
             /** Name */
             name: string;
+            /** Name Ja */
+            name_ja?: string | null;
+            /** Accounts */
+            accounts?: components["schemas"]["ReviewAccount"][];
             /**
              * Group Ids
              * @description Existing person group IDs from this batch's groups.json.
@@ -1370,7 +1447,7 @@ export interface components {
              * New Groups
              * @description Group names to create or reuse by exact name on acceptance.
              */
-            new_groups?: string[];
+            new_groups?: (string | components["schemas"]["ReviewGroupName"])[];
         };
         /** Created */
         Created: {
@@ -1647,6 +1724,29 @@ export interface components {
             /** Name Ja */
             name_ja?: string | null;
         };
+        /** GroupNameJa */
+        GroupNameJa: {
+            /** Id */
+            id: string;
+            /** Image Id */
+            image_id: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Confidence
+             * @description Agent assessment of this suggestion, independent of face-match scores.
+             */
+            confidence?: ("low" | "medium" | "high") | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_group_name_ja";
+            /** Group Id */
+            group_id: number;
+            /** Name Ja */
+            name_ja: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1892,6 +1992,29 @@ export interface components {
              */
             uploaded_references: components["schemas"]["UploadedReference"][];
         };
+        /** PersonNameJa */
+        PersonNameJa: {
+            /** Id */
+            id: string;
+            /** Image Id */
+            image_id: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Confidence
+             * @description Agent assessment of this suggestion, independent of face-match scores.
+             */
+            confidence?: ("low" | "medium" | "high") | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_person_name_ja";
+            /** Person Id */
+            person_id: number;
+            /** Name Ja */
+            name_ja: string;
+        };
         /** PostEdit */
         PostEdit: {
             /** Author */
@@ -1958,7 +2081,7 @@ export interface components {
             /** Height */
             height: number;
             /** Proposal */
-            proposal: components["schemas"]["Match"] | components["schemas"]["Remove"] | components["schemas"]["AddFace"] | components["schemas"]["CreatePerson"] | components["schemas"]["AddReference"] | components["schemas"]["Recycle"];
+            proposal: components["schemas"]["Match"] | components["schemas"]["Remove"] | components["schemas"]["AddFace"] | components["schemas"]["CreatePerson"] | components["schemas"]["AddReference"] | components["schemas"]["Recycle"] | components["schemas"]["PersonNameJa"] | components["schemas"]["GroupNameJa"] | components["schemas"]["AddPersonAccount"] | components["schemas"]["AddPersonGroup"] | components["schemas"]["CorrectSource"] | components["schemas"]["ReviewOutcome"];
             /** Current */
             current: string;
             /** Proposed */
@@ -2045,6 +2168,23 @@ export interface components {
              */
             start: string;
         };
+        /** ReviewAccount */
+        ReviewAccount: {
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "instagram" | "x";
+            /** Username */
+            username: string;
+        };
+        /** ReviewGroupName */
+        ReviewGroupName: {
+            /** Name */
+            name: string;
+            /** Name Ja */
+            name_ja?: string | null;
+        };
         /** ReviewImage */
         ReviewImage: {
             /**
@@ -2089,6 +2229,30 @@ export interface components {
             pending_feedback_count: number;
         } & {
             [key: string]: unknown;
+        };
+        /** ReviewOutcome */
+        ReviewOutcome: {
+            /** Id */
+            id: string;
+            /** Image Id */
+            image_id: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Confidence
+             * @description Agent assessment of this suggestion, independent of face-match scores.
+             */
+            confidence?: ("low" | "medium" | "high") | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "review_outcome";
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "no_change" | "no_faces" | "needs_human";
         };
         /** ReviewPage */
         ReviewPage: {

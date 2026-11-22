@@ -212,6 +212,105 @@ def test_create_person_does_not_use_replacement_group(client):
     assert [entry['name'] for entry in client.get('/api/v1/groups').json()] == ['Replacement']
 
 
+def test_export_includes_group_review_evidence(client):
+    (identifier,) = seed()
+    Image.new('RGB', (32, 20)).save(db.DATA / 'thumbs' / 'fixture.jpg')
+    with db.connect(True) as conn:
+        group = conn.execute('SELECT group_id FROM images WHERE id=?', (identifier,)).fetchone()[0]
+        member = image(conn, author=None, group=group)
+        missing = image(conn, group=group)
+        conn.execute("UPDATE images SET filename='missing.jpg' WHERE id=?", (missing,))
+        conn.execute("UPDATE images SET detection='failed',error='无法解码' WHERE id=?", (identifier,))
+        conn.execute("INSERT INTO feedback(image_id,content) VALUES(?, '请检查发布账号')", (member,))
+        conn.execute("INSERT INTO feedback(image_id,content,status) VALUES(?, '旧反馈','resolved')", (member,))
+    batch = export(client)
+    with zipfile.ZipFile(packages.directory() / (batch + '.zip')) as archive:
+        manifest = json.loads(archive.read('manifest.json'))
+        assert manifest['selected_state'] == 'all'
+        item = json.loads(archive.read(manifest['images'][0]))
+        assert {'feedback', 'incomplete', 'failed'} <= set(item['review_reasons'])
+        assert (item['detection'], item['error']) == ('failed', '无法解码')
+        assert item['incomplete_image_ids'] == [member]
+        feedback, = item['pending_feedback']
+        assert (feedback['image_id'], feedback['content']) == (member, '请检查发布账号')
+        representative, other, absent = item['members']
+        assert representative['preview'] == item['display']
+        assert other['id'] == member and Image.open(io.BytesIO(archive.read(other['preview']))).size == (32, 20)
+        assert absent['id'] == missing and absent['preview'] is None
+
+
+def test_localized_person_and_additive_edits(client):
+    (identifier,) = seed()
+    person = client.post('/api/v1/admin/people', json={'name': '甲', 'new_groups': ['原组'],
+                         'accounts': [{'platform': 'x', 'username': 'original'}]}).json()['id']
+    with db.connect(True) as conn:
+        group = conn.execute("INSERT INTO groups(name) VALUES('嘉宾')").lastrowid
+    batch = export(client)
+    account = {'platform': 'instagram', 'username': 'alice'}
+    create = suggestion('create_person', 'create', identifier, person_id='new:b', name='乙', name_ja='オツ',
+                        new_groups=[{'name': '新组', 'name_ja': '新組'}], accounts=[account])
+    operations = [create, suggestion('add_person_group', 'membership', identifier, person_id=person, group_id=group),
+                  suggestion('add_person_account', 'account', identifier, person_id=person, account=account),
+                  suggestion('set_group_name_ja', 'group', identifier, group_id=group, name_ja='ゲスト'),
+                  suggestion('set_person_name_ja', 'person', identifier, person_id=person, name_ja='コウ')]
+    assert upload(client, batch, [{**operations[1], 'group_id': group + 100}]).status_code == 400
+    assert upload(client, batch, [{**create, 'accounts': [{'platform': 'x', 'username': '@bad'}]}]).status_code == 400
+    assert upload(client, batch, operations).json()['added'] == 5
+    items = queue(client)
+    assert all(label in items[0]['proposed'] for label in ('新組', 'オツ', '@alice'))
+    assert len(client.get('/api/v1/people').json()) == 1
+    assert all(decide(client, item)['applied'] for item in items)
+    original, new = sorted(client.get('/api/v1/people').json(), key=lambda item: item['id'])
+    assert original['name_ja'] == 'コウ' and {entry['username'] for entry in original['accounts']} == {'original', 'alice'}
+    assert {entry['name']: entry['name_ja'] for entry in original['groups']} == {'原组': None, '嘉宾': 'ゲスト'}
+    assert (new['name_ja'], new['groups'][0]['name_ja'], new['accounts'][0]['username']) == ('オツ', '新組', 'alice')
+    conflict = {**operations[-1], 'id': 'conflict', 'name_ja': '別名'}
+    assert upload(client, batch, [conflict]).json()['added'] == 1
+    assert decide(client, queue(client)[0])['failures']
+    assert upload(client, batch, operations).json()['duplicates'] == 5
+
+
+def test_source_correction_and_image_outcomes(client):
+    identifier, other = seed(2)
+    with db.connect() as conn:
+        post, unrelated = [row[0] for row in conn.execute('SELECT post_id FROM sources ORDER BY image_id')]
+    batch = export(client, ids=[identifier])
+    correct = suggestion('correct_source', 'author', identifier, post_id=post, field='author', value='corrected')
+    outcome = suggestion('review_outcome', 'inspection', identifier, outcome='needs_human')
+    for invalid in ({**correct, 'post_id': unrelated}, {**correct, 'field': 'url', 'value': 'not a URL'},
+                    {**correct, 'field': 'url', 'value': 'https://instagram.com/p/123/'}, {**correct, 'value': None},
+                    {**correct, 'field': 'published_at', 'value': '2026-01-01'}, {**outcome, 'image_id': other}):
+        assert upload(client, batch, [invalid]).status_code == 400
+    edits = [correct, {**correct, 'id': 'text', 'field': 'post_text', 'value': '修正正文'}, outcome]
+    assert upload(client, batch, edits).json()['added'] == 3
+    with db.connect(True) as conn:
+        conn.execute("UPDATE posts SET author='manual' WHERE id=?", (post,))
+    conflict, text, note = queue(client)
+    assert 'manual' in conflict['current'] and decide(client, conflict)['failures']
+    assert decide(client, text)['applied'] and decide(client, note)['applied']
+    with db.connect() as conn:
+        assert tuple(conn.execute('SELECT author,post_text FROM posts WHERE id=?', (post,)).fetchone()) == ('manual', '修正正文')
+        assert conn.execute('SELECT locked FROM faces WHERE image_id=?', (identifier,)).fetchone()[0] == 0
+    assert upload(client, batch, [{**outcome, 'id': 'other', 'outcome': 'no_faces'}]).json()['added'] == 1
+    assert decide(client, queue(client)[-1])['failures']
+
+
+def test_legacy_snapshot_and_result_keys(client):
+    (identifier,) = seed()
+    batch = export(client)
+    original = suggestion('create_person', 'legacy', identifier, person_id='new:legacy', name='Legacy', new_groups=['Guests'])
+    with db.connect(True) as conn:
+        conn.execute("UPDATE review_snapshots SET snapshot=json_remove(snapshot,'$.sources','$.members') WHERE batch=?", (batch,))
+        identifier_key = conn.execute('''INSERT INTO review_suggestions(batch,key,image_id,payload,fingerprint)
+            VALUES(?,?,?,?,?)''', (batch, original['id'], identifier, results.encode(original), 'legacy')).lastrowid
+        conn.execute('INSERT INTO review_result_keys VALUES(?,?,?,?)', (batch, original['id'],
+                     results.digest(results.encode([original, None]).encode()), identifier_key))
+    assert upload(client, batch, [original]).json() == {'added': 0, 'duplicates': 1}
+    assert decide(client, queue(client)[0])['applied']
+    assert upload(client, batch, [suggestion('correct_source', 'post', identifier, post_id=1,
+                                             field='post_text', value=None)]).status_code == 400
+
+
 def test_external_first_reference_and_dependencies(client, monkeypatch):
     (identifier,) = seed()
     batch = export(client)

@@ -232,6 +232,23 @@ test('distinguishes optional confidence tiers without numeric scores', async ({ 
   await expect(page.getByRole('article', { name: '建议 #102', exact: true }).locator('.confidence')).toHaveCount(0);
 });
 
+test('shows the exact source change and distinguishes a review note from a gallery edit', async ({ page }) => {
+  const source: Fixture = { ...item, proposal: { id: 'source', image_id: 41, kind: 'correct_source', post_id: 5,
+    field: 'author_name', value: '林青', reason: '与原帖署名一致。' }, current: '帖子 #5 · 发布者名称：未填写',
+    proposed: '帖子 #5 · 发布者名称：林青（所有引用此帖的图片共用）', box: null, reference_ids: [] };
+  const note: Fixture = { ...source, id: 102, proposal: { id: 'note', image_id: 41, kind: 'review_outcome',
+    outcome: 'needs_human', reason: '第二张图片没有可用预览。' }, current: '仅记录本批审核结论，不修改图库', proposed: '证据不足，请人工复核' };
+  await mockQueue(page, [source, note]);
+  await page.goto(queue);
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.getByRole('heading', { name: /更正帖子来源/ })).toBeVisible();
+    await expect(page.getByText(source.proposed, { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /记录逐图审核结论/ })).toBeVisible();
+    await expect(page.getByText(note.current, { exact: true })).toBeVisible();
+  }
+});
+
 test('groups evidence and reflows the review workspace without horizontal overflow', async ({ page }) => {
   await mockQueue(page, [item, external, recycle]);
   await page.goto(queue);

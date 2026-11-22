@@ -3569,6 +3569,135 @@
         ],
         "title": "AddFace"
       },
+      "AddPersonAccount": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$",
+            "title": "Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Image Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "Agent assessment of this suggestion, independent of face-match scores."
+          },
+          "kind": {
+            "type": "string",
+            "const": "add_person_account",
+            "title": "Kind"
+          },
+          "person_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Person Id"
+          },
+          "account": {
+            "$ref": "#/components/schemas/ReviewAccount"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "image_id",
+          "reason",
+          "kind",
+          "person_id",
+          "account"
+        ],
+        "title": "AddPersonAccount"
+      },
+      "AddPersonGroup": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$",
+            "title": "Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Image Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "Agent assessment of this suggestion, independent of face-match scores."
+          },
+          "kind": {
+            "type": "string",
+            "const": "add_person_group",
+            "title": "Kind"
+          },
+          "person_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Person Id"
+          },
+          "group_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Group Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "image_id",
+          "reason",
+          "kind",
+          "person_id",
+          "group_id"
+        ],
+        "title": "AddPersonGroup"
+      },
       "AddReference": {
         "properties": {
           "id": {
@@ -4137,6 +4266,92 @@
         ],
         "title": "Cleanup"
       },
+      "CorrectSource": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$",
+            "title": "Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Image Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "Agent assessment of this suggestion, independent of face-match scores."
+          },
+          "kind": {
+            "type": "string",
+            "const": "correct_source",
+            "title": "Kind"
+          },
+          "post_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Post Id"
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "author",
+              "author_name",
+              "published_at",
+              "url",
+              "post_text"
+            ],
+            "title": "Field"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16000,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "image_id",
+          "reason",
+          "kind",
+          "post_id",
+          "field",
+          "value"
+        ],
+        "title": "CorrectSource"
+      },
       "Create": {
         "properties": {
           "hashtags": {
@@ -4233,6 +4448,28 @@
             "pattern": "\\S",
             "title": "Name"
           },
+          "name_ja": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name Ja"
+          },
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewAccount"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Accounts"
+          },
           "group_ids": {
             "items": {
               "type": "integer",
@@ -4246,10 +4483,17 @@
           },
           "new_groups": {
             "items": {
-              "type": "string",
-              "maxLength": 100,
-              "minLength": 1,
-              "pattern": "\\S"
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "pattern": "\\S"
+                },
+                {
+                  "$ref": "#/components/schemas/ReviewGroupName"
+                }
+              ]
             },
             "type": "array",
             "maxItems": 100,
@@ -5031,6 +5275,73 @@
         ],
         "title": "GroupName"
       },
+      "GroupNameJa": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$",
+            "title": "Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Image Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "Agent assessment of this suggestion, independent of face-match scores."
+          },
+          "kind": {
+            "type": "string",
+            "const": "set_group_name_ja",
+            "title": "Kind"
+          },
+          "group_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Group Id"
+          },
+          "name_ja": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Name Ja"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "image_id",
+          "reason",
+          "kind",
+          "group_id",
+          "name_ja"
+        ],
+        "title": "GroupNameJa"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -5694,6 +6005,73 @@
         ],
         "title": "PersonInput"
       },
+      "PersonNameJa": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$",
+            "title": "Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Image Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "Agent assessment of this suggestion, independent of face-match scores."
+          },
+          "kind": {
+            "type": "string",
+            "const": "set_person_name_ja",
+            "title": "Kind"
+          },
+          "person_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Person Id"
+          },
+          "name_ja": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Name Ja"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "image_id",
+          "reason",
+          "kind",
+          "person_id",
+          "name_ja"
+        ],
+        "title": "PersonNameJa"
+      },
       "PostEdit": {
         "properties": {
           "author": {
@@ -5902,6 +6280,24 @@
               },
               {
                 "$ref": "#/components/schemas/Recycle"
+              },
+              {
+                "$ref": "#/components/schemas/PersonNameJa"
+              },
+              {
+                "$ref": "#/components/schemas/GroupNameJa"
+              },
+              {
+                "$ref": "#/components/schemas/AddPersonAccount"
+              },
+              {
+                "$ref": "#/components/schemas/AddPersonGroup"
+              },
+              {
+                "$ref": "#/components/schemas/CorrectSource"
+              },
+              {
+                "$ref": "#/components/schemas/ReviewOutcome"
               }
             ],
             "title": "Proposal",
@@ -5909,11 +6305,17 @@
               "propertyName": "kind",
               "mapping": {
                 "add_face": "#/components/schemas/AddFace",
+                "add_person_account": "#/components/schemas/AddPersonAccount",
+                "add_person_group": "#/components/schemas/AddPersonGroup",
                 "add_reference": "#/components/schemas/AddReference",
+                "correct_source": "#/components/schemas/CorrectSource",
                 "create_person": "#/components/schemas/CreatePerson",
                 "match": "#/components/schemas/Match",
                 "recycle": "#/components/schemas/Recycle",
-                "remove_face": "#/components/schemas/Remove"
+                "remove_face": "#/components/schemas/Remove",
+                "review_outcome": "#/components/schemas/ReviewOutcome",
+                "set_group_name_ja": "#/components/schemas/GroupNameJa",
+                "set_person_name_ja": "#/components/schemas/PersonNameJa"
               }
             }
           },
@@ -6181,6 +6583,63 @@
         "type": "object",
         "title": "Resume"
       },
+      "ReviewAccount": {
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "instagram",
+              "x"
+            ],
+            "title": "Platform"
+          },
+          "username": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[\\w.]+$",
+            "title": "Username"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "platform",
+          "username"
+        ],
+        "title": "ReviewAccount"
+      },
+      "ReviewGroupName": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Name"
+          },
+          "name_ja": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name Ja"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ReviewGroupName"
+      },
       "ReviewImage": {
         "properties": {
           "pending_duplicate_count": {
@@ -6251,6 +6710,68 @@
           "pending_feedback_count"
         ],
         "title": "ReviewImage"
+      },
+      "ReviewOutcome": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$",
+            "title": "Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "maximum": 9.223372036854776e+18,
+            "exclusiveMinimum": 0.0,
+            "title": "Image Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "Agent assessment of this suggestion, independent of face-match scores."
+          },
+          "kind": {
+            "type": "string",
+            "const": "review_outcome",
+            "title": "Kind"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "no_change",
+              "no_faces",
+              "needs_human"
+            ],
+            "title": "Outcome"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "image_id",
+          "reason",
+          "kind",
+          "outcome"
+        ],
+        "title": "ReviewOutcome"
       },
       "ReviewPage": {
         "properties": {

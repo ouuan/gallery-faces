@@ -16,6 +16,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from . import db as storage, trash
+from .group_index import REVIEW_FLAGS
+from .representatives import complete_source_sql
 from .review_format import Identifier, Result
 
 PREFIX = '/api/v1/admin/review-packages'
@@ -98,7 +100,7 @@ class Job(BaseModel):
 
 
 def snapshot(db, image_id):
-    image = db.execute('SELECT id,group_id,width,height,sha256 FROM images WHERE id=?', (image_id,)).fetchone()
+    image = db.execute('SELECT id,group_id,width,height,sha256,detection,error FROM images WHERE id=?', (image_id,)).fetchone()
     faces = []
     db.execute('INSERT OR IGNORE INTO review_face_identity(face_id) SELECT id FROM faces WHERE image_id=?', (image_id,))
     for row in db.execute(
@@ -106,8 +108,23 @@ def snapshot(db, image_id):
         (image_id,),
     ):
         faces.append(dict(row, box=json.loads(row['box']), candidates=json.loads(row['candidates'])))
-    group = trash.preview(db, [image_id])
-    return dict(image, faces=faces, member_ids=group['ids'], scope_token=group['scope_token'])
+    rows, token = trash.scope(db, [image_id])
+    members = [dict(id=row['id'], filename=row['filename'], already_trashed=bool(row['hidden'])) for row in rows]
+    group = (image['group_id'],)
+    flags = db.execute('SELECT * FROM review_groups WHERE group_id=?', group).fetchone()
+    reasons = [flag for flag in REVIEW_FLAGS if flag != 'review' and flags[flag]]
+    if any(not face['ignored'] and not face['locked'] and face['person_id'] is not None for face in faces):
+        reasons.append('unconfirmed_match')
+    incomplete = [row[0] for row in db.execute(f'''SELECT id FROM images i WHERE i.group_id=? AND i.hidden=0
+        AND NOT {complete_source_sql('i')} ORDER BY id''', group)]
+    feedback = [dict(row) for row in db.execute('''SELECT f.id,f.image_id,f.content,f.created_at FROM images i
+        JOIN feedback f ON f.image_id=i.id WHERE i.group_id=? AND i.hidden=0 AND f.status='pending' ORDER BY f.id''', group)]
+    sources = [dict(row, coauthors=json.loads(row['coauthors'] or '[]')) for row in db.execute('''SELECT s.image_id,
+        p.id,p.post_key,p.author,p.author_name,p.platform,p.coauthors,p.post_text,p.url,p.published_at FROM images i
+        JOIN sources s ON s.image_id=i.id JOIN posts p ON p.id=s.post_id WHERE i.group_id=? AND i.hidden=0
+        ORDER BY i.id,p.id''', group)]
+    return dict(image, faces=faces, member_ids=[row['id'] for row in members], members=members, scope_token=token,
+                review_reasons=reasons, incomplete_image_ids=incomplete, pending_feedback=feedback, sources=sources)
 
 
 def start(body):
@@ -137,7 +154,7 @@ def start(body):
         )
         db.execute('INSERT INTO review_roster SELECT ?,id,id FROM people', (batch,))
         db.execute('INSERT INTO review_group_roster SELECT ?,id,id,name,name_ja FROM groups', (batch,))
-    executor.submit(build, batch, instructions)
+    executor.submit(build, batch, instructions, body.state)
     return Job(id=batch, status='building', total=len(ids))
 
 
@@ -153,7 +170,7 @@ def snapshot_rows(db, batch):
         after = rows[-1]['image_id']
 
 
-def build(batch, instructions):
+def build(batch, instructions, selected_state):
     from .main import MediaRead, people, reference_crop, cropped_image
 
     partial = directory() / (batch + '.part')
@@ -197,15 +214,19 @@ def build(batch, instructions):
                         face.pop('token')
                         face['crop'] = f"images/{identifier}/face-{face['id']}.jpg"
                         archive.writestr(face['crop'], cropped_image(path, face['box']).body)
-                item['sources'] = [
-                    dict(row, coauthors=json.loads(row['coauthors'] or '[]'))
-                    for row in db.execute(
-                        '''SELECT s.image_id,p.id,p.author,p.author_name,p.platform,p.coauthors,p.post_text,p.url,p.published_at
-                    FROM sources s JOIN posts p ON p.id=s.post_id JOIN images i ON i.id=s.image_id
-                    WHERE i.hidden=0 AND i.id IN (SELECT value FROM json_each(?)) ORDER BY s.image_id,p.id''',
-                        (json.dumps(item['member_ids']),),
-                    )
-                ]
+                for source in item['sources']:
+                    source.pop('post_key')
+                for member in item['members']:
+                    thumb = storage.DATA / 'thumbs' / member.pop('filename')
+                    if member['id'] == identifier:
+                        member['preview'] = item['display']
+                    else:
+                        path = f"images/{identifier}/member-{member['id']}.jpg"
+                        try:
+                            archive.write(thumb, path)
+                            member['preview'] = path
+                        except FileNotFoundError:
+                            member['preview'] = None
                 name = f'images/{identifier}/metadata.json'
                 write_json(archive, name, item)
                 images.append(name)
@@ -215,7 +236,8 @@ def build(batch, instructions):
             write_json(
                 archive,
                 'manifest.json',
-                dict(version=1, batch=batch, instructions=instructions, images=images, people='people.json', groups='groups.json'),
+                dict(version=1, batch=batch, instructions=instructions, selected_state=selected_state,
+                     images=images, people='people.json', groups='groups.json'),
             )
             archive.write(Path(__file__).with_name('review-kit') / 'SKILL.md', 'SKILL.md')
             write_json(archive, 'review-result.schema.json', Result.model_json_schema())

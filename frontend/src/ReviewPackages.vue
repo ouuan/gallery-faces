@@ -9,7 +9,11 @@ import ReviewPackageImage from './ReviewPackageImage.vue';
 import { useLatestRequest } from './use-latest-request';
 import type { components } from './schema';
 
-const kinds = { match: '匹配人物', remove_face: '删除误检人脸', add_face: '补画人脸框', create_person: '新建人物', add_reference: '添加参考图', recycle: '整组移入回收站' };
+const kinds = {
+  match: '匹配人物', remove_face: '删除误检人脸', add_face: '补画人脸框', create_person: '新建人物', add_reference: '添加参考图', recycle: '整组移入回收站',
+  set_person_name_ja: '补充人物日语名', set_group_name_ja: '补充分组日语名', add_person_account: '关联人物账号',
+  add_person_group: '将人物加入分组', correct_source: '更正帖子来源', review_outcome: '记录逐图审核结论',
+} satisfies Record<components['schemas']['QueueItem']['proposal']['kind'], string>;
 type Schema = components['schemas'];
 type Suggestion = Schema['QueueItem'];
 type Result = Schema['QueuePage'];
