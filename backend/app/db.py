@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS groups(id INTEGER PRIMARY KEY, name TEXT NOT NULL UNI
 CREATE TABLE IF NOT EXISTS person_groups(person_id INTEGER REFERENCES people ON DELETE CASCADE, group_id INTEGER REFERENCES groups ON DELETE CASCADE, PRIMARY KEY(person_id,group_id));
 CREATE TABLE IF NOT EXISTS accounts(id INTEGER PRIMARY KEY, person_id INTEGER REFERENCES people ON DELETE CASCADE, platform TEXT NOT NULL, username TEXT NOT NULL, UNIQUE(person_id,platform,username));
 CREATE TABLE IF NOT EXISTS duplicate_groups(id INTEGER PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS daily_picks(filter_key TEXT PRIMARY KEY, day TEXT NOT NULL, group_id INTEGER NOT NULL) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS images(id INTEGER PRIMARY KEY, sha256 TEXT NOT NULL UNIQUE, filename TEXT NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, phash TEXT, group_id INTEGER NOT NULL REFERENCES duplicate_groups, detection TEXT NOT NULL DEFAULT 'pending', error TEXT, hidden INTEGER NOT NULL DEFAULT 0, created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')));
 CREATE TABLE IF NOT EXISTS posts(id INTEGER PRIMARY KEY, platform TEXT NOT NULL, post_key TEXT NOT NULL, author TEXT, author_name TEXT, published_at TEXT, url TEXT, post_text TEXT, collected_account TEXT, coauthors TEXT, UNIQUE(platform,post_key));
 CREATE TABLE IF NOT EXISTS sources(id INTEGER PRIMARY KEY, image_id INTEGER NOT NULL REFERENCES images, post_id INTEGER NOT NULL REFERENCES posts, media_key TEXT NOT NULL, UNIQUE(post_id,media_key));

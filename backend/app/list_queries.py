@@ -24,18 +24,21 @@ def matching_groups(scope, people, match):
     return chosen, args
 
 
-def gallery_rows(db, people, match, source, source_args, include_no_faces, order, edge, limit, total):
+def gallery_matches(people, match, source, source_args, include_no_faces, group_id=None):
     conditions, args = [], []
     if people:
         selected, args = matching_groups('public', people, match)
         conditions.append(f'g.group_id IN ({selected})')
     elif not include_no_faces:
         conditions.append('g.has_face=1')
+    if group_id is not None:
+        conditions.append('g.group_id=?')
+        args.append(group_id)
     if source:
         conditions.append(source)
         args.extend(source_args)
         links = ('public_groups g JOIN public_group_posts link ON link.group_id=g.group_id JOIN posts p ON p.id=link.post_id'
-                 if people else 'posts p CROSS JOIN public_group_posts link ON link.post_id=p.id CROSS JOIN public_groups g NOT INDEXED ON g.group_id=link.group_id')
+                 if people or group_id is not None else 'posts p CROSS JOIN public_group_posts link ON link.post_id=p.id CROSS JOIN public_groups g NOT INDEXED ON g.group_id=link.group_id')
         matches = f'''SELECT group_id,first_post,stamp FROM (SELECT g.group_id,p.id first_post,p.published_at stamp,
             row_number() OVER(PARTITION BY g.group_id ORDER BY p.published_at,p.id) AS rank
             FROM {links} WHERE ''' + ' AND '.join(conditions) + ') WHERE rank=1'
@@ -43,6 +46,11 @@ def gallery_rows(db, people, match, source, source_args, include_no_faces, order
         matches = 'SELECT group_id,first_post,stamp FROM public_groups g'
         if conditions:
             matches += ' WHERE ' + ' AND '.join(conditions)
+    return matches, args
+
+
+def gallery_rows(db, people, match, source, source_args, include_no_faces, order, edge, limit, total):
+    matches, args = gallery_matches(people, match, source, source_args, include_no_faces)
     direction, comparison = ('DESC', '<') if order == 'newest' else ('ASC', '>')
     boundary = f'WHERE (stamp,group_id) {comparison} (?,?)' if edge else ''
     materialize = 'MATERIALIZED' if total and (people or source) else 'NOT MATERIALIZED'

@@ -53,3 +53,5 @@ export const hasFilters = (f: Filter) => Boolean(
   f.people.length || f.publishers.length || f.start || f.end || f.include_no_faces
 );
 export const clearFilters = (f: Filter): Filter => ({ ...emptyFilter(), sort: f.sort });
+
+export const dailyQuery = (filter: Filter) => toQuery({ ...filter, sort: 'newest' });

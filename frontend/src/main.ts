@@ -9,6 +9,7 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", component: Gallery },
+    { path: "/daily", component: () => import("./DailyPhoto.vue") },
     { path: "/admin/:section?", component: Admin },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
