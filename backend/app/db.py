@@ -54,7 +54,6 @@ CREATE INDEX IF NOT EXISTS review_suggestions_page ON review_suggestions(status,
 CREATE INDEX IF NOT EXISTS review_queue_page ON review_suggestions(image_id,id) WHERE status IN ('pending','recorded');
 CREATE INDEX IF NOT EXISTS review_outcomes ON review_suggestions(status,batch,image_id) WHERE json_extract(payload,'$.kind')='review_outcome';
 CREATE TABLE IF NOT EXISTS review_result_keys(batch TEXT NOT NULL, key TEXT NOT NULL, content TEXT NOT NULL, suggestion INTEGER NOT NULL REFERENCES review_suggestions, PRIMARY KEY(batch,key));
-CREATE TABLE IF NOT EXISTS review_match_versions(suggestion INTEGER PRIMARY KEY REFERENCES review_suggestions, face_id INTEGER REFERENCES faces ON DELETE SET NULL, revision INTEGER NOT NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS review_person_keys ON review_suggestions(batch,json_extract(payload,'$.person_id')) WHERE json_extract(payload,'$.kind')='create_person';
 CREATE TABLE IF NOT EXISTS pending_file_deletions(path TEXT PRIMARY KEY, sha256 TEXT NOT NULL, filename TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS pending_deduplications(image_id INTEGER PRIMARY KEY REFERENCES images ON DELETE CASCADE);

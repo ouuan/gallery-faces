@@ -82,11 +82,12 @@ def rematch(task):
                 # A completed match need not change the face. Compare values,
                 # including the identity that will actually be saved for locked faces.
                 saved_person = face["person_id"] if face["locked"] else person
-                if json.loads(face["candidates"]) == result and face["person_id"] == saved_person:
+                person_changed = saved_person != face["person_id"]
+                if not person_changed and json.loads(face["candidates"]) == result:
                     continue
                 db.execute(
-                    f"UPDATE faces SET candidates=?,person_id=CASE WHEN locked=0 THEN ? ELSE person_id END,revision=revision+1 WHERE id=? AND revision=? AND {eligible}",
-                    (json.dumps(result), person, face["id"], face["revision"]),
+                    f"UPDATE faces SET candidates=?,person_id=?,revision=revision+? WHERE id=? AND revision=? AND {eligible}",
+                    (json.dumps(result), saved_person, int(person_changed), face["id"], face["revision"]),
                 )
         with connect(True) as db:
             if db.execute(

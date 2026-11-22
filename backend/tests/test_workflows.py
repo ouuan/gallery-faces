@@ -198,7 +198,7 @@ def test_redetect_refreshes_candidates_and_reconsiders_unlocked_labels(
         face = by_id[face_id]
         assert face['person_id'] == ((b if expected_match else None) if index == 0 else states[index][0])
         assert face['locked'] == states[index][1]
-        assert face['revision'] == 1
+        assert face['revision'] == int(index == 0)
         assert [c['person_id'] for c in face['candidates']] == ([b, a] if scores else [])
         if scores:
             assert [c['score'] for c in face['candidates']] == pytest.approx(list(reversed(scores)))
@@ -302,15 +302,15 @@ def test_full_refresh_survives_retry_and_recovery(client, status):
 @pytest.mark.parametrize('assigned,locked,old_score,new_score,changed', [
     (False, 0, None, None, False),
     (False, 0, 0.2, 0.2, False),
-    (False, 0, 0.2, 0.3, True),
+    (False, 0, 0.2, 0.3, False),
     (True, 0, 1.0, 1.0, False),
     (False, 0, 1.0, 1.0, True),
     (True, 0, None, None, True),
     (False, 1, 1.0, 1.0, False),
     (True, 1, 0.2, 0.2, False),
-    (True, 1, 0.2, 0.3, True),
+    (True, 1, 0.2, 0.3, False),
 ])
-def test_rematch_revision_only_changes_with_saved_values(
+def test_rematch_revision_only_changes_with_assignment(
     client, monkeypatch, assigned, locked, old_score, new_score, changed
 ):
     with db.connect(True) as conn:
@@ -334,9 +334,28 @@ def test_rematch_revision_only_changes_with_saved_values(
         assert face['person_id'] == expected_person
         task = conn.execute('SELECT * FROM tasks').fetchone()
         assert (task['status'], task['done'], task['total']) == ('done', 1, 1)
-    # A page loaded before matching can still save if its data has not changed.
     response = client.put(f'/api/v1/admin/faces/{face_id}', json={'revision': 0, 'person_id': person})
     assert response.status_code == (409 if changed else 200)
+
+
+def test_candidate_refresh_preserves_undo(client):
+    with db.connect(True) as conn:
+        target = image(conn)
+        person = conn.execute("INSERT INTO people(name) VALUES('Alice')").lastrowid
+        face_id = conn.execute('SELECT id FROM faces WHERE image_id=?', (target,)).fetchone()[0]
+        conn.execute('INSERT INTO reference_images(person_id,embedding,model_version) '
+                     'SELECT ?,embedding,model_version FROM faces WHERE id=?', (person, face_id))
+    endpoint = f'/api/v1/admin/faces/{face_id}'
+    assert client.put(endpoint, json={'revision': 0, 'person_id': person}).status_code == 200
+    with db.connect(True) as conn:
+        conn.execute("INSERT INTO tasks(kind,image_id,payload) VALUES('rematch',?,?)",
+                     (target, '{"refresh_all":true}'))
+    assert worker.step()
+    assert client.post(endpoint + '/undo').status_code == 200
+    with db.connect() as conn:
+        face = conn.execute('SELECT * FROM faces WHERE id=?', (face_id,)).fetchone()
+        assert (face['person_id'], face['locked'], face['revision']) == (None, 0, 2)
+        assert [candidate['person_id'] for candidate in json.loads(face['candidates'])] == [person]
 
 
 def test_reference_changes_only_rematch_unknown_faces(client):

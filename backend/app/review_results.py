@@ -609,17 +609,6 @@ def apply(db, row, choice, created_files):
         old, face = snapshot_face(db, snap, face_id)
         if not face or json.loads(face['box']) != old['box']:
             fail('目标人脸已变化', 409)
-        if face['revision'] != old['revision']:
-            accepted = (
-                kind == 'add_reference'
-                and db.execute(
-                    '''SELECT 1 FROM review_match_versions m JOIN review_suggestions s ON s.id=m.suggestion
-                WHERE s.batch=? AND s.status='accepted' AND m.face_id=? AND m.revision=?''',
-                    (batch, face_id, face['revision']),
-                ).fetchone()
-            )
-            if not accepted:
-                fail('人脸版本已变化，请重新导出', 409)
     if kind == 'create_person':
         ids = payload.get('group_ids', [])
         groups = roster_groups(db, batch, ids) if ids else {}
@@ -654,11 +643,13 @@ def apply(db, row, choice, created_files):
             fail('来源已移除或字段已更改，请重新导出', 409)
         db.execute(f'UPDATE posts SET {field}=? WHERE id=?', (payload['value'], post['id']))
     elif kind in ('match', 'remove_face'):
-        write_face_edit(
-            db, face_id, FaceEdit(person_id=person, ignored=kind == 'remove_face', revision=face['revision'])
-        )
-        if kind == 'match':
-            db.execute('INSERT INTO review_match_versions VALUES(?,?,?)', (choice.id, face_id, face['revision'] + 1))
+        ignored = kind == 'remove_face'
+        if face['locked'] and face['ignored'] == ignored and face['person_id'] == person:
+            return
+        if (face['locked'] != old['locked'] or face['ignored'] != old['ignored']
+                or (old['locked'] and face['person_id'] != resolve_person(db, batch, old['person_id']))):
+            fail('人脸的人工审核结果已更改，不会覆盖，请重新导出', 409)
+        write_face_edit(db, face_id, FaceEdit(person_id=person, ignored=ignored, revision=face['revision']))
     elif kind == 'add_face':
         box = payload['box']
         if not fits(box, image['width'], image['height']):

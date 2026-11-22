@@ -436,6 +436,75 @@ def test_external_first_reference_and_dependencies(client, monkeypatch):
     assert client.get(f"{BASE}/suggestions/{ref_item['id']}/attachment").status_code == 401
 
 
+@pytest.mark.parametrize('kind', ['match', 'remove_face'])
+def test_rematch_does_not_invalidate_face_suggestion(client, kind):
+    (identifier,) = seed()
+    with db.connect(True) as conn:
+        auto = conn.execute("INSERT INTO people(name) VALUES('Auto')").lastrowid
+        face = conn.execute('SELECT * FROM faces WHERE image_id=?', (identifier,)).fetchone()
+    batch = export(client)
+    params = {'person_id': None} if kind == 'match' else {}
+    assert upload(client, batch, [suggestion(kind, 'edit', identifier, face_id=face['id'], **params)])['added'] == 1
+    with db.connect(True) as conn:
+        conn.execute('INSERT INTO reference_images(person_id,embedding,model_version) VALUES(?,?,?)',
+                     (auto, face['embedding'], face['model_version']))
+        db.schedule_rematch(conn)
+    worker.step()
+    with db.connect() as conn:
+        current = conn.execute('SELECT person_id,locked,revision FROM faces WHERE id=?', (face['id'],)).fetchone()
+        assert tuple(current) == (auto, 0, face['revision'] + 1)
+    assert decide(client, queue(client)[0])['applied']
+    with db.connect() as conn:
+        assert tuple(conn.execute('SELECT person_id,locked,ignored FROM faces WHERE id=?', (face['id'],)).fetchone()) == (
+            None, 1, kind == 'remove_face')
+
+
+def test_manual_confirmation_satisfies_match_and_library_reference(client):
+    (identifier,) = seed()
+    with db.connect(True) as conn:
+        person = conn.execute("INSERT INTO people(name) VALUES('Alice')").lastrowid
+        face = conn.execute('SELECT id,revision FROM faces WHERE image_id=?', (identifier,)).fetchone()
+    batch = export(client)
+    ops = [suggestion('add_reference', 'ref', identifier, person_id=person, source={'face_id': face['id']}),
+           suggestion('match', 'match', identifier, person_id=person, face_id=face['id'])]
+    assert upload(client, batch, ops)['added'] == 2
+    ref, match = queue(client)
+    assert client.put(f"/api/v1/admin/faces/{face['id']}", json=dict(person_id=person, revision=face['revision'])).is_success
+    assert decide(client, ref)['applied']
+    assert decide(client, match)['applied']
+    with db.connect() as conn:
+        assert conn.execute('SELECT revision FROM faces WHERE id=?', (face['id'],)).fetchone()[0] == face['revision'] + 1
+        assert conn.execute('SELECT count(*) FROM review_history WHERE face_id=?', (face['id'],)).fetchone()[0] == 1
+
+
+@pytest.mark.parametrize('change', ['candidates', 'confirmed_person', 'box'])
+def test_removal_rechecks_exported_human_decision_and_box(client, change):
+    (identifier,) = seed()
+    with db.connect(True) as conn:
+        person = conn.execute("INSERT INTO people(name) VALUES('Alice')").lastrowid
+        other = conn.execute("INSERT INTO people(name) VALUES('Bob')").lastrowid
+        face_id = conn.execute('SELECT id FROM faces WHERE image_id=?', (identifier,)).fetchone()[0]
+        conn.execute('UPDATE faces SET locked=1,person_id=? WHERE id=?', (person, face_id))
+    batch = export(client)
+    assert upload(client, batch, [suggestion('remove_face', 'remove', identifier, face_id=face_id)])['added'] == 1
+    with db.connect(True) as conn:
+        if change == 'candidates':
+            conn.execute('UPDATE faces SET candidates=?,revision=revision+1 WHERE id=?',
+                         (json.dumps([dict(person_id=other, score=0.8)]), face_id))
+        elif change == 'confirmed_person':
+            conn.execute('UPDATE faces SET person_id=?,revision=revision+1 WHERE id=?', (other, face_id))
+        else:
+            conn.execute("UPDATE faces SET box='[1,1,20,20]' WHERE id=?", (face_id,))
+    item, = queue(client)
+    decision = decide(client, item)
+    if change == 'candidates':
+        assert decision['applied'] == [item['id']]
+    else:
+        assert decision['failures'] and queue(client)[0]['id'] == item['id']
+        with db.connect() as conn:
+            assert conn.execute('SELECT ignored FROM faces WHERE id=?', (face_id,)).fetchone()[0] == 0
+
+
 def test_library_reference_conflicts_and_recycle(client):
     (identifier,) = seed()
     with db.connect(True) as conn:
