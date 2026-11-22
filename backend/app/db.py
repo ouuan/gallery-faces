@@ -6,6 +6,7 @@ import time
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
+from . import group_index
 from .metadata import post_identity
 
 DATA = Path(os.environ.get("DATA_DIR", "./data")).resolve()
@@ -80,10 +81,13 @@ def connect(write=False, *, wait=True):
         if write:
             db.execute("BEGIN IMMEDIATE")
         yield db
+        if write:
+            group_index.refresh(db)
         db.commit()
     except sqlite3.OperationalError as error:
         db.rollback()
         if public and wait and any(word in str(error) for word in ("locked", "interrupted", "busy")):
+            logging.getLogger(__name__).warning('Public database request rejected: %s', error.sqlite_errorname)
             from fastapi import HTTPException
             raise HTTPException(503, "查询繁忙，请稍后重试", headers={"Retry-After": "1"}) from None
         raise
@@ -216,7 +220,9 @@ def init():
             WHEN OLD.platform IS NOT NEW.platform OR OLD.url IS NOT NEW.url BEGIN
             UPDATE posts SET embed_id=post_identity(NEW.platform,NEW.url) WHERE id=NEW.id; END''')
         db.execute('CREATE INDEX IF NOT EXISTS image_review_group ON images(group_id,file_size DESC,id) WHERE hidden=0')
-        db.execute('UPDATE schema_version SET version=13 WHERE version<13')
+        if db.execute('SELECT version FROM schema_version').fetchone()[0] < 14:
+            group_index.install(db)
+            db.execute('UPDATE schema_version SET version=14')
         # Recover files written by a restore interrupted before its transaction
         # committed, including tasks cancelled during process recovery.
         for row in db.execute("SELECT * FROM images WHERE hidden=1").fetchall():
@@ -304,22 +310,11 @@ def schedule_rematch(db):
     db.execute(
         "UPDATE settings SET value=? WHERE key='reference_version'", (str(version),)
     )
-    for row in db.execute(
-        f"SELECT DISTINCT image_id FROM faces WHERE {unknown_sql()} AND embedding IS NOT NULL AND length(embedding)>0 AND EXISTS(SELECT 1 FROM images i WHERE i.id=faces.image_id AND i.hidden=0)"
-    ).fetchall():
-        active = db.execute(
-            "SELECT id FROM tasks WHERE kind='rematch' AND image_id=? AND status IN ('queued','running')",
-            (row[0],),
-        ).fetchone()
-        if active:
-            db.execute(
-                "UPDATE tasks SET target_version=? WHERE id=?", (version, active[0])
-            )
-        else:
-            db.execute(
-                "INSERT INTO tasks(kind,image_id,target_version) VALUES('rematch',?,?)",
-                (row[0], version),
-            )
+    db.execute(f'''INSERT INTO tasks(kind,image_id,target_version)
+        SELECT DISTINCT 'rematch',image_id,? FROM faces WHERE {unknown_sql()} AND length(embedding)>0
+        AND EXISTS(SELECT 1 FROM images i WHERE i.id=faces.image_id AND i.hidden=0)
+        ON CONFLICT(image_id) WHERE kind='rematch' AND status IN ('queued','running')
+        DO UPDATE SET target_version=excluded.target_version''', (version,))
 
 
 def schedule_detection(db, image_id, mode="auto"):

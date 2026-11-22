@@ -1018,7 +1018,7 @@ def test_nickname_schema_upgrade_preserves_existing_posts(client):
     with db.connect() as conn:
         assert conn.execute('SELECT author,author_name FROM posts').fetchone()['author'] == 'alice'
         assert 'coauthors' in {row[1] for row in conn.execute('PRAGMA table_info(posts)')}
-        assert [r[0] for r in conn.execute('SELECT version FROM schema_version')] == [13]
+        assert [r[0] for r in conn.execute('SELECT version FROM schema_version')] == [14]
 
 
 def test_reference_avatars_crop_selected_face_and_recover_legacy_uploads(client, monkeypatch):
@@ -1484,6 +1484,8 @@ def test_original_size_migration(client, caplog):
     with db.connect(True) as conn:
         first = image(conn)
         image(conn)
+    with db.connect(True) as conn:
+        conn.execute('DROP TRIGGER dirty_images_update')
         conn.execute('DROP INDEX image_public_group')
         conn.execute('DROP INDEX image_review_group')
         conn.execute("ALTER TABLE images DROP COLUMN file_size")

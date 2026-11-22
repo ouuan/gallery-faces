@@ -29,7 +29,9 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, field_validator
 from .open_graph import render_open_graph
-from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, unknown_sql, cleanup_deleted_files
+from . import list_queries
+from .group_index import REVIEW_FLAGS
+from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, cleanup_deleted_files
 from .security import download_url, cookie_bytes, save_cookie
 from .importer import validate_url, safe_directory
 from .vision import MODEL_VERSION, Vision, candidates, models_ready, validate_embedding
@@ -675,19 +677,19 @@ def date_bounds(start, end):
 
 
 def publisher_condition(publishers, post='p'):
-    clauses, args = [], []
+    if len(publishers) == 1 and publishers[0][0] != 'person':
+        return f'({post}.platform=? AND lower({post}.author)=lower(?))', publishers[0]
+    rows, args = [], []
+    accounts = [(platform, author) for platform, author in publishers if platform != 'person']
+    if accounts:
+        rows.append('VALUES ' + ','.join('(?,lower(?))' for _ in accounts))
+        args.extend(value for account in accounts for value in account)
     person_ids = [int(author) for platform, author in publishers if platform == 'person']
     if person_ids:
         marks = ','.join('?' for _ in person_ids)
-        clauses.append(f'({post}.platform, lower({post}.author)) IN (SELECT platform, lower(username) FROM accounts WHERE person_id IN ({marks}))')
+        rows.append(f'SELECT platform,lower(username) FROM accounts WHERE person_id IN ({marks})')
         args.extend(person_ids)
-    for platform in ('x', 'instagram'):
-        usernames = [author for kind, author in publishers if kind == platform]
-        if usernames:
-            marks = ','.join('lower(?)' for _ in usernames)
-            clauses.append(f'({post}.platform=? AND lower({post}.author) IN ({marks}))')
-            args.extend([platform, *usernames])
-    return '(' + ' OR '.join(clauses) + ')', args
+    return f'({post}.platform,lower({post}.author)) IN (' + ' UNION ALL '.join(rows) + ')', args
 
 
 PeopleMatch = Literal["any", "all", "exact", "subset"]
@@ -709,99 +711,35 @@ def people_condition(image_id, people_ids, match: PeopleMatch):
     return clause, args
 
 
-def post_conditions(publishers, start, end, post='p'):
-    conditions = [
-        f"{post}.author IS NOT NULL",
-        f"{post}.published_at IS NOT NULL",
-        f"{post}.url IS NOT NULL",
-    ]
-    args = []
+def source_filter(publishers, start, end, post='p'):
+    conditions, args = [], []
     if start:
-        conditions.append(f"{post}.published_at>=?")
+        conditions.append(f'{post}.published_at>=?')
         args.append(start)
     if end:
-        conditions.append(f"{post}.published_at<?")
+        conditions.append(f'{post}.published_at<?')
         args.append(end)
     if publishers:
-        clause, publisher_args = publisher_condition(publishers, post)
+        clause, values = publisher_condition(publishers, post)
         conditions.append(clause)
-        args.extend(publisher_args)
-    return conditions, args
+        args.extend(values)
+    return ' AND '.join(conditions), args
 
 
-def group_condition(group, people_ids, match, include_no_faces):
-    representative = representative_sql(group, public=True)
-    if people_ids:
-        clause, args = people_condition("m.id", people_ids, match)
-        return f"EXISTS(SELECT 1 FROM images m WHERE m.id={representative} AND {clause})", args
-    if not include_no_faces:
-        return f"EXISTS(SELECT 1 FROM faces f WHERE f.image_id={representative} AND f.ignored=0)", []
-    return '1', []
-
-
-def gallery_rows(db, people_ids, match, publishers, start, end, include_no_faces, sort, cursor, limit, include_total):
-    conditions, args = post_conditions(publishers, start, end)
-    joined = "images i JOIN sources s ON s.image_id=i.id JOIN posts p ON p.id=s.post_id"
-    where = "i.hidden=0 AND i.detection='done' AND " + ' AND '.join(conditions)
-    eligible, group_args = group_condition('i.group_id', people_ids, match, include_no_faces)
-    cursor_filter = ''
-    page_args = []
-    if cursor:
-        try:
-            stamp, identifier = json.loads(base64.urlsafe_b64decode(cursor))
+def list_edge(cursor, *, gallery=False):
+    if not cursor:
+        return ()
+    try:
+        if len(cursor) > 1024:
+            raise ValueError()
+        stamp, identifier = json.loads(base64.urlsafe_b64decode(cursor))
+        if gallery:
             identifier = int(identifier)
-            if not isinstance(stamp, str) or not 0 < identifier <= 9223372036854775807:
-                raise ValueError()
-        except Exception:
-            fail("分页游标无效")
-        cursor_filter = (
-            " WHERE (published_at,group_id) "
-            + ("<" if sort == "newest" else ">")
-            + " (?,?)"
-        )
-        page_args.extend((stamp, identifier))
-    direction = "DESC" if sort == "newest" else "ASC"
-    if not include_total:
-        comparison = '<' if sort == 'newest' else '>'
-        probe_size = 4 * (limit + 1)
-        if cursor and db.execute('SELECT 1 FROM posts WHERE published_at=? LIMIT 1 OFFSET ?', (stamp, probe_size)).fetchone():
-            group_filter, filter_args = group_condition('nearby.id', people_ids, match, include_no_faces)
-            # A full page inside the cursor's timestamp precedes every later timestamp in this direction.
-            tied = db.execute(f'''WITH nearby AS MATERIALIZED (SELECT id FROM duplicate_groups
-                WHERE id {comparison} ? ORDER BY id {direction} LIMIT ?)
-                SELECT nearby.id AS group_id,p.id AS post_id,p.platform,p.author,p.author_name,p.published_at,p.url
-                FROM nearby CROSS JOIN posts p ON p.id=(SELECT p.id FROM images i CROSS JOIN sources s ON s.image_id=i.id
-                    CROSS JOIN posts p ON p.id=s.post_id WHERE i.group_id=nearby.id AND {where}
-                    ORDER BY p.published_at,p.id LIMIT 1)
-                WHERE p.published_at=? AND {group_filter} ORDER BY nearby.id {direction} LIMIT ?''',
-                [identifier, probe_size, *args, stamp, *filter_args, limit + 1]).fetchall()
-            if len(tied) == limit + 1:
-                return [dict(row) for row in tied], None
-        boundary = f'AND (p.published_at,i.group_id) {comparison} (?,?)' if cursor else ''
-        sql = f'''SELECT i.group_id,p.id AS post_id,p.platform,p.author,p.author_name,p.published_at,p.url
-            FROM posts p INDEXED BY post_date CROSS JOIN sources s ON s.post_id=p.id CROSS JOIN images i ON i.id=s.image_id
-            WHERE {where} {boundary} AND {eligible} AND s.id=(
-                SELECT link.id FROM images member CROSS JOIN sources link ON link.image_id=member.id
-                CROSS JOIN posts p ON p.id=link.post_id WHERE member.group_id=i.group_id AND member.hidden=0
-                AND member.detection='done' AND {' AND '.join(conditions)} ORDER BY p.published_at,p.id,link.id LIMIT 1)
-            ORDER BY p.published_at {direction},i.group_id {direction} LIMIT ?'''
-        return [dict(row) for row in db.execute(sql, [*args, *page_args, *group_args, *args, limit + 1])], None
-    sql = f"""WITH matches AS MATERIALIZED (
-        SELECT i.group_id, MIN(p.published_at) AS published_at FROM {joined} WHERE {where}
-        GROUP BY i.group_id HAVING {eligible}
-    ), page AS (
-        SELECT * FROM matches {cursor_filter} ORDER BY published_at {direction},group_id {direction} LIMIT ?
-    ) SELECT page.group_id,p.id AS post_id,p.platform,p.author,p.author_name,p.published_at,p.url,counts.total
-      FROM (SELECT count(*) AS total FROM matches) counts LEFT JOIN page ON true
-      LEFT JOIN posts p ON p.id=(SELECT MIN(p.id) FROM images i CROSS JOIN sources s ON s.image_id=i.id
-          CROSS JOIN posts p ON p.id=s.post_id WHERE i.group_id=page.group_id AND p.published_at=page.published_at AND {where})
-      ORDER BY page.published_at {direction},page.group_id {direction}"""
-    result = db.execute(sql, [*args, *group_args, *page_args, limit + 1, *args]).fetchall()
-    total = result[0]['total']
-    rows = [dict(row) for row in result if row['group_id'] is not None]
-    for row in rows:
-        del row['total']
-    return rows, total
+        if not isinstance(stamp, str) or not isinstance(identifier, int) or not 0 < identifier <= 9223372036854775807:
+            raise ValueError()
+        return stamp, identifier
+    except (TypeError, ValueError, OverflowError):
+        fail("分页游标无效")
 
 
 def visible_members(db, group_id):
@@ -842,8 +780,8 @@ def gallery_summaries(db, page):
     groups = [row['group_id'] for row in page]
     marks = ','.join('?' for _ in groups)
     images = {row['group_id']: row for row in db.execute(
-        f"SELECT i.* FROM duplicate_groups g JOIN images i ON i.id={representative_sql('g.id', public=True)} "
-        f"WHERE g.id IN ({marks})", groups,
+        f"SELECT i.* FROM public_groups g CROSS JOIN images i ON i.id=g.representative "
+        f"WHERE g.group_id IN ({marks})", groups,
     )}
     labels = gallery_labels(db, [image['id'] for image in images.values()])
     counts = dict(db.execute(
@@ -929,35 +867,12 @@ def posts(people: str = '', match: PeopleMatch = 'any', publishers: str = '',
           sort: Literal['newest', 'oldest'] = 'newest', cursor: str = '',
           limit: int = Query(default=20, ge=1, le=100)):
     ids, accounts = parse_people_publishers(people, publishers)
-    lower, upper = date_bounds(start, end)
-    eligible, group_args = group_condition('i.group_id', ids, match, include_no_faces)
-    def eligible_post(post):
-        conditions, params = post_conditions(accounts, lower, upper, post)
-        conditions.append(f"""EXISTS(SELECT 1 FROM sources s JOIN images i ON i.id=s.image_id WHERE s.post_id={post}.id
-            AND i.hidden=0 AND i.detection='done' AND {eligible})""")
-        return ' AND '.join(conditions), [*params, *group_args]
-
-    current, args = eligible_post('p')
-    earlier, earlier_args = eligible_post('other')
-    args.extend(earlier_args)
+    source, args = source_filter(accounts, *date_bounds(start, end), post='{post}')
+    edge = list_edge(cursor)
     with connect() as db:
-        sql = f"""SELECT p.id,p.platform || ':' || coalesce(p.embed_id,'record:' || p.id) AS key,
-            p.platform,p.url,p.embed_id,p.author,p.author_name,p.published_at FROM posts p INDEXED BY post_date
-            WHERE p.platform IN ('x','instagram') AND {current} AND (p.embed_id IS NULL OR NOT EXISTS(
-            SELECT 1 FROM posts other WHERE other.platform=p.platform AND other.embed_id=p.embed_id
-            AND other.id<p.id AND {earlier}))"""
-        if cursor:
-            try:
-                if len(cursor) > 1024: raise ValueError()
-                stamp, identifier = json.loads(base64.urlsafe_b64decode(cursor))
-                if not isinstance(stamp, str) or not isinstance(identifier, int) or not 0 < identifier <= 9223372036854775807: raise ValueError()
-            except Exception:
-                fail('分页游标无效')
-            sql += ' AND (published_at,id) ' + ('<' if sort == 'newest' else '>') + ' (?,?)'
-            args.extend([stamp, identifier])
-        direction = 'DESC' if sort == 'newest' else 'ASC'
-        sql += f' ORDER BY published_at {direction}, id {direction} LIMIT ?'
-        rows = [dict(row) for row in db.execute(sql, [*args, limit + 1])]
+        db.execute('BEGIN')
+        rows = [dict(row) for row in list_queries.post_rows(
+            db, ids, match, source, args, include_no_faces, sort, edge, limit)]
         page = rows[:limit]
         next_cursor = base64.urlsafe_b64encode(json.dumps([page[-1]['published_at'],page[-1]['id']]).encode()).decode() if len(rows) > limit else None
         return {'items': page, 'next_cursor': next_cursor}
@@ -977,24 +892,12 @@ def gallery(
     include_total: bool = Query(default=True, description='Return the exact matching group count; false skips counting and returns null.'),
 ):
     ids, accounts = parse_people_publishers(people, publishers)
-    if len(cursor) > 1024:
-        fail("分页游标无效")
+    edge = list_edge(cursor, gallery=True)
+    source, args = source_filter(accounts, *date_bounds(start, end))
     with connect() as db:
-        db.execute("BEGIN")
-        lower, upper = date_bounds(start, end)
-        rows, total = gallery_rows(
-            db,
-            ids,
-            match,
-            accounts,
-            lower,
-            upper,
-            include_no_faces,
-            sort,
-            cursor,
-            limit,
-            include_total,
-        )
+        db.execute('BEGIN')
+        rows, total = list_queries.gallery_rows(db, ids, match, source, args, include_no_faces,
+                                              sort, edge, limit, include_total)
         page = rows[:limit]
         next_cursor = (
             base64.urlsafe_b64encode(
@@ -1549,56 +1452,44 @@ def admin_images(
     ids, accounts = parse_people_publishers(people, publishers)
     with connect() as db:
         db.execute("BEGIN")
-        incomplete = f"EXISTS(SELECT 1 FROM images m WHERE m.group_id=i.group_id AND m.hidden=0 AND NOT {complete_source_sql('m')})"
-        feedback = "EXISTS(SELECT 1 FROM feedback f JOIN images m ON m.id=f.image_id WHERE m.group_id=i.group_id AND m.hidden=0 AND f.status='pending')"
-        condition = {
-            "review": f"i.detection IN ('pending','failed') OR {incomplete} OR NOT EXISTS(SELECT 1 FROM faces WHERE image_id=i.id) OR EXISTS(SELECT 1 FROM faces WHERE image_id=i.id AND locked=0 AND ignored=0) OR {feedback}",
-            "feedback": feedback,
-            "unknown": f"EXISTS(SELECT 1 FROM faces WHERE image_id=i.id AND {unknown_sql()})",
-            "no_faces": "detection='done' AND NOT EXISTS(SELECT 1 FROM faces WHERE image_id=i.id AND ignored=0)",
-            "failed": "detection='failed'",
-            "pending": "detection='pending'",
-            "incomplete": incomplete,
-            "hidden": "hidden=1",
-            "all": "1",
-        }.get(state)
-        if not condition:
+        if state not in (*REVIEW_FLAGS, 'hidden', 'all'):
             fail("状态无效")
         grouped = state != "hidden"
+        conditions = [f'g.{state}=1' if state in REVIEW_FLAGS else ('1' if grouped else 'i.hidden=1')]
         params = []
         if image_id is not None:
-            if grouped:
-                condition = f"({condition}) AND g.id=(SELECT group_id FROM images WHERE id=? AND hidden=0)"
-            else:
-                condition = f"({condition}) AND i.id=?"
+            conditions.append('g.group_id=(SELECT group_id FROM images WHERE id=? AND hidden=0)' if grouped else 'i.id=?')
             params.append(image_id)
-        lower, upper = date_bounds(start, end)
-        if lower or upper or accounts:
-            source_conditions = ["m.group_id=i.group_id", "m.hidden=0"] if grouped else ["m.id=i.id"]
-            if lower:
-                source_conditions.append("p.published_at>=?")
-                params.append(lower)
-            if upper:
-                source_conditions.append("p.published_at<?")
-                params.append(upper)
-            if accounts:
-                clause, publisher_args = publisher_condition(accounts)
-                source_conditions.append(clause)
-                params.extend(publisher_args)
-            condition = f"({condition}) AND EXISTS(SELECT 1 FROM images m JOIN sources s ON s.image_id=m.id JOIN posts p ON p.id=s.post_id WHERE {' AND '.join(source_conditions)})"
+        source, args = source_filter(accounts, *date_bounds(start, end))
+        if source:
+            if grouped:
+                conditions.append(f'g.group_id IN (SELECT link.group_id FROM posts p CROSS JOIN review_group_posts link ON link.post_id=p.id WHERE {source})')
+            else:
+                conditions.append(f'EXISTS(SELECT 1 FROM sources s JOIN posts p ON p.id=s.post_id WHERE s.image_id=i.id AND {source})')
+            params.extend(args)
         if ids:
-            clause, people_args = people_condition("i.id", ids, match)
-            condition = f"({condition}) AND {clause}"
+            if grouped:
+                chosen, people_args = list_queries.matching_groups('review', ids, match)
+                clause = f'g.group_id IN ({chosen})'
+            else:
+                clause, people_args = people_condition('i.id', ids, match)
+            conditions.append(clause)
             params.extend(people_args)
-        order = 'g.id' if grouped else 'i.id'
-        base = f"duplicate_groups g CROSS JOIN images i ON i.id={representative_sql('g.id')}" if grouped else 'images i'
-        matching = f' FROM {base} WHERE ({condition})'
+        order = 'g.group_id' if grouped else 'i.id'
+        base = 'review_groups g' if grouped else 'images i'
+        where = ' WHERE ' + ' AND '.join(conditions)
         limit, offset = 500, 0
         if page is not None:
-            total = db.execute("SELECT count(*)" + matching, params).fetchone()[0]
+            total = db.execute(f'SELECT count(*) FROM {base}' + where, params).fetchone()[0]
             page = min(page, max(1, (total + page_size - 1) // page_size))
             limit, offset = page_size, (page - 1) * page_size
-        rows = db.execute("SELECT i.*" + matching + f" ORDER BY {order} LIMIT ? OFFSET ?", [*params, limit, offset])
+        if grouped:
+            sql = f'''WITH page AS MATERIALIZED (SELECT g.group_id,g.representative FROM {base}{where}
+                ORDER BY {order} LIMIT ? OFFSET ?) SELECT i.* FROM page CROSS JOIN images i ON i.id=page.representative
+                ORDER BY page.group_id'''
+        else:
+            sql = f'SELECT i.* FROM {base}{where} ORDER BY {order} LIMIT ? OFFSET ?'
+        rows = db.execute(sql, [*params, limit, offset])
         items = review_images(db, rows, grouped=grouped)
         if page is None:
             return items
@@ -2137,7 +2028,8 @@ def duplicates(
     with connect() as db:
         db.execute('BEGIN')
         queries, params = [], []
-        members = '''FROM duplicate_decisions d JOIN images l ON l.id=d.a JOIN images r ON r.id=d.b'''
+        members = '''FROM duplicate_decisions d CROSS JOIN images l NOT INDEXED ON l.id=d.a
+            CROSS JOIN images r NOT INDEXED ON r.id=d.b'''
         first_group, second_group = 'min(l.group_id,r.group_id)', 'max(l.group_id,r.group_id)'
         if not decision or 'pending' in decision:
             queries.append(f'''SELECT a,b,decision,score FROM (

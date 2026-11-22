@@ -159,6 +159,13 @@ def test_admin_page_reads_are_bounded(client, monkeypatch):
             else:
                 assert result['total'] == 60 and len(result['items']) == size
             assert sum(sql.lstrip().upper().startswith(('SELECT', 'WITH')) for sql in statements) <= 10
+            if path == '/admin/duplicates':
+                count = next(sql for sql in statements if sql.startswith('SELECT count(*) FROM ('))
+                with db.connect() as conn:
+                    plan = [row[3] for row in conn.execute('EXPLAIN QUERY PLAN ' + count)]
+                for alias in ('l', 'r'):
+                    assert all('INTEGER PRIMARY KEY' in step for step in plan
+                               if step.startswith((f'SCAN {alias} ', f'SEARCH {alias} ')))
     legacy = client.get('/api/v1/admin/duplicates').json()
     tail = client.get('/api/v1/admin/duplicates?page=99').json()
     assert tail['items'] == legacy[50:] and tail['page'] == 2

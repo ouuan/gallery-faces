@@ -1,5 +1,20 @@
 # Validation record
 
+## Indexed group queries (schema v14)
+
+A local copy of a v13 snapshot (42,712 images, 23,525 posts, 98,128 faces, 151 people) was migrated and compared with the previous API. All 78 public cases, 159 admin cases and 88 randomized requests/continuations matched the reference JSON, including counts, order, cursors and source details. For six history pages that exceeded the old 2.5 s benchmark cutoff, the reference was the verified decision-first query. These measurements are local HTTP response times, not production latency.
+
+| Three-run median | v13 | v14 |
+| --- | ---: | ---: |
+| Default gallery, exact count | 184 ms | 10 ms |
+| Two-group exact person match, gallery / posts | 242 / 268 ms | 7 / 6 ms |
+| All 151 people, gallery `subset` / posts `any` | 303 / 6 ms | 55 / 8 ms |
+| Default review queue, first / last page | 153 / 312 ms | 16 / 12 ms |
+| Duplicate decision history, first and last pages | >2.5 s | 14–26 ms |
+| Reference change, 12,820 images, empty / existing queue | 435 / 290 ms | 255 / 178 ms |
+
+With one CPU and eight concurrent requests, all 24 requests finished in each of three mixed read batches (P95 194–219 ms) at the unchanged two-second public SQL budget. The one-second public lock wait is separate. On a disposable copy, changing image sizes in 1, 32 and 256 groups took 4.3, 5.5 and 17.8 ms respectively, including connection, group refresh and commit (five-run medians). Single-face save and undo were about 10 ms each. No production requests or data changes were needed for these checks.
+
 ## Large-library request benchmark
 
 From the repository root, with backend development dependencies installed, run:

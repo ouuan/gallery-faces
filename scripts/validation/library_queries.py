@@ -28,6 +28,9 @@ def seed(size):
         people = max(1, size // 100)
         conn.execute("INSERT INTO people(id,name) SELECT id,'person'||id FROM samples WHERE id<=?", (people,))
         conn.execute("INSERT INTO faces(image_id,person_id,box) SELECT id,1+id%?,'[1,2,3,4]' FROM samples", (people,))
+        if people >= 2:
+            conn.execute("INSERT INTO faces(image_id,person_id,box) SELECT id,1+id%2,'[4,3,2,1]' FROM samples")
+            conn.execute("INSERT INTO faces(image_id,person_id,box) SELECT id,2-id%2,'[4,3,2,1]' FROM samples WHERE id%997=0")
         conn.execute("INSERT INTO reference_images(person_id,image_id,embedding,model_version) SELECT 1+id%?,id,x'01','v' FROM samples WHERE id<=?", (people, 2 * people))
         conn.execute("INSERT INTO duplicate_decisions(a,b,decision,score) SELECT id-1,id,'auto',.99 FROM samples WHERE id%5=0")
 
@@ -69,6 +72,11 @@ def benchmark(size, repeats):
         sparse = measure(client, 'gallery sparse', 'gallery', repeats, limit=10, publishers='x:u314')
         if sparse['next_cursor']:
             measure(client, 'gallery sparse cursor', 'gallery', repeats, cursor=sparse['next_cursor'], limit=10, include_total=False, publishers='x:u314')
+        for endpoint in ('gallery', 'posts', 'admin/images'):
+            page = {'page': 1} if endpoint == 'admin/images' else {}
+            for match in ('any', 'all', 'exact', 'subset'):
+                measure(client, f'{endpoint} pair {match}', endpoint, repeats, people='1,2', match=match, **page)
+            measure(client, f'{endpoint} pair + source', endpoint, repeats, people='1,2', match='all', publishers='x:u314', **page)
         for endpoint in ('admin/images', 'admin/trash', 'admin/duplicates'):
             measure(client, endpoint, endpoint, repeats, page=1)
         measure(client, 'people', 'people', repeats)
