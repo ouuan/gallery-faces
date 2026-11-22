@@ -169,6 +169,49 @@ def test_optional_agent_confidence(client):
     assert len(queue(client)) == 1
 
 
+def test_create_person_with_groups(client):
+    (identifier,) = seed()
+    with db.connect(True) as conn:
+        group = conn.execute("INSERT INTO groups(name) VALUES('Speakers')").lastrowid
+    batch = export(client)
+    with zipfile.ZipFile(packages.directory() / (batch + '.zip')) as archive:
+        manifest = json.loads(archive.read('manifest.json'))
+        assert json.loads(archive.read(manifest['groups'])) == [{'id': group, 'name': 'Speakers', 'name_ja': None}]
+    op = suggestion('create_person', 'alice', identifier, person_id='new:a', name='Alice',
+                    group_ids=[group], new_groups=[' Guests ', 'Speakers', 'Guests'])
+    for invalid in ({'group_ids': [group + 1]}, {'new_groups': ['   ']}, {'new_groups': ['a' * 101]}):
+        assert upload(client, batch, [{**op, **invalid}]).status_code == 400
+    assert upload(client, batch, [op]).json()['added'] == 1
+    assert upload(client, batch, [{**op, 'new_groups': ['Speakers', 'Guests']}]).json()['duplicates'] == 1
+    item, = queue(client)
+    assert f'Speakers (#{group})' in item['proposed'] and 'Guests' in item['proposed']
+    assert client.get('/api/v1/people').json() == [] and len(client.get('/api/v1/groups').json()) == 1
+    assert decide(client, item)['applied'] == [item['id']]
+    person, = client.get('/api/v1/people').json()
+    assert {entry['name'] for entry in person['groups']} == {'Guests', 'Speakers'}
+    assert [entry['members'] for entry in client.get('/api/v1/groups').json()] == [1, 1]
+    assert upload(client, batch, [op]).json()['duplicates'] == 1
+
+
+def test_create_person_does_not_use_replacement_group(client):
+    (identifier,) = seed()
+    with db.connect(True) as conn:
+        group = conn.execute("INSERT INTO groups(name) VALUES('Original')").lastrowid
+    batch = export(client)
+    op = suggestion('create_person', 'person', identifier, person_id='new:p', name='Person',
+                    group_ids=[group], new_groups=['Guests'])
+    assert upload(client, batch, [op]).json()['added'] == 1
+    with db.connect(True) as conn:
+        conn.execute('DELETE FROM groups WHERE id=?', (group,))
+        assert conn.execute("INSERT INTO groups(name) VALUES('Replacement')").lastrowid == group
+    item, = queue(client)
+    assert 'Original（已删除）' in item['proposed'] and 'Replacement' not in item['proposed']
+    assert decide(client, item)['failures']
+    assert decide(client, item, 'reject')['applied'] == [item['id']]
+    assert client.get('/api/v1/people').json() == []
+    assert [entry['name'] for entry in client.get('/api/v1/groups').json()] == ['Replacement']
+
+
 def test_external_first_reference_and_dependencies(client, monkeypatch):
     (identifier,) = seed()
     batch = export(client)

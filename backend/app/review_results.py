@@ -158,6 +158,12 @@ def face_identifier(op):
     return None
 
 
+def roster_groups(db, batch, ids):
+    return {row['exported_id']: row for row in db.execute('''SELECT r.exported_id,r.name,r.group_id,g.name AS current_name
+        FROM review_group_roster r LEFT JOIN groups g ON g.id=r.group_id
+        WHERE batch=? AND exported_id IN (SELECT value FROM json_each(?))''', (batch, encode(ids)))}
+
+
 def validate_scope(db, batch, op):
     row = db.execute(
         'SELECT snapshot FROM review_snapshots WHERE batch=? AND image_id=?', (batch, op.image_id)
@@ -176,6 +182,8 @@ def validate_scope(db, batch, op):
         and not db.execute('SELECT 1 FROM review_roster WHERE batch=? AND exported_id=?', (batch, person)).fetchone()
     ):
         fail('目标人物不在本批名册中')
+    if isinstance(op, CreatePerson) and op.group_ids and set(op.group_ids) != roster_groups(db, batch, op.group_ids).keys():
+        fail('指定分组不在本批分组名册中，请检查编号或重新导出')
 
 
 class ImportCount(BaseModel):
@@ -229,6 +237,12 @@ def import_file(file):
                 payload = op.model_dump(mode='json')
                 if op.confidence is None:
                     payload.pop('confidence')
+                if isinstance(op, CreatePerson):
+                    for field in ('group_ids', 'new_groups'):
+                        if payload[field]:
+                            payload[field] = sorted(set(payload[field]))
+                        else:
+                            del payload[field]
                 key = None
                 detection_id = None
                 identity = {k: v for k, v in payload.items() if k not in ('id', 'reason', 'confidence')}
@@ -418,6 +432,16 @@ def queue_item(db, row):
             current += ' · 原人脸不存在'
     elif kind == 'create_person':
         current, proposed = ('已创建' if person else '未创建'), payload['name']
+        if ids := payload.get('group_ids'):
+            groups = roster_groups(db, batch, ids)
+            labels = []
+            for identifier in ids:
+                group = groups[identifier]
+                label = group['name'] if row['status'] != 'pending' else group['current_name'] or f"{group['name']}（已删除）"
+                labels.append(f'{label} (#{identifier})')
+            proposed += ' · 加入分组：' + '、'.join(labels)
+        if payload.get('new_groups'):
+            proposed += ' · 新建或复用分组：' + '、'.join(payload['new_groups'])
     elif kind == 'add_face':
         current, proposed = '未标注此框', f'补画人脸 · {target}'
     elif row['status'] == 'accepted':
@@ -467,7 +491,7 @@ class Decisions(BaseModel):
 
 
 def apply(db, row, choice, created_files):
-    from .main import FaceEdit, write_face_edit
+    from .main import FaceEdit, PersonInput, write_face_edit, write_person
 
     image_id = row['image_id']
     batch = row['batch']
@@ -495,7 +519,12 @@ def apply(db, row, choice, created_files):
             if not accepted:
                 fail('人脸版本已变化，请重新导出', 409)
     if kind == 'create_person':
-        person = db.execute('INSERT INTO people(name) VALUES(?)', (payload['name'].strip(),)).lastrowid
+        ids = payload.get('group_ids', [])
+        groups = roster_groups(db, batch, ids) if ids else {}
+        if any(identifier not in groups or groups[identifier]['group_id'] is None for identifier in ids):
+            fail('指定分组已不存在，请重新导出', 409)
+        person = write_person(db, PersonInput(name=payload['name'], group_ids=[groups[identifier]['group_id'] for identifier in ids],
+                                             new_groups=payload.get('new_groups', [])))
         db.execute('UPDATE review_suggestions SET created_person=? WHERE id=?', (person, choice.id))
         return
     person = resolve_person(db, batch, payload.get('person_id'))

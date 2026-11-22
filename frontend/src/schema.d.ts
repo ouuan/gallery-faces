@@ -1361,6 +1361,16 @@ export interface components {
             person_id: string;
             /** Name */
             name: string;
+            /**
+             * Group Ids
+             * @description Existing person group IDs from this batch's groups.json.
+             */
+            group_ids?: number[];
+            /**
+             * New Groups
+             * @description Group names to create or reuse by exact name on acceptance.
+             */
+            new_groups?: string[];
         };
         /** Created */
         Created: {

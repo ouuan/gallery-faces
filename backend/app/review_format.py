@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StringConstraints
 
 Key = Annotated[str, Field(pattern=r'^[A-Za-z0-9_-]{1,80}$')]
 Identifier = Annotated[int, Field(gt=0, le=9223372036854775807)]
@@ -39,6 +39,9 @@ class CreatePerson(Suggestion):
     kind: Literal['create_person']
     person_id: TempPerson
     name: str = Field(min_length=1, max_length=100, pattern=r'\S')
+    group_ids: list[Identifier] = Field(default_factory=list, max_length=100, description='Existing person group IDs from this batch\'s groups.json.')
+    new_groups: list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100, pattern=r'\S')]] = Field(
+        default_factory=list, max_length=100, description='Group names to create or reuse by exact name on acceptance.')
 
 
 class LibraryReference(BaseModel):

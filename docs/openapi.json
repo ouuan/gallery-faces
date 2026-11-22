@@ -4232,6 +4232,29 @@
             "minLength": 1,
             "pattern": "\\S",
             "title": "Name"
+          },
+          "group_ids": {
+            "items": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "exclusiveMinimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Group Ids",
+            "description": "Existing person group IDs from this batch's groups.json."
+          },
+          "new_groups": {
+            "items": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "New Groups",
+            "description": "Group names to create or reuse by exact name on acceptance."
           }
         },
         "additionalProperties": false,

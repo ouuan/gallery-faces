@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, expires REAL NO
 CREATE TABLE IF NOT EXISTS review_batches(id TEXT PRIMARY KEY, status TEXT NOT NULL, instructions TEXT NOT NULL, total INTEGER NOT NULL, done INTEGER NOT NULL DEFAULT 0, expires REAL, error TEXT);
 CREATE TABLE IF NOT EXISTS review_snapshots(batch TEXT REFERENCES review_batches, image_id INTEGER NOT NULL, snapshot TEXT NOT NULL, PRIMARY KEY(batch,image_id));
 CREATE TABLE IF NOT EXISTS review_roster(batch TEXT REFERENCES review_batches, exported_id INTEGER NOT NULL, person_id INTEGER REFERENCES people ON DELETE SET NULL, PRIMARY KEY(batch,exported_id));
+CREATE TABLE IF NOT EXISTS review_group_roster(batch TEXT REFERENCES review_batches, exported_id INTEGER NOT NULL, group_id INTEGER REFERENCES groups ON DELETE SET NULL, name TEXT NOT NULL, name_ja TEXT, PRIMARY KEY(batch,exported_id));
 CREATE TABLE IF NOT EXISTS review_face_identity(face_id INTEGER PRIMARY KEY REFERENCES faces ON DELETE CASCADE, token TEXT NOT NULL DEFAULT (lower(hex(randomblob(16)))));
 CREATE TABLE IF NOT EXISTS review_attachments(digest TEXT PRIMARY KEY, jpeg BLOB NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS review_detections(id INTEGER PRIMARY KEY, attachment TEXT NOT NULL REFERENCES review_attachments, model TEXT NOT NULL, threshold REAL, detections TEXT NOT NULL, UNIQUE(attachment,model,threshold));

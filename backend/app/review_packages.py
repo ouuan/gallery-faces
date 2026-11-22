@@ -135,6 +135,7 @@ def start(body):
             ((batch, identifier, json.dumps(snapshot(db, identifier))) for identifier in ids),
         )
         db.execute('INSERT INTO review_roster SELECT ?,id,id FROM people', (batch,))
+        db.execute('INSERT INTO review_group_roster SELECT ?,id,id,name,name_ja FROM groups', (batch,))
     executor.submit(build, batch, instructions)
     return Job(id=batch, status='building', total=len(ids))
 
@@ -179,6 +180,8 @@ def build(batch, instructions):
                         break
                 roster.append(dict(person, references=refs, missing_references=not refs))
             write_json(archive, 'people.json', roster)
+            groups = db.execute('SELECT exported_id AS id,name,name_ja FROM review_group_roster WHERE batch=? ORDER BY exported_id', (batch,))
+            write_json(archive, 'groups.json', [dict(row) for row in groups])
             images = []
             for identifier, raw in snapshot_rows(db, batch):
                 item = json.loads(raw)
@@ -211,7 +214,7 @@ def build(batch, instructions):
             write_json(
                 archive,
                 'manifest.json',
-                dict(version=1, batch=batch, instructions=instructions, images=images, people='people.json'),
+                dict(version=1, batch=batch, instructions=instructions, images=images, people='people.json', groups='groups.json'),
             )
             archive.write(Path(__file__).with_name('review-kit') / 'SKILL.md', 'SKILL.md')
             write_json(archive, 'review-result.schema.json', Result.model_json_schema())
