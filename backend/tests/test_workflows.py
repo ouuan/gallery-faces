@@ -1329,14 +1329,23 @@ def test_detection_upgrade_append_retry(client):
 
 
 @pytest.mark.parametrize('kinds', [(('detect', 'rematch'),), ()], ids=['compute', 'all'])
-def test_claim_prioritizes_ready_rematches(client, kinds):
+def test_claim_prioritizes_manual_redetection_then_ordinary_rematches(client, kinds):
     with db.connect(True) as conn:
         first_image = image(conn)
         first_detect = db.schedule_detection(conn, first_image)
         blocked = conn.execute("INSERT INTO tasks(kind,image_id) VALUES('rematch',?)", (first_image,)).lastrowid
         second_detect = db.schedule_detection(conn, image(conn))
         ready = [conn.execute("INSERT INTO tasks(kind,image_id) VALUES('rematch',?)", (image(conn),)).lastrowid for _ in range(2)]
+        target = image(conn)
+        manual = db.schedule_detection(conn, target)
+        assert db.schedule_detection(conn, target, 'highres') == manual
+        refresh = conn.execute("INSERT INTO tasks(kind,image_id,payload) VALUES('rematch',?,?)",
+                               (target, '{"refresh_all":true}')).lastrowid
 
+    assert worker.claim(*kinds)['id'] == manual
+    with db.connect(True) as conn:
+        conn.execute("UPDATE tasks SET status='done' WHERE id=?", (manual,))
+    assert worker.claim(*kinds)['id'] == refresh
     assert [worker.claim(*kinds)['id'] for _ in range(4)] == [*ready, first_detect, second_detect]
     assert worker.claim(*kinds) is None
     with db.connect(True) as conn:

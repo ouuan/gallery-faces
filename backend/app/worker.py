@@ -424,6 +424,10 @@ def claim(kinds=("detect", "rematch", "import", "download", "restore", "monitor"
         ordering = 't.id' if set(kinds) <= {'detect', 'rematch'} else 't.queue_rank_at,t.rounds,t.id'
         if 'rematch' in kinds and 'detect' in kinds:
             ordering = "(t.kind='rematch') DESC," + ordering
+        if 'detect' in kinds or 'rematch' in kinds:
+            ordering = """CASE WHEN (t.kind='detect' AND json_extract(t.payload,'$.mode')='highres')
+                OR (t.kind='rematch' AND json_extract(t.payload,'$.refresh_all')=1)
+                THEN 0 ELSE 1 END,""" + ordering
         task = db.execute(
             f"""
             SELECT t.* FROM tasks t WHERE t.status='queued' AND t.kind IN ({placeholders})
