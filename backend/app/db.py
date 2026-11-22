@@ -36,6 +36,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_active_rematch ON tasks(image_id) WHERE ki
 CREATE UNIQUE INDEX IF NOT EXISTS one_active_restore ON tasks(image_id) WHERE kind='restore' AND status IN ('queued','running');
 CREATE INDEX IF NOT EXISTS task_image_status ON tasks(image_id,status,kind,id);
 CREATE TABLE IF NOT EXISTS duplicate_decisions(a INTEGER REFERENCES images, b INTEGER REFERENCES images, decision TEXT NOT NULL, score REAL, PRIMARY KEY(a,b));
+CREATE INDEX IF NOT EXISTS decision_right_image ON duplicate_decisions(b,a);
 CREATE TABLE IF NOT EXISTS review_history(id INTEGER PRIMARY KEY, face_id INTEGER REFERENCES faces, before_json TEXT NOT NULL, after_revision INTEGER NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, expires REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS pending_file_deletions(path TEXT PRIMARY KEY, sha256 TEXT NOT NULL, filename TEXT NOT NULL);

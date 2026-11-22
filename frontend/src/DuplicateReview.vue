@@ -2,11 +2,12 @@
 import LoadingOverlay from "./LoadingOverlay.vue";
 import { useReviewShortcuts } from "./review-shortcuts";
 import { computed, ref, watch, onMounted, onUnmounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { NButton, NDropdown, NModal, NSelect, NAlert, useMessage } from "naive-ui";
 import { Copy, ChevronDown, Layers2 } from "@lucide/vue";
 import { useConfirm } from "./confirm";
 import type { components } from "./schema";
-import { api, send, platformLabel, dateLabel, type Source } from "./api";
+import { api, ApiError, send, platformLabel, dateLabel, type Source } from "./api";
 import { useLibrary } from "./store";
 import { useReviewImages } from "./use-review-images";
 import { useLatestRequest } from "./use-latest-request";
@@ -18,7 +19,18 @@ type CandidateImage = {
 type Candidate = { a: number; b: number; decision: string; score: number | null; images: CandidateImage[] };
 type Action = components["schemas"]["DuplicateInput"]["action"];
 const store = useLibrary(), message = useMessage(), confirm = useConfirm();
-const rows = ref<Candidate[]>([]), statuses = ref<string[]>(["pending"]);
+const route = useRoute(), router = useRouter();
+const scopedImage = computed(() => route.query.image === undefined ? null : String(route.query.image ?? ''));
+const scopeGroup = ref<number | null>(null);
+const rows = ref<Candidate[]>([]);
+const statuses = computed(() => {
+  const values = route.query.decision;
+  if (values === undefined) return scopedImage.value !== null ? [] : ['pending'];
+  return (Array.isArray(values) ? values : [values]).filter((value): value is string => statusOptions.some(option => option.value === value));
+});
+function setStatuses(values: string[]) {
+  void router.replace({ query: { ...route.query, decision: values.length ? values : 'all' }, state: { duplicateCursor: null } });
+}
 const statusOptions = [
   { value: "pending", label: "待审核" }, { value: "auto", label: "自动合并" },
   { value: "merge", label: "人工合并" }, { value: "separate", label: "不是重复／已拆分" },
@@ -71,6 +83,13 @@ let request = 0;
 const listRequest = useLatestRequest();
 let successors: Candidate[] | null = null;
 let targetPage = 1, targetIndex = 0;
+let restorePair: number[] | undefined;
+function rememberPosition() {
+  if (route.path !== '/admin/duplicates') return;
+  const pair = row.value;
+  history.replaceState({ ...history.state, duplicateCursor: { path: route.fullPath, page: page.value,
+    index: current.value, pair: pair ? [pair.a, pair.b] : undefined } }, '');
+}
 async function load() {
   const signal = listRequest.start();
   const id = ++request;
@@ -78,34 +97,53 @@ async function load() {
   error.value = "";
   const query = new URLSearchParams({ page: String(targetPage), page_size: String(pageSize) });
   statuses.value.forEach(value => query.append("decision", value));
+  if (scopedImage.value !== null) query.set("image_id", scopedImage.value);
+  restorePair?.forEach(value => query.append('pair', String(value)));
   try {
-    const response = await api<Candidate[] | { items: Candidate[]; page: number; total: number }>(`/admin/duplicates?${query}`, { signal });
+    const response = await api<Candidate[] | { items: Candidate[]; page: number; total: number; scope_group_id?: number | null }>(`/admin/duplicates?${query}`, { signal });
     if (id !== request) return;
     const result = Array.isArray(response) ? response : response.items;
+    scopeGroup.value = Array.isArray(response) ? null : response.scope_group_id ?? null;
     page.value = Array.isArray(response) ? 1 : response.page;
     total.value = Array.isArray(response) ? result.length : response.total;
     const next = successors?.map(pair => result.findIndex(r => r.a === pair.a && r.b === pair.b)).find(index => index >= 0);
     const fallback = page.value < targetPage ? result.length - 1 : targetIndex;
-    current.value = next ?? Math.max(0, Math.min(fallback, result.length - 1));
+    const restored = restorePair ? result.findIndex(pair => pair.a === restorePair?.[0] && pair.b === restorePair[1]) : -1;
+    current.value = restored >= 0 ? restored : next ?? Math.max(0, Math.min(fallback, result.length - 1));
+    restorePair = undefined;
     const advancePage = successors?.length === 0 && result[current.value]?.a === row.value?.a &&
       result[current.value]?.b === row.value?.b && current.value === result.length - 1 && position.value + 1 < total.value;
     rows.value = result;
     successors = null;
     targetPage = page.value;
+    rememberPosition();
     if (advancePage) { targetPage++; targetIndex = 0; await load(); }
   } catch (e) {
-    if (id === request) error.value = `${successors ? "已保存，列表刷新失败：" : "加载失败："}${(e as Error).message}`;
+    if (id === request) {
+      if (scopedImage.value !== null && e instanceof ApiError && [404, 409].includes(e.status)) rows.value = [];
+      error.value = `${successors ? "已保存，列表刷新失败：" : "加载失败："}${(e as Error).message}`;
+    }
   } finally {
     if (id === request) loading.value = false;
   }
 }
-watch(statuses, () => { successors = null; targetPage = 1; targetIndex = 0; void load(); }, { immediate: true });
+watch(() => route.fullPath, () => {
+  if (route.path !== '/admin/duplicates') return;
+  const cursor = history.state?.duplicateCursor;
+  const saved = cursor?.path === route.fullPath ? cursor : null;
+  successors = null;
+  targetPage = saved?.page ?? 1;
+  targetIndex = saved?.index ?? 0;
+  restorePair = saved?.pair;
+  rows.value = [];
+  void load();
+}, { immediate: true });
 onUnmounted(() => { request++; });
 function moveGroup(index: number) {
   if (blocked.value) return;
   const destination = (page.value - 1) * pageSize + index;
   if (destination < 0 || destination >= total.value) return;
-  if (index >= 0 && index < rows.value.length) current.value = index;
+  if (index >= 0 && index < rows.value.length) { current.value = index; rememberPosition(); }
   else {
     targetPage = Math.floor(destination / pageSize) + 1;
     targetIndex = destination % pageSize;
@@ -140,8 +178,12 @@ async function decide(action: Action) {
 </script>
 
 <template>
-  <div class="duplicate-toolbar"><div class="duplicate-filter"><label for="duplicate-status">审核状态</label>
-    <n-select id="duplicate-status" v-model:value="statuses" multiple clearable :disabled="!!saving" :options="statusOptions" placeholder="全部状态" :input-props="{ 'aria-label': '审核状态' }" />
+  <div class="duplicate-toolbar">
+    <div v-if="scopedImage !== null" class="duplicate-scope"><strong>图片 #{{ scopedImage }} 及同组版本</strong>
+      <n-button text :disabled="!!saving" @click="router.replace('/admin/duplicates')">清除范围</n-button>
+    </div>
+    <div class="duplicate-filter"><label for="duplicate-status">审核状态</label>
+    <n-select id="duplicate-status" :value="statuses" @update:value="setStatuses" multiple clearable :disabled="!!saving" :options="statusOptions" placeholder="全部状态" :input-props="{ 'aria-label': '审核状态' }" />
   </div>
     <nav v-if="row" class="duplicate-navigation" aria-label="候选组切换">
       <n-button :disabled="blocked || position === 0" @click="moveGroup(current - 1)" aria-label="上一组" aria-keyshortcuts="ArrowLeft">上一组<kbd class="shortcut-key" aria-hidden="true">←</kbd></n-button>
@@ -153,12 +195,17 @@ async function decide(action: Action) {
   <div class="duplicate-content loading-region" :aria-busy="loading">
   <LoadingOverlay :show="loading" label="正在加载候选…" />
   <div v-if="!row && !error" :style="{ visibility: loading ? 'hidden' : undefined }" class="duplicates-empty">
-    <Copy :size="40" /><h2>当前状态下暂无重复图片候选</h2>
-    <p>导入图片后自动检测相同文件和尺寸、压缩变体</p>
+    <Copy :size="40" /><h2>{{ scopedImage === null ? '当前状态下暂无重复图片候选' : statuses.length ? '当前状态下没有与此图相关的判断' : '此图及同组版本暂无重复判断' }}</h2>
+    <n-button v-if="scopedImage !== null && statuses.length" @click="setStatuses([])">查看此图全部状态</n-button>
+    <p v-if="scopedImage === null">导入图片后自动检测相同文件和尺寸、压缩变体</p>
   </div>
   <article v-if="row" class="duplicate-review" aria-label="重复图片审核">
     <div class="duplicate-heading">
-      <div class="duplicate-summary"><h3>#{{ row.a }} 与 #{{ row.b }}</h3><strong>{{ postRelation }}</strong>
+      <div class="duplicate-summary"><h3>
+        <router-link :to="{ path: '/admin/review', query: { state: 'image', image: row.a } }">#{{ row.a }}</router-link>
+        <span> 与 </span>
+        <router-link :to="{ path: '/admin/review', query: { state: 'image', image: row.b } }">#{{ row.b }}</router-link>
+      </h3><strong>{{ postRelation }}</strong>
         <span class="muted">{{ statusOptions.find(option => option.value === row.decision)?.label || row.decision }} · SSIM {{ row.score?.toFixed(3) ?? '—' }}</span>
       </div>
       <n-button class="compare-button" :disabled="blocked || row.images.length !== 2" title="按住看左图，松开看右图 3 秒" aria-label="按住对比：按住看左图，松开看右图 3 秒"
@@ -175,7 +222,9 @@ async function decide(action: Action) {
           <span v-if="preview" class="preview-side">{{ index === 0 ? '左图' : '右图' }} #{{ image.id }}</span>
         </div>
         <div class="duplicate-caption">
-          <p><b>{{ index === 0 ? '左图' : '右图' }}</b> · {{ image.width }} × {{ image.height }}</p>
+          <p class="photo-facts"><b>{{ index === 0 ? '左图' : '右图' }}</b>
+            <span v-if="scopedImage !== null && (image.group_id === scopeGroup || String(image.id) === scopedImage)" class="scope-label">{{ String(image.id) === scopedImage ? '当前图片' : '同组版本' }}</span>
+            <span>{{ image.width }} × {{ image.height }}</span></p>
           <p class="duplicate-people">{{ people(image) }}</p>
           <div class="duplicate-publishers"><p v-for="publisher in publishers(image)" :key="publisher">{{ publisher }}</p><p v-if="!image.sources.length">暂无来源</p></div>
           <n-button :aria-label="`查看图片 #${image.id} 详情`" @click="details = image">查看详情</n-button>
@@ -211,6 +260,11 @@ async function decide(action: Action) {
 <style scoped>
 .duplicate-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .duplicate-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; }
+.duplicate-scope { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.scope-label { color: var(--accent); }
+.photo-facts { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; }
+.photo-facts > * { white-space: nowrap; }
+.duplicate-summary h3 a { text-decoration: underline; text-underline-offset: 3px; }
 .duplicate-filter { flex: 1 1 240px; min-width: 0; max-width: 480px; display: flex; align-items: center; gap: 12px; }
 .duplicate-filter label { flex-shrink: 0; }
 .duplicate-filter .n-select { max-width: 560px; }

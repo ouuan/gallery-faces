@@ -1141,6 +1141,11 @@ export interface components {
             page: number;
             /** Page Size */
             page_size: number;
+            /**
+             * Scope Group Id
+             * @description Current group of the image used to filter these results.
+             */
+            scope_group_id?: number | null;
         };
         /** Edit */
         Edit: {
@@ -1556,6 +1561,12 @@ export interface components {
         };
         /** ReviewImage */
         ReviewImage: {
+            /**
+             * Pending Duplicate Count
+             * @description Distinct pending duplicate group pairs involving this active group.
+             * @default 0
+             */
+            pending_duplicate_count: number;
             /**
              * Id
              * @description Current review representative image ID; original image ID for hidden entries.
@@ -3392,6 +3403,10 @@ export interface operations {
         parameters: {
             query?: {
                 decision?: ("pending" | "auto" | "merge" | "separate")[];
+                /** @description Limit results to the active image's current group. */
+                image_id?: number | null;
+                /** @description When paging, locate this pair if still present; otherwise use the requested page. */
+                pair?: number[];
                 page?: number | null;
                 page_size?: number;
             };

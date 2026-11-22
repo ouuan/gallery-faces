@@ -23,6 +23,7 @@ test("photo management link requires a session and opens the displayed image", a
   await page.goto("/?photo=7");
   await expect(page.getByRole("dialog", { name: "照片详情" })).toBeVisible();
   await expect(page.getByRole("link", { name: "管理此图片" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "审核重复图片" })).toHaveCount(0);
   await expect(page.locator('.photo-card img')).toHaveAttribute('src', photo.thumbnail_url);
   await expect.poll(() => page.locator('.detail-image img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(800);
   await expect(page.getByRole('link', { name: '下载原图' })).toHaveAttribute('href', photo.download_url);
@@ -33,8 +34,13 @@ test("photo management link requires a session and opens the displayed image", a
     const link = page.getByRole("link", { name: "管理此图片" });
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute("href", "/admin/review?state=image&image=501");
+    await expect(page.getByRole("link", { name: "审核重复图片" })).toHaveAttribute("href", "/admin/duplicates?image=501");
     await page.screenshot({ path: `/tmp/gallery-faces/admin-link-${width}.png` });
   }
+  await page.getByRole("link", { name: "审核重复图片" }).click();
+  await expect(page.getByText("图片 #501 及同组版本")).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("dialog", { name: "照片详情" })).toBeVisible();
   await page.getByRole("link", { name: "管理此图片" }).click();
   await expect(page).toHaveURL(/\/admin\/review\?state=image&image=501$/);
   await expect(page.getByRole("button", { name: "审核图片（501，共 1 个版本）", exact: true })).toBeVisible();

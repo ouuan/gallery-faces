@@ -2465,6 +2465,41 @@
             }
           },
           {
+            "name": "image_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Limit results to the active image's current group.",
+              "title": "Image Id"
+            },
+            "description": "Limit results to the active image's current group."
+          },
+          {
+            "name": "pair",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "description": "When paging, locate this pair if still present; otherwise use the requested page.",
+              "default": [],
+              "title": "Pair"
+            },
+            "description": "When paging, locate this pair if still present; otherwise use the requested page."
+          },
+          {
             "name": "page",
             "in": "query",
             "required": false,
@@ -3444,6 +3479,18 @@
           "page_size": {
             "type": "integer",
             "title": "Page Size"
+          },
+          "scope_group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Group Id",
+            "description": "Current group of the image used to filter these results."
           }
         },
         "type": "object",
@@ -4605,6 +4652,12 @@
       },
       "ReviewImage": {
         "properties": {
+          "pending_duplicate_count": {
+            "type": "integer",
+            "title": "Pending Duplicate Count",
+            "description": "Distinct pending duplicate group pairs involving this active group.",
+            "default": 0
+          },
           "id": {
             "type": "integer",
             "title": "Id",

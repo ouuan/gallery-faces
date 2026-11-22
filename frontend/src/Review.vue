@@ -9,7 +9,7 @@ import { useReviewShortcuts } from "./review-shortcuts";
 import { useConfirm } from "./confirm";
 const confirm = useConfirm();
 import { ref, onMounted, onUnmounted, computed, watch } from "vue";
-import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from "vue-router";
 import {
   NButton,
   NDropdown,
@@ -170,9 +170,12 @@ async function createPerson() {
     creatingPerson.value = false;
   }
 }
-onBeforeRouteLeave(
-  async () => !dirty.value || await confirm("有未保存的修改，确定离开吗？"),
-);
+function confirmLeavingReview() {
+  if (savingBox.value || savingFaces.value || acting.value || deleting.value) return false;
+  return !(dirty.value || Object.keys(facePeople.value).length) || confirm("有未保存的修改，确定离开吗？");
+}
+onBeforeRouteLeave(confirmLeavingReview);
+onBeforeRouteUpdate((to, from) => to.path === from.path || confirmLeavingReview());
 function unload(e: BeforeUnloadEvent) {
   if (dirty.value) {
     e.preventDefault();
@@ -668,7 +671,12 @@ onMounted(load);
     </div>
     <div v-if="active" class="review-main">
       <div class="review-heading">
-        <h3>图片 #{{ active.id }} <span class="muted">· 共 {{ active.member_count ?? 1 }} 个版本</span></h3>
+        <div class="review-title">
+          <h3>图片 #{{ active.id }} <span class="muted">· 共 {{ active.member_count ?? 1 }} 个版本</span></h3>
+          <router-link class="duplicate-review-link" :to="{ path: '/admin/duplicates', query: { image: active.id } }">
+            审核重复图片<span v-if="active.pending_duplicate_count"> · {{ active.pending_duplicate_count }} 组待审</span>
+          </router-link>
+        </div>
         <div class="review-navigation">
           <span class="muted">{{ current + 1 }} / {{ images.length }} 张</span>
           <n-button :disabled="navigationDisabled || current === 0" @click="moveImage(current - 1)" aria-label="上一张" aria-keyshortcuts="ArrowLeft"

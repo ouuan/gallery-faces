@@ -76,6 +76,10 @@ test('a changed representative rejects an old edit, preserves the choice, then r
   await page.goto('/admin/review?state=image&image=1');
   await expect(page).toHaveURL(/image=2/);
   await page.locator('.face-review label').filter({ has: page.getByRole('radio', { name: /人物8/ }) }).click();
+  await page.getByRole('link', { name: '审核重复图片' }).click();
+  await expect(page.getByRole('dialog')).toContainText('有未保存的修改');
+  await page.getByRole('dialog').getByRole('button', { name: '取消' }).click();
+  await expect(page.getByRole('radio', { name: /人物8/ })).toBeChecked();
   current = group(4);
   await page.locator('.face-review').getByRole('button', { name: '确认', exact: true }).click();
   await expect(page.getByText('代表图已变化，请刷新后审核当前代表图')).toBeVisible();

@@ -560,6 +560,19 @@ svg {
   gap: 4px;
   min-height: 44px;
 }
+.detail-manage-actions { display: flex; flex-wrap: wrap; gap: 0 16px; }
+.review-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+}
+.duplicate-review-link {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
 .detail-sidebar .source-title-link {
   max-width: 100%;
 }

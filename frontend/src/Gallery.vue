@@ -473,11 +473,10 @@ onUnmounted(() => {
         <aside class="detail-sidebar">
           <header class="detail-summary">
             <h2>{{ detail.people.map((p) => p.name).join("、") || "未知人物" }}</h2>
-            <router-link
-              v-if="authenticated"
-              class="detail-manage"
-              :to="{ path: '/admin/review', query: { state: 'image', image: detail.image_id } }"
-              >管理此图片</router-link>
+            <div v-if="authenticated" class="detail-manage-actions">
+              <router-link class="detail-manage" :to="{ path: '/admin/review', query: { state: 'image', image: detail.image_id } }">管理此图片</router-link>
+              <router-link class="detail-manage" :to="{ path: '/admin/duplicates', query: { image: detail.image_id } }">审核重复图片</router-link>
+            </div>
           </header>
           <section class="detail-sources" aria-label="图片来源">
             <h2 class="detail-sources-heading">来源 · {{ detail.source_count }}</h2>

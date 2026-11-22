@@ -1590,6 +1590,38 @@ def test_duplicate_review_ranks_eligible_pairs_only(client):
     assert client.get(url).json() == []
 
 
+def test_duplicate_review_can_scope_to_an_image_group_and_review_counts_are_grouped(client):
+    with db.connect(True) as conn:
+        first = image(conn)
+        member = image(conn, group=conn.execute("SELECT group_id FROM images WHERE id=?", (first,)).fetchone()[0])
+        other = image(conn)
+        unrelated = image(conn)
+        conn.executemany("INSERT INTO duplicate_decisions VALUES(?,?,'pending',?)", [
+            (member, other, .9), (first, other, .8), (other, unrelated, .7),
+        ])
+        conn.execute("INSERT INTO duplicate_decisions VALUES(?,?,'auto',.99)", (first, member))
+
+    url = '/api/v1/admin/duplicates'
+    def scoped(**params):
+        return client.get(url, params={'image_id': first, 'page': 1, **params}).json()
+
+    def count():
+        return client.get('/api/v1/admin/images', params={'state': 'all', 'image_id': first}).json()[0]['pending_duplicate_count']
+
+    assert [(row['a'], row['b']) for row in scoped()['items']] == [(member, other), (first, member)]
+    assert scoped(decision='pending')['total'] == count() == 1
+    located = scoped(page_size=1, pair=[first, member])
+    assert (located['page'], located['total'], located['items'][0]['decision']) == (2, 2, 'auto')
+    for action, expected in [('merge', [(other, unrelated)]), ('separate', [])]:
+        assert client.post(url, json={'a': member, 'b': other, 'action': action}).is_success
+        pending = scoped(decision='pending')
+        assert [(row['a'], row['b']) for row in pending['items']] == expected
+        assert count() == len(expected)
+    assert scoped(decision='separate')['total'] > 0
+    assert client.post(url, json={'a': first, 'b': member, 'action': 'delete_a'}).is_success
+    assert client.get(url, params={'image_id': first}).status_code == 409
+
+
 def test_duplicate_thresholds_and_status_filters(client):
     endpoint = '/api/v1/admin/settings'
     config = client.get(endpoint).json()

@@ -1,5 +1,48 @@
 import { test, expect } from '@playwright/test';
 
+test('round trips through member recognition links without losing the scoped pair', async ({ page }) => {
+  const pairs = [[8, 20], [12, 30]];
+  await page.route('**/api/v1/**', route => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/admin/images')) return route.fulfill({ json: [{ id: 12, group_id: 2, member_ids: [8, 12], member_count: 2,
+      pending_duplicate_count: 1, width: 800, height: 600, faces: [], sources: [] }] });
+    if (url.pathname.endsWith('/duplicates')) {
+      if (!url.searchParams.has('image_id')) {
+        expect(url.searchParams.getAll('decision')).toEqual(['pending']);
+        return route.fulfill({ json: [] });
+      }
+      expect(url.searchParams.get('image_id')).toBe('12');
+      expect(url.searchParams.getAll('decision')).toEqual([]);
+      return route.fulfill({ json: { scope_group_id: 2, total: 2, page: 1, items: pairs.map(([a, b], index) => ({ a, b,
+        decision: index ? 'separate' : 'pending', score: .9, images: [a, b].map(id => ({ id, group_id: id === a ? 2 : id,
+          width: 800, height: 600, people: [], sources: [] })) })) } });
+    }
+    if (url.pathname.includes('/media/')) return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"/>' });
+    if (url.pathname.endsWith('/feedback')) return route.fulfill({ json: { items: [], next_cursor: null } });
+    return route.fulfill({ json: /\/(session|site)$/.test(url.pathname) ? { admin: true } : [] });
+  });
+  await page.goto('/admin/review?state=unknown&image=12');
+  await page.getByRole('link', { name: /审核重复图片.*1 组待审/ }).click();
+  await expect(page.getByText('同组版本', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '#8', exact: true })).toHaveAttribute('href', '/admin/review?state=image&image=8');
+  for (const [width, height] of [[1280, 900], [390, 844], [844, 390]]) {
+    await page.setViewportSize({ width, height });
+    await expect(page.getByRole('button', { name: '合并为一组' })).toBeInViewport();
+    await page.screenshot({ path: `/tmp/gallery-faces/scoped-duplicates-${width}.png` });
+  }
+  await page.getByRole('button', { name: '下一组' }).click();
+  await expect(page.getByText('当前图片', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '#30' })).toHaveAttribute('href', '/admin/review?state=image&image=30');
+  await page.getByRole('link', { name: '#12', exact: true }).click();
+  await expect(page).toHaveURL(/state=image&image=12/);
+  await page.goBack();
+  await expect(page.locator('.duplicate-navigation')).toContainText('第 2 / 2 组');
+  await page.getByRole('button', { name: '清除范围' }).click();
+  await expect(page.getByText('当前状态下暂无重复图片候选')).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/review\?state=unknown&image=12/);
+});
+
 test('compares post IDs and previews both images in place', async ({ page }) => {
   await page.route('**/api/v1/**', route => {
     const path = new URL(route.request().url()).pathname;

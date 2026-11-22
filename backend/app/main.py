@@ -38,6 +38,7 @@ from .vision import MODEL_VERSION, Vision, candidates, models_ready, validate_em
 from .db import schedule_detection, ACTIVE_REFERENCE
 from .download_round import ROUND_SECONDS
 from .trash import require_active, require_active_face
+from . import duplicate_review
 from .representatives import complete_source_sql, representative_sql, require_representative, require_representative_face
 from .archives import stream_zip
 from . import media_cache
@@ -1386,8 +1387,14 @@ def review_images(db, rows, *, grouped=False):
     scope = f'{owner} IN ({placeholders(by_owner)})' + (' AND i.hidden=0' if grouped else '')
     owners = list(by_owner)
     if grouped:
+        prefix, decisions = duplicate_review.scope_sql(owners)
         for item in items.values():
-            item.update(member_ids=[], member_count=0, incomplete_image_ids=[])
+            item.update(member_ids=[], member_count=0, incomplete_image_ids=[], pending_duplicate_count=0)
+        for first, second in db.execute(prefix + f'SELECT first_id,second_id FROM ({duplicate_review.pending_sql(decisions)})',
+                                        [*owners, float(settings(db)['review_ssim_threshold'])]):
+            for group in (first, second):
+                if group in by_owner:
+                    by_owner[group]['pending_duplicate_count'] += 1
     incomplete = f'NOT {complete_source_sql("i")}' if grouped else '0'
     for owner_id, image_id, missing, pending in db.execute(f'''SELECT {owner},i.id,{incomplete},
             (SELECT count(*) FROM feedback WHERE image_id=i.id AND status='pending')
@@ -1424,6 +1431,7 @@ class ReviewSource(BaseModel):
 
 class ReviewImage(BaseModel):
     model_config = {"extra": "allow"}
+    pending_duplicate_count: int = Field(default=0, description="Distinct pending duplicate group pairs involving this active group.")
     id: int = Field(description="Current review representative image ID; original image ID for hidden entries.")
     group_id: int
     member_count: int = Field(default=1, description="Number of active images in this duplicate group.")
@@ -2017,43 +2025,43 @@ class DuplicatePage(BaseModel):
     total: int
     page: int
     page_size: int
+    scope_group_id: int | None = Field(default=None, description="Current group of the image used to filter these results.")
 
 
 @app.get("/api/v1/admin/duplicates", response_model=list[dict] | DuplicatePage)
 def duplicates(
     decision: list[Literal["pending", "auto", "merge", "separate"]] = Query(default=[]),
+    image_id: int | None = Query(None, ge=1, description="Limit results to the active image's current group."),
+    pair: list[int] = Query(default=[], max_length=2, description="When paging, locate this pair if still present; otherwise use the requested page."),
     page: int | None = Query(None, ge=1), page_size: int = Query(50, ge=1, le=100),
     _: None = Depends(admin),
 ):
     with connect() as db:
         db.execute('BEGIN')
-        queries, params = [], []
-        members = '''FROM duplicate_decisions d CROSS JOIN images l NOT INDEXED ON l.id=d.a
-            CROSS JOIN images r NOT INDEXED ON r.id=d.b'''
-        first_group, second_group = 'min(l.group_id,r.group_id)', 'max(l.group_id,r.group_id)'
+        group = require_active(db, image_id)['group_id'] if image_id is not None else None
+        params = [group] if group is not None else []
+        prefix, decisions = duplicate_review.scope_sql(params)
+        queries = []
         if not decision or 'pending' in decision:
-            queries.append(f'''SELECT a,b,decision,score FROM (
-                SELECT d.*,row_number() OVER (PARTITION BY {first_group},{second_group} ORDER BY score DESC,a,b) AS rank
-                {members} LEFT JOIN (
-                    SELECT DISTINCT {first_group} AS first_id,{second_group} AS second_id
-                    {members} WHERE decision='separate'
-                ) rejected ON rejected.first_id={first_group} AND rejected.second_id={second_group}
-                WHERE decision='pending' AND (score IS NULL OR score>=?) AND rejected.first_id IS NULL
-                AND l.hidden=0 AND r.hidden=0 AND l.group_id<>r.group_id
-            ) WHERE rank=1''')
+            queries.append(f'SELECT a,b,decision,score FROM ({duplicate_review.pending_sql(decisions)})')
             params.append(float(settings(db)['review_ssim_threshold']))
         history = [state for state in (decision or ['auto', 'merge', 'separate']) if state != 'pending']
         if history:
-            queries.append(f'''SELECT d.* {members} WHERE l.hidden=0 AND r.hidden=0
+            queries.append(f'''SELECT d.* {duplicate_review.joined(decisions)} WHERE l.hidden=0 AND r.hidden=0
                 AND decision IN ({placeholders(history)})''')
             params.extend(history)
         matching = ' FROM (' + ' UNION ALL '.join(queries) + ')'
         limit, offset = 500, 0
+        ordering = "ORDER BY decision='pending' DESC,a,b"
         if page is not None:
-            total = db.execute('SELECT count(*)' + matching, params).fetchone()[0]
+            total = db.execute(prefix + 'SELECT count(*)' + matching, params).fetchone()[0]
+            if len(pair) == 2:
+                found = db.execute(prefix + f'SELECT pos FROM (SELECT a,b,row_number() OVER ({ordering}) AS pos' + matching + ') WHERE a=? AND b=?', [*params, *pair]).fetchone()
+                if found:
+                    page = (found[0] - 1) // page_size + 1
             page = min(page, max(1, (total + page_size - 1) // page_size))
             limit, offset = page_size, (page - 1) * page_size
-        result = [dict(row) for row in db.execute('SELECT *' + matching + " ORDER BY decision='pending' DESC,a,b LIMIT ? OFFSET ?", [*params, limit, offset])]
+        result = [dict(row) for row in db.execute(prefix + 'SELECT *' + matching + f' {ordering} LIMIT ? OFFSET ?', [*params, limit, offset])]
         ids = sorted({pair[key] for pair in result for key in ('a', 'b')})
         if ids:
             marks = placeholders(ids)
@@ -2069,7 +2077,7 @@ def duplicates(
                 pair['images'] = [images[pair['a']], images[pair['b']]]
         if page is None:
             return result
-        return DuplicatePage(items=result, total=total, page=page, page_size=page_size)
+        return DuplicatePage(items=result, total=total, page=page, page_size=page_size, scope_group_id=group)
 
 
 class DuplicateInput(BaseModel):

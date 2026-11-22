@@ -77,6 +77,8 @@ Recognition review reuses the gallery filters in a draft modal (people with any/
 
 Unlike whole-group recycling in recognition review, `POST /api/v1/admin/duplicates` actions `delete_a`, `delete_b`, and `delete_both` recycle only the indicated images of the displayed pair. Both must still be active. Recycling is atomic and does not change group membership or record a duplicate decision.
 
+An optional `image_id` on the duplicate list scopes both candidates and previous decisions to the active image’s current group. The paginated response identifies this group with `scope_group_id`; the displayed pair always retains its actual image IDs. Recognition review’s `pending_duplicate_count` uses the same eligible group pairs. To restore a previous position after navigation, a paginated request may repeat `pair` with the two image IDs; if they no longer match, the requested page is used instead.
+
 ## Publisher monitoring
 
 SQLite monitors persist normalized platform/username identity, collection floor, successful progress, interval (default 60 minutes, minimum 5), pause state, next check and last result. IDs are never reused. Migration is idempotent and preserves imported photos and old task timestamps.
