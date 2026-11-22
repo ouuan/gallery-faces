@@ -1,5 +1,41 @@
 import { test, expect } from '@playwright/test';
 
+test('compares post IDs and previews both images in place', async ({ page }) => {
+  await page.route('**/api/v1/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.includes('/media/')) return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"/>' });
+    if (!path.endsWith('/duplicates')) return route.fulfill({ json: /\/(session|site)$/.test(path) ? {} : [] });
+    return route.fulfill({ json: [[12, 11], [13], []].map((posts, index) => {
+      const a = index * 2 + 1;
+      return { a, b: a + 1, decision: 'pending', score: .9, images: [[10, 11], posts].map((ids, side) => ({
+        id: a + side, width: 80, height: 60, group_id: a + side, people: [],
+        sources: ids.map(id => ({ id, platform: 'x', author: 'same-author' })),
+      })) };
+    }) });
+  });
+  await page.goto('/admin/duplicates');
+  await expect(page.getByText('同一帖子', { exact: true })).toBeVisible();
+  const compare = page.getByRole('button', { name: /按住对比/ });
+  const left = page.getByAltText('重复图片候选 #1', { exact: true }), right = page.getByAltText('重复图片候选 #2');
+  await compare.hover();
+  await page.mouse.down();
+  await expect(left).toBeVisible(); await expect(right).toBeHidden();
+  const bounds = await left.boundingBox();
+  await page.mouse.move(0, 0);
+  await page.mouse.up();
+  await expect(left).toBeHidden(); await expect(right).toBeVisible();
+  expect(await right.boundingBox()).toEqual(bounds);
+  await expect(left).toBeVisible({ timeout: 5000 }); await expect(right).toBeVisible();
+  await compare.focus(); await page.keyboard.down('Space');
+  await expect(right).toBeHidden(); await page.keyboard.up('Space');
+  await expect(left).toBeHidden();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByText('不同帖子', { exact: true })).toBeVisible();
+  await expect(page.locator('.duplicate-image:visible')).toHaveCount(2);
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByText('帖子未知', { exact: true })).toBeVisible();
+});
+
 test('duplicate navigation fetches only the destination page', async ({ page }) => {
   const requested: number[] = [];
   await page.route('**/api/v1/**', route => {
@@ -102,6 +138,9 @@ test('duplicate review fits the viewport and advances to the next pair', async (
     }));
     expect(geometry.width).toBeLessThanOrEqual(size.width);
     expect(geometry.height).toBeLessThanOrEqual(size.height);
+    const compareBounds = (await page.getByRole('button', { name: /按住对比/ }).boundingBox())!;
+    const actionBounds = (await page.getByRole('button', { name: '合并为一组' }).boundingBox())!;
+    expect(compareBounds.y + compareBounds.height).toBeLessThanOrEqual(actionBounds.y);
     for (const r of geometry.elements) {
       expect(r.x).toBeGreaterThanOrEqual(0); expect(r.y).toBeGreaterThanOrEqual(0);
       expect(r.right).toBeLessThanOrEqual(size.width); expect(r.bottom).toBeLessThanOrEqual(size.height);

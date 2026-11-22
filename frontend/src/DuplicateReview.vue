@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import LoadingOverlay from "./LoadingOverlay.vue";
 import { useReviewShortcuts } from "./review-shortcuts";
-import { computed, ref, watch, onUnmounted } from "vue";
+import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { NButton, NDropdown, NModal, NSelect, NAlert, useMessage } from "naive-ui";
-import { Copy, ChevronDown } from "@lucide/vue";
+import { Copy, ChevronDown, Layers2 } from "@lucide/vue";
 import { useConfirm } from "./confirm";
 import type { components } from "./schema";
 import { api, send, platformLabel, dateLabel, type Source } from "./api";
@@ -31,6 +31,35 @@ const details = ref<CandidateImage | null>(null);
 const row = computed(() => rows.value[current.value]);
 const blocked = computed(() => !!saving.value || loading.value || !!error.value);
 const { urls: imageUrls, failed: failedImages } = useReviewImages(() => row.value?.images.map(image => image.id) ?? []);
+const postRelation = computed(() => {
+  const [left, right] = row.value?.images ?? [];
+  const leftIds = new Set(left?.sources.map(source => source.id));
+  if (right?.sources.some(source => source.id != null && leftIds.has(source.id))) return '同一帖子';
+  if (!left?.sources.length || !right?.sources.length || leftIds.has(undefined) || right.sources.some(source => source.id == null)) return '帖子未知';
+  return '不同帖子';
+});
+const preview = ref<'left' | 'right' | null>(null);
+let previewTimer: ReturnType<typeof setTimeout> | undefined;
+function resetPreview() {
+  clearTimeout(previewTimer);
+  preview.value = null;
+}
+function holdPreview(event: PointerEvent | KeyboardEvent) {
+  if (event instanceof PointerEvent) {
+    if (!event.isPrimary || event.button !== 0) return;
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  } else if (event.repeat) return;
+  clearTimeout(previewTimer);
+  preview.value = 'left';
+}
+function releasePreview() {
+  if (preview.value !== 'left') return;
+  preview.value = 'right';
+  previewTimer = setTimeout(resetPreview, 3000);
+}
+watch([row, blocked, details, menuOpen], resetPreview);
+onMounted(() => window.addEventListener('blur', resetPreview));
+onUnmounted(() => { window.removeEventListener('blur', resetPreview); resetPreview(); });
 const people = (image: CandidateImage) => image.people.map(p => p.name).join("、") || "未知人物";
 function publishers(image: CandidateImage) {
   return [...new Map(image.sources.map(source => [
@@ -111,8 +140,14 @@ async function decide(action: Action) {
 </script>
 
 <template>
-  <div class="duplicate-filter"><label for="duplicate-status">审核状态</label>
+  <div class="duplicate-toolbar"><div class="duplicate-filter"><label for="duplicate-status">审核状态</label>
     <n-select id="duplicate-status" v-model:value="statuses" multiple clearable :disabled="!!saving" :options="statusOptions" placeholder="全部状态" :input-props="{ 'aria-label': '审核状态' }" />
+  </div>
+    <nav v-if="row" class="duplicate-navigation" aria-label="候选组切换">
+      <n-button :disabled="blocked || position === 0" @click="moveGroup(current - 1)" aria-label="上一组" aria-keyshortcuts="ArrowLeft">上一组<kbd class="shortcut-key" aria-hidden="true">←</kbd></n-button>
+      <span aria-live="polite">第 {{ position + 1 }} / {{ total }} 组</span>
+      <n-button :disabled="blocked || position >= total - 1" @click="moveGroup(current + 1)" aria-label="下一组" aria-keyshortcuts="ArrowRight">下一组<kbd class="shortcut-key" aria-hidden="true">→</kbd></n-button>
+    </nav>
   </div>
   <n-alert v-if="error" type="error">{{ error }} <n-button @click="load()">重试加载</n-button></n-alert>
   <div class="duplicate-content loading-region" :aria-busy="loading">
@@ -122,24 +157,25 @@ async function decide(action: Action) {
     <p>导入图片后自动检测相同文件和尺寸、压缩变体</p>
   </div>
   <article v-if="row" class="duplicate-review" aria-label="重复图片审核">
-    <nav class="duplicate-navigation" aria-label="候选组切换">
-      <n-button :disabled="blocked || position === 0" @click="moveGroup(current - 1)" aria-label="上一组" aria-keyshortcuts="ArrowLeft">上一组<kbd class="shortcut-key" aria-hidden="true">←</kbd></n-button>
-      <span aria-live="polite">第 {{ position + 1 }} / {{ total }} 组</span>
-      <n-button :disabled="blocked || position >= total - 1" @click="moveGroup(current + 1)" aria-label="下一组" aria-keyshortcuts="ArrowRight">下一组<kbd class="shortcut-key" aria-hidden="true">→</kbd></n-button>
-    </nav>
     <div class="duplicate-heading">
-      <h3>#{{ row.a }} 与 #{{ row.b }}</h3>
-      <span>{{ statusOptions.find(option => option.value === row.decision)?.label || row.decision }} · SSIM {{ row.score?.toFixed(3) ?? '—' }}</span>
+      <div class="duplicate-summary"><h3>#{{ row.a }} 与 #{{ row.b }}</h3><strong>{{ postRelation }}</strong>
+        <span class="muted">{{ statusOptions.find(option => option.value === row.decision)?.label || row.decision }} · SSIM {{ row.score?.toFixed(3) ?? '—' }}</span>
+      </div>
+      <n-button class="compare-button" :disabled="blocked || row.images.length !== 2" title="按住看左图，松开看右图 3 秒" aria-label="按住对比：按住看左图，松开看右图 3 秒"
+        @pointerdown="holdPreview" @pointerup="releasePreview" @pointercancel="resetPreview" @lostpointercapture="preview === 'left' && resetPreview()" @blur="resetPreview"
+        @keydown.space.prevent="holdPreview" @keyup.space.prevent="releasePreview" @keydown.enter.prevent="holdPreview" @keyup.enter.prevent="releasePreview" @contextmenu.prevent>
+        <template #icon><Layers2 aria-hidden="true" /></template>按住对比
+      </n-button>
     </div>
-    <div class="duplicate-pair">
-      <section v-for="image in row.images" :key="image.id" class="duplicate-photo" :aria-label="`图片 #${image.id}`">
-        <div class="duplicate-image loading-region" :aria-busy="!imageUrls.has(image.id) && !failedImages.has(image.id)">
+    <div class="duplicate-pair" :class="{ comparing: preview }">
+      <section v-for="(image, index) in row.images" :key="image.id" class="duplicate-photo" :style="{ '--column': index + 1 }" :aria-label="`图片 #${image.id}`">
+        <div v-show="!preview || (preview === 'left') === (index === 0)" class="duplicate-image loading-region" :aria-busy="!imageUrls.has(image.id) && !failedImages.has(image.id)">
           <LoadingOverlay :show="!imageUrls.has(image.id) || failedImages.has(image.id)" center :error="failedImages.has(image.id)" :label="failedImages.has(image.id) ? '图片加载失败' : '正在加载图片…'" />
-          <img :key="image.id" :style="{ maxWidth: `${image.width}px`, maxHeight: `${image.height}px`, objectFit: !imageUrls.has(image.id) || failedImages.has(image.id) ? 'contain' : undefined }" :src="!failedImages.has(image.id) && imageUrls.get(image.id) || `/api/v1/admin/media/${image.id}?thumbnail=true`" :alt="`重复图片候选 #${image.id}`" @error="imageUrls.has(image.id) && failedImages.add(image.id)" />
-
+          <img :key="image.id" :style="{ maxWidth: preview ? undefined : `${image.width}px`, maxHeight: preview ? undefined : `${image.height}px`, objectFit: preview || !imageUrls.has(image.id) || failedImages.has(image.id) ? 'contain' : undefined }" :src="!failedImages.has(image.id) && imageUrls.get(image.id) || `/api/v1/admin/media/${image.id}?thumbnail=true`" :alt="`重复图片候选 #${image.id}`" @error="imageUrls.has(image.id) && failedImages.add(image.id)" />
+          <span v-if="preview" class="preview-side">{{ index === 0 ? '左图' : '右图' }} #{{ image.id }}</span>
         </div>
         <div class="duplicate-caption">
-          <p>{{ image.width }} × {{ image.height }}</p>
+          <p><b>{{ index === 0 ? '左图' : '右图' }}</b> · {{ image.width }} × {{ image.height }}</p>
           <p class="duplicate-people">{{ people(image) }}</p>
           <div class="duplicate-publishers"><p v-for="publisher in publishers(image)" :key="publisher">{{ publisher }}</p><p v-if="!image.sources.length">暂无来源</p></div>
           <n-button :aria-label="`查看图片 #${image.id} 详情`" @click="details = image">查看详情</n-button>
@@ -174,7 +210,8 @@ async function decide(action: Action) {
 
 <style scoped>
 .duplicate-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.duplicate-filter { display: flex; align-items: center; gap: 12px; flex-shrink: 0; margin-bottom: 12px; }
+.duplicate-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; }
+.duplicate-filter { flex: 1 1 240px; min-width: 0; max-width: 480px; display: flex; align-items: center; gap: 12px; }
 .duplicate-filter label { flex-shrink: 0; }
 .duplicate-filter .n-select { max-width: 560px; }
 .duplicate-publishers { max-height: 4.8em; overflow-y: auto; overflow-wrap: anywhere; }
@@ -183,32 +220,38 @@ async function decide(action: Action) {
 .duplicate-navigation { justify-content: space-between; font-variant-numeric: tabular-nums; }
 .duplicate-actions { flex-wrap: wrap; }
 .duplicate-actions > :last-child { margin-left: auto; }
-.duplicate-heading { justify-content: space-between; font-size: 13px; }
-.duplicate-pair { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
-.duplicate-photo { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
-.duplicate-image { flex: 1; min-height: 0; min-width: 0; display: flex; align-items: center; justify-content: center; background: var(--panel); }
+.duplicate-heading { justify-content: space-between; border-top: 1px solid var(--line); padding-top: 8px; font-size: 13px; }
+.duplicate-summary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 12px; font-variant-numeric: tabular-nums; }
+.compare-button { user-select: none; touch-action: none; }
+.duplicate-pair { flex: 1; min-height: 0; display: grid; grid-template: minmax(0, 1fr) auto / repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
+.duplicate-photo { display: contents; }
+.duplicate-image { grid-column: var(--column); grid-row: 1; min-height: 0; min-width: 0; display: flex; align-items: center; justify-content: center; background: var(--panel); }
+.comparing .duplicate-image { grid-column: 1 / -1; }
+.preview-side { position: absolute; top: 8px; left: 8px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; font-size: 13px; }
 .duplicate-image img { display: block; width: 100%; height: 100%; object-fit: scale-down; }
-.duplicate-caption { flex-shrink: 0; min-width: 0; font-size: 13px; }
+.duplicate-caption { grid-column: var(--column); grid-row: 2; min-width: 0; font-size: 13px; }
 .duplicate-people { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .duplicate-caption .n-button { margin-top: 4px; }
 .duplicates-empty { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; text-align: center; }
 @media (max-width: 640px), (max-height: 600px) {
   .duplicate-review { gap: 8px; }
-  .duplicate-pair { gap: 12px; }
+  .duplicate-pair { column-gap: 12px; }
 }
-@media (max-height: 600px) {
-  .duplicate-filter { margin-bottom: 0; }
-  .duplicate-publishers { max-height: 1.6em; }
-  .duplicate-publishers p { display: inline; margin-right: 8px; }
-  .duplicate-caption { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; }
-  .duplicate-caption .n-button { grid-column: 2; grid-row: 1 / 4; margin: 0; }
+@media (max-width: 640px) {
+  .duplicate-filter, .duplicate-navigation { flex-basis: 100%; max-width: none; }
+  .duplicate-summary .muted { flex-basis: 100%; }
 }
-@media (min-width: 700px) and (max-height: 600px) {
-  .duplicate-review { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto minmax(0, 1fr) auto; }
-  .duplicate-heading { justify-content: flex-end; }
-  .duplicate-pair, .duplicate-actions { grid-column: 1 / -1; }
-  .duplicate-photo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; }
-  .duplicate-caption { display: flex; flex-direction: column; justify-content: center; gap: 0; }
+@media (max-height: 600px) and (min-width: 641px) {
+  .duplicate-review { display: grid; grid-template: auto minmax(0, 1fr) / minmax(0, 1fr) minmax(280px, 38%); gap: 8px 16px; }
+  .duplicate-heading { grid-area: 1 / 2; padding: 0; border: none; align-items: flex-start; gap: 4px; }
+  .duplicate-summary .muted { flex-basis: 100%; }
+  .duplicate-pair { grid-area: 1 / 1 / 3; gap: 4px 8px; }
+  .duplicate-caption { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+  .duplicate-actions { grid-area: 2 / 2; align-content: flex-start; gap: 4px; }
+  .duplicate-actions > :last-child { margin: 0; }
+  .duplicate-actions .shortcut-key { display: none; }
+  .duplicate-caption .n-button { margin: 0; }
+  .duplicate-caption .duplicate-people, .duplicate-caption .duplicate-publishers { display: none; }
 }
 </style>
 <style>
