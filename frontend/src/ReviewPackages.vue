@@ -28,7 +28,7 @@ const root = '/admin/review-packages';
 const confidenceTiers = { high: { label: '高', icon: SignalHigh }, medium: { label: '中', icon: SignalMedium }, low: { label: '低', icon: SignalLow } };
 const route = useRoute();
 const router = useRouter();
-const statuses = [{ value: 'review', label: '建议与结论' }, { value: 'accepted', label: '已接受' }, { value: 'rejected', label: '已拒绝' }];
+const statuses = [{ value: 'review', label: '建议与结论' }, { value: 'accepted', label: '已接受' }, { value: 'rejected', label: '已拒绝' }, { value: 'acknowledged', label: '已确认结论' }];
 const status = computed(() => statuses.find(option => option.value === route.query.suggestion_status) ?? statuses[0]);
 const page = computed(() => {
   const value = Number(route.query.suggestion_page);
@@ -148,7 +148,7 @@ function canAccept(item: Suggestion) {
   return !item.attachment || !!item.attachment.boxes[faceChoices.value[item.id]];
 }
 function destructive(item: Suggestion) { return ['recycle', 'remove_face'].includes(item.proposal.kind); }
-function decide(decision: Decision, items: Suggestion[]) {
+function decide(decision: 'accept' | 'reject', items: Suggestion[]) {
   if (busy.value || !items.length || !items.every(actionable)) return;
   if (decision === 'accept' && items.some(item => !canAccept(item))) return;
   if (decision === 'accept' && items.some(destructive)) confirmation.value = [...items];
@@ -164,8 +164,13 @@ async function apply(decision: Decision, items: Suggestion[]) {
         ...(decision === 'accept' && item.attachment ? { face_index: faceChoices.value[item.id] } : {}),
         ...(decision === 'accept' && item.proposal.kind === 'recycle' ? { scope_token: item.scope_token } : {}) })) } satisfies Schema['Decision']);
     if (disposed) return;
-    failures.value = response.failures;
-    notice.value = `已${decision === 'accept' ? '接受' : '拒绝'} ${response.applied.length} 条建议。`;
+    if (decision === 'acknowledge') {
+      if (response.failures.length) actionError.value = response.failures[0].detail;
+      else notice.value = '已确认审核结论。';
+    } else {
+      failures.value = response.failures;
+      notice.value = `已${decision === 'accept' ? '接受' : '拒绝'} ${response.applied.length} 条建议。`;
+    }
     selected.value = selected.value.filter(id => !response.applied.includes(id));
     await load();
   } catch (cause) { actionError.value = (cause as Error).message; }
@@ -214,7 +219,7 @@ function externalSource(item: Suggestion) {
         <n-button quaternary :disabled="busy" @click="selected = []">取消选择</n-button>
       </div>
       <div v-if="!groups.length" class="empty-state" role="status">
-        <h2>{{ loading ? '正在加载…' : status.value === 'review' ? '暂无建议或审核结论' : `没有${status.label}的建议` }}</h2>
+        <h2>{{ loading ? '正在加载…' : status.value === 'review' ? '暂无建议或审核结论' : status.value === 'acknowledged' ? '暂无已确认结论' : `没有${status.label}的建议` }}</h2>
         <p v-if="!loading && status.value === 'review'">可导入 review-result.json 或含附件的结果 ZIP。</p>
       </div>
       <section v-for="items in groups" :key="items[0].image_id" class="image-group" :aria-label="`图片 #${items[0].image_id} 的审核记录`">
@@ -265,6 +270,7 @@ function externalSource(item: Suggestion) {
                 <n-button :disabled="busy" @click="decide('reject', [item])">拒绝</n-button>
                 <n-button secondary type="primary" :disabled="busy || !canAccept(item)" @click="decide('accept', [item])">接受</n-button>
               </div>
+              <n-button v-else-if="item.status === 'recorded' && item.proposal.kind === 'review_outcome'" :disabled="busy" @click="apply('acknowledge', [item])">确认</n-button>
             </footer>
           </article>
         </div>

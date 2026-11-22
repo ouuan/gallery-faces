@@ -1488,7 +1488,7 @@ export interface components {
              * Decision
              * @enum {string}
              */
-            decision: "accept" | "reject";
+            decision: "accept" | "reject" | "acknowledge";
             /** Items */
             items: components["schemas"]["Choice"][];
         };
@@ -4671,7 +4671,7 @@ export interface operations {
     review_queue_api_v1_admin_review_packages_suggestions_get: {
         parameters: {
             query?: {
-                status?: "review" | "pending" | "accepted" | "rejected";
+                status?: "review" | "pending" | "accepted" | "rejected" | "acknowledged";
                 page?: number;
                 page_size?: number;
             };

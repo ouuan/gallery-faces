@@ -3333,7 +3333,8 @@
                 "review",
                 "pending",
                 "accepted",
-                "rejected"
+                "rejected",
+                "acknowledged"
               ],
               "type": "string",
               "default": "review",
@@ -4600,7 +4601,8 @@
             "type": "string",
             "enum": [
               "accept",
-              "reject"
+              "reject",
+              "acknowledge"
             ],
             "title": "Decision"
           },

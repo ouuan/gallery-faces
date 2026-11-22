@@ -250,7 +250,15 @@ test('shows the exact source change and distinguishes a review note from a galle
     outcome: 'needs_human', reason: '第二张图片没有可用预览。' }, current: '仅记录本批审核结论，不修改图库', proposed: '证据不足，请人工复核' };
   const noteOnly = { ...note, id: 103, image_id: 42, proposal: { ...note.proposal, image_id: 42 } };
   await mockQueue(page, [source, note, noteOnly]);
+  await page.route(`**${root}/decisions`, route => {
+    const { decision, items } = route.request().postDataJSON();
+    expect(decision).toBe('acknowledge');
+    const record = [note, noteOnly].find(entry => entry.id === items[0].id)!;
+    record.status = 'acknowledged';
+    return route.fulfill({ json: { applied: [record.id], failures: [] } });
+  });
   for (const width of [1280, 390]) {
+    note.status = noteOnly.status = 'recorded';
     await page.setViewportSize({ width, height: 900 });
     await page.goto(queue);
     await expect(page.getByRole('heading', { name: /更正帖子来源/ })).toBeVisible();
@@ -262,9 +270,13 @@ test('shows the exact source change and distinguishes a review note from a galle
       const entry = group.getByRole('article', { name: `结论 #${record.id}` });
       await expect(entry.getByText(record.proposed, { exact: true })).toBeVisible();
       await expect(entry.getByText(record.proposal.reason, { exact: true })).toBeVisible();
-      await expect(entry.getByRole('button')).toHaveCount(0);
+      await expect(entry.getByRole('button')).toHaveCount(1);
       await expect(entry.getByRole('checkbox')).toHaveCount(0);
+      await entry.getByRole('button', { name: '确认', exact: true }).click();
+      await expect(entry).toHaveCount(0);
     }
+    await page.reload();
+    await expect(page.getByRole('link', { name: '图片 #42', exact: true })).toHaveCount(0);
     await page.getByRole('link', { name: '图片 #41', exact: true }).click();
     await expect(page).toHaveURL(/\/admin\/review\?state=image&image=41$/);
   }

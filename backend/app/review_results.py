@@ -312,7 +312,7 @@ def import_file(job_id, extension, raw):
                         fail('临时人物编号已被使用', 409)
                     note = isinstance(op, ReviewOutcome)
                     if note and db.execute("""SELECT 1 FROM review_suggestions WHERE batch=? AND image_id=?
-                        AND status IN ('recorded','accepted') AND json_extract(payload,'$.kind')='review_outcome'""",
+                        AND status IN ('recorded','acknowledged','accepted') AND json_extract(payload,'$.kind')='review_outcome'""",
                         (batch, op.image_id)).fetchone():
                         fail(f'本批次的图片 #{op.image_id} 已有审核结论', 409)
                     identifier = db.execute(
@@ -578,7 +578,7 @@ class Choice(BaseModel):
 
 
 class Decision(BaseModel):
-    decision: Literal['accept', 'reject']
+    decision: Literal['accept', 'reject', 'acknowledge']
     items: list[Choice] = Field(min_length=1, max_length=100)
 
 
@@ -738,7 +738,7 @@ def install(app, admin):
 
     @router.get('/suggestions', response_model=QueuePage)
     def review_queue(
-        status: Literal['review', 'pending', 'accepted', 'rejected'] = 'review',
+        status: Literal['review', 'pending', 'accepted', 'rejected', 'acknowledged'] = 'review',
         page: int = Query(1, ge=1),
         page_size: int = Query(20, ge=1, le=100),
     ):
@@ -794,11 +794,17 @@ def install(app, admin):
                     row = db.execute(
                         'SELECT s.*,snap.snapshot ' + JOIN_SNAPSHOT + ' WHERE s.id=?', (choice.id,)
                     ).fetchone()
-                    if not row or row['status'] != 'pending':
+                    if body.decision == 'acknowledge':
+                        if not row or row['status'] != 'recorded' or json.loads(row['payload'])['kind'] != 'review_outcome':
+                            fail('只能确认尚未确认的审核结论', 409)
+                        status = 'acknowledged'
+                    elif not row or row['status'] != 'pending':
                         fail('建议不存在或已处理', 409)
-                    if body.decision == 'accept':
+                    elif body.decision == 'accept':
                         apply(db, row, choice, created_files)
-                    status = 'accepted' if body.decision == 'accept' else 'rejected'
+                        status = 'accepted'
+                    else:
+                        status = 'rejected'
                     db.execute('UPDATE review_suggestions SET status=? WHERE id=?', (status, choice.id))
                 applied.append(choice.id)
                 recycle |= status == 'accepted' and json.loads(row['payload'])['kind'] == 'recycle'

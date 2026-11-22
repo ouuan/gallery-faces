@@ -341,10 +341,16 @@ def test_source_correction_and_image_outcomes(client):
     assert 'manual' in conflict['current'] and decide(client, conflict)['failures']
     assert decide(client, text)['applied'] and decide(client, note)['failures']
     assert decide(client, note, 'reject')['failures']
+    assert decide(client, conflict, 'acknowledge')['failures']
+    assert decide(client, note, 'acknowledge') == {'applied': [note['id']], 'failures': []}
+    assert decide(client, note, 'acknowledge')['failures']
+    assert [item['id'] for item in queue(client)] == [conflict['id']]
+    assert [item['id'] for item in queue(client, 'acknowledged')] == [note['id']]
     with db.connect() as conn:
         assert tuple(conn.execute('SELECT author,post_text FROM posts WHERE id=?', (post,)).fetchone()) == ('manual', '修正正文')
         assert conn.execute('SELECT locked FROM faces WHERE image_id=?', (identifier,)).fetchone()[0] == 0
     assert upload(client, batch, [{**outcome, 'id': 'alias'}])['duplicates'] == 1
+    assert [item['id'] for item in queue(client)] == [conflict['id']]
     assert upload(client, batch, [{**outcome, 'id': 'other', 'outcome': 'no_faces'}])['status'] == 'failed'
 
 
