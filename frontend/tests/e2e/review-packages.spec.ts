@@ -240,19 +240,28 @@ test('selects or clears only the suggestions for one image', async ({ page }) =>
   await expect(other).toBeChecked();
 });
 
-test('does not partially select an image when it would exceed the batch limit', async ({ page }) => {
-  await mockQueue(page, [...Array.from({ length: 100 }, (_, id) => ({ ...item, id: id + 1 })), recycle]);
+test('fills the remaining batch capacity in image order without replacing selected suggestions', async ({ page }) => {
+  await mockQueue(page, [...Array.from({ length: 101 }, (_, id) => ({ ...item, id: id + 1 })), recycle]);
   await page.goto(queue);
-  const group = page.getByRole('checkbox', { name: /全选本图建议.*#41）/ });
+  const group = page.getByRole('checkbox', { name: /图片 #41）/ });
   const other = page.getByRole('checkbox', { name: /建议 #103$/ });
+  const last = page.getByRole('checkbox', { name: /建议 #101$/ });
   await other.check();
-  await expect(group).toBeDisabled();
-  await expect(page.getByText('全选本图将超过 100 条上限，请分批选择。')).toBeVisible();
-  await other.uncheck();
-  await group.check();
+  await last.check();
+  await group.click();
   await expect(page.getByText('已选 100 条（单次上限）')).toBeVisible();
-  await group.uncheck();
-  await expect(page.getByRole('button', { name: '拒绝所选' })).toHaveCount(0);
+  await expect(group).toHaveAttribute('aria-checked', 'mixed');
+  await expect(page.getByRole('checkbox', { name: /建议 #98$/ })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: /建议 #99$/ })).not.toBeChecked();
+  await expect(last).toBeChecked();
+  await group.click();
+  await expect(page.getByText('已选 1 条', { exact: true })).toBeVisible();
+  await expect(other).toBeChecked();
+  await other.uncheck();
+  await group.click();
+  await expect(page.getByRole('checkbox', { name: /建议 #100$/ })).toBeChecked();
+  await expect(last).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: /图片 #53）/ })).toBeDisabled();
 });
 
 test('clears selection on page changes and restores the queue page on reload', async ({ page }) => {

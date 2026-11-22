@@ -45,7 +45,10 @@ const groups = computed(() => {
   return [...grouped.values()].map(items => {
     const ids = items.filter(actionable).map(item => item.id);
     const count = ids.filter(id => selected.value.includes(id)).length;
-    return { items, ids, count, exceedsLimit: selected.value.length + ids.length - count > selectionLimit };
+    const remaining = selectionLimit - selected.value.length;
+    const capped = ids.length - count > remaining;
+    const clearGroup = count > 0 && (count === ids.length || remaining === 0);
+    return { items, ids, count, capped, clearGroup, disabled: !count && !remaining };
   });
 });
 const loading = ref(false);
@@ -146,10 +149,11 @@ function itemLabel(item: Suggestion) { return item.proposal.kind === 'review_out
 function toggle(ids: number[], checked: boolean) {
   const next = new Set(selected.value);
   for (const id of ids) {
+    if (checked && next.size >= selectionLimit) break;
     if (checked) next.add(id);
     else next.delete(id);
   }
-  if (next.size <= selectionLimit) selected.value = [...next];
+  selected.value = [...next];
 }
 function canAccept(item: Suggestion) {
   if (item.proposal.kind === 'recycle' && (!item.scope_token || !item.member_ids.length)) return false;
@@ -230,14 +234,14 @@ function externalSource(item: Suggestion) {
         <h2>{{ loading ? '正在加载…' : status.value === 'review' ? '暂无建议或审核结论' : status.value === 'acknowledged' ? '暂无已确认结论' : `没有${status.label}的建议` }}</h2>
         <p v-if="!loading && status.value === 'review'">可导入 review-result.json 或含附件的结果 ZIP。</p>
       </div>
-      <section v-for="{ items, ids, count, exceedsLimit } in groups" :key="items[0].image_id" class="image-group" :aria-label="`图片 #${items[0].image_id} 的审核记录`">
+      <section v-for="{ items, ids, count, capped, clearGroup, disabled } in groups" :key="items[0].image_id" class="image-group" :aria-label="`图片 #${items[0].image_id} 的审核记录`">
         <div class="image-column">
           <div class="item-heading">
             <h3><router-link :to="reviewLink(items[0].image_id)">图片 #{{ items[0].image_id }}</router-link> <small>{{ items.length }} 条记录</small></h3>
             <n-checkbox v-if="ids.length" :checked="count === ids.length" :indeterminate="count > 0 && count < ids.length"
-              :disabled="busy || exceedsLimit" :aria-disabled="busy || exceedsLimit" @update:checked="toggle(ids, $event)">全选本图建议<span class="sr-only">（图片 #{{ items[0].image_id }}）</span></n-checkbox>
+              :disabled="busy || disabled" :aria-disabled="busy || disabled" @update:checked="toggle(ids, !clearGroup)">{{ capped ? (clearGroup ? '取消本图选择' : '选择本图建议至上限') : '全选本图建议' }}<span class="sr-only">（图片 #{{ items[0].image_id }}）</span></n-checkbox>
           </div>
-          <p v-if="exceedsLimit" class="hint">全选本图将超过 {{ selectionLimit }} 条上限，请分批选择。</p>
+          <p v-if="capped" class="hint">本图已选 {{ count }} / {{ ids.length }} 条，单次最多选 {{ selectionLimit }} 条。</p>
           <ReviewPackageImage :src="`/api/v1/admin/media/${items[0].image_id}`" :fallback="`/api/v1/admin/media/${items[0].image_id}?thumbnail=true`"
             :width="items[0].width" :height="items[0].height" :alt="`图片 #${items[0].image_id}`" :boxes="positions(items)" />
           <p class="hint">{{ items[0].width }} × {{ items[0].height }} px</p>
