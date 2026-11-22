@@ -25,6 +25,7 @@ type Suggestion = Schema['QueueItem'];
 type Result = Schema['QueuePage'];
 type Decision = Schema['Decision']['decision'];
 const root = '/admin/review-packages';
+const selectionLimit = 100;
 const confidenceTiers = { high: { label: '高', icon: SignalHigh }, medium: { label: '中', icon: SignalMedium }, low: { label: '低', icon: SignalLow } };
 const route = useRoute();
 const router = useRouter();
@@ -41,7 +42,11 @@ const groups = computed(() => {
     if (!grouped.has(item.image_id)) grouped.set(item.image_id, []);
     grouped.get(item.image_id)!.push(item);
   }
-  return [...grouped.values()];
+  return [...grouped.values()].map(items => {
+    const ids = items.filter(actionable).map(item => item.id);
+    const count = ids.filter(id => selected.value.includes(id)).length;
+    return { items, ids, count, exceedsLimit: selected.value.length + ids.length - count > selectionLimit };
+  });
 });
 const loading = ref(false);
 const writing = ref(false);
@@ -75,7 +80,7 @@ async function load() {
     if (signal.aborted) return;
     if (data.page !== page.value) { await navigate(status.value.value, data.page); return; }
     result.value = data;
-    selected.value = selected.value.filter(id => data.items.some(item => item.id === id));
+    selected.value = selected.value.filter(id => data.items.some(item => item.id === id && actionable(item)));
     for (const item of data.items) {
       if (!item.attachment || faceChoices.value[item.id] !== undefined) continue;
       const suggested = item.attachment.suggested_index;
@@ -138,8 +143,13 @@ watch(importId, (id, _, onCleanup) => {
 function reviewLink(image: number) { return { path: '/admin/review', query: { state: 'image', image } }; }
 function actionable(item: Suggestion) { return item.status === 'pending' && item.proposal.kind !== 'review_outcome'; }
 function itemLabel(item: Suggestion) { return item.proposal.kind === 'review_outcome' ? '结论' : '建议'; }
-function toggle(id: number, checked: boolean) {
-  selected.value = checked ? [...new Set([...selected.value, id])] : selected.value.filter(selectedId => selectedId !== id);
+function toggle(ids: number[], checked: boolean) {
+  const next = new Set(selected.value);
+  for (const id of ids) {
+    if (checked) next.add(id);
+    else next.delete(id);
+  }
+  if (next.size <= selectionLimit) selected.value = [...next];
 }
 function canAccept(item: Suggestion) {
   if (item.proposal.kind === 'recycle' && (!item.scope_token || !item.member_ids.length)) return false;
@@ -211,7 +221,7 @@ function externalSource(item: Suggestion) {
     <n-alert v-if="loadError" type="error">{{ loadError }} <n-button @click="load">重试加载</n-button></n-alert>
     <template v-else>
       <div v-if="selectedItems.length" class="controls selection-tools" aria-label="批量决定">
-        <strong>已选 {{ selectedItems.length }} 条<span v-if="selectedItems.length >= 100">（单次上限）</span></strong>
+        <strong>已选 {{ selectedItems.length }} 条<span v-if="selectedItems.length >= selectionLimit">（单次上限）</span></strong>
         <n-button type="primary" :disabled="busy || !selectedItems.every(canAccept)" @click="decide('accept', selectedItems)">接受所选</n-button>
         <n-button :disabled="busy" @click="decide('reject', selectedItems)">拒绝所选</n-button>
         <n-button quaternary :disabled="busy" @click="selected = []">取消选择</n-button>
@@ -220,9 +230,14 @@ function externalSource(item: Suggestion) {
         <h2>{{ loading ? '正在加载…' : status.value === 'review' ? '暂无建议或审核结论' : status.value === 'acknowledged' ? '暂无已确认结论' : `没有${status.label}的建议` }}</h2>
         <p v-if="!loading && status.value === 'review'">可导入 review-result.json 或含附件的结果 ZIP。</p>
       </div>
-      <section v-for="items in groups" :key="items[0].image_id" class="image-group" :aria-label="`图片 #${items[0].image_id} 的审核记录`">
+      <section v-for="{ items, ids, count, exceedsLimit } in groups" :key="items[0].image_id" class="image-group" :aria-label="`图片 #${items[0].image_id} 的审核记录`">
         <div class="image-column">
-          <h3><router-link :to="reviewLink(items[0].image_id)">图片 #{{ items[0].image_id }}</router-link> <small>{{ items.length }} 条记录</small></h3>
+          <div class="item-heading">
+            <h3><router-link :to="reviewLink(items[0].image_id)">图片 #{{ items[0].image_id }}</router-link> <small>{{ items.length }} 条记录</small></h3>
+            <n-checkbox v-if="ids.length" :checked="count === ids.length" :indeterminate="count > 0 && count < ids.length"
+              :disabled="busy || exceedsLimit" :aria-disabled="busy || exceedsLimit" @update:checked="toggle(ids, $event)">全选本图建议<span class="sr-only">（图片 #{{ items[0].image_id }}）</span></n-checkbox>
+          </div>
+          <p v-if="exceedsLimit" class="hint">全选本图将超过 {{ selectionLimit }} 条上限，请分批选择。</p>
           <ReviewPackageImage :src="`/api/v1/admin/media/${items[0].image_id}`" :fallback="`/api/v1/admin/media/${items[0].image_id}?thumbnail=true`"
             :width="items[0].width" :height="items[0].height" :alt="`图片 #${items[0].image_id}`" :boxes="positions(items)" />
           <p class="hint">{{ items[0].width }} × {{ items[0].height }} px</p>
@@ -235,8 +250,8 @@ function externalSource(item: Suggestion) {
                   <component :is="confidenceTiers[item.proposal.confidence].icon" :size="16" aria-hidden="true" />Agent 置信度：{{ confidenceTiers[item.proposal.confidence].label }}
                 </span>
               </div>
-              <n-checkbox v-if="actionable(item)" :disabled="busy || (selected.length >= 100 && !selected.includes(item.id))"
-                :checked="selected.includes(item.id)" @update:checked="toggle(item.id, $event)">选择<span class="sr-only">建议 #{{ item.id }}</span></n-checkbox>
+              <n-checkbox v-if="actionable(item)" :disabled="busy || (selected.length >= selectionLimit && !selected.includes(item.id))"
+                :checked="selected.includes(item.id)" @update:checked="toggle([item.id], $event)">选择<span class="sr-only">建议 #{{ item.id }}</span></n-checkbox>
             </header>
             <p v-if="item.proposal.kind === 'review_outcome'">{{ item.proposed }}</p>
             <dl v-else class="change"><div><dt>当前</dt><dd>{{ item.current }}</dd></div><ArrowRight aria-hidden="true" /><div><dt>建议</dt><dd>{{ item.proposed }}</dd></div></dl>

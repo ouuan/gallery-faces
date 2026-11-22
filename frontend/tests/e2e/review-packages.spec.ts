@@ -219,6 +219,42 @@ test('offers a manual download when the automatic link is blocked', async ({ pag
   expect(archiveServer.requests).toEqual([`GET ${root}/exports/fallback/download`]);
 });
 
+test('selects or clears only the suggestions for one image', async ({ page }) => {
+  await mockQueue(page, [item, external, recycle]);
+  await page.goto(queue);
+  const group = page.getByRole('checkbox', { name: /全选本图建议.*#41）/ });
+  const first = page.getByRole('checkbox', { name: /建议 #101$/ });
+  const second = page.getByRole('checkbox', { name: /建议 #102$/ });
+  const other = page.getByRole('checkbox', { name: /建议 #103$/ });
+  await other.check();
+  await first.check();
+  await expect(group).toHaveAttribute('aria-checked', 'mixed');
+  await group.click();
+  await expect(group).toBeChecked();
+  await expect(second).toBeChecked();
+  await expect(page.getByText('已选 3 条')).toBeVisible();
+  await expect(page.getByRole('button', { name: '接受所选' })).toBeDisabled();
+  await group.uncheck();
+  await expect(first).not.toBeChecked();
+  await expect(second).not.toBeChecked();
+  await expect(other).toBeChecked();
+});
+
+test('does not partially select an image when it would exceed the batch limit', async ({ page }) => {
+  await mockQueue(page, [...Array.from({ length: 100 }, (_, id) => ({ ...item, id: id + 1 })), recycle]);
+  await page.goto(queue);
+  const group = page.getByRole('checkbox', { name: /全选本图建议.*#41）/ });
+  const other = page.getByRole('checkbox', { name: /建议 #103$/ });
+  await other.check();
+  await expect(group).toBeDisabled();
+  await expect(page.getByText('全选本图将超过 100 条上限，请分批选择。')).toBeVisible();
+  await other.uncheck();
+  await group.check();
+  await expect(page.getByText('已选 100 条（单次上限）')).toBeVisible();
+  await group.uncheck();
+  await expect(page.getByRole('button', { name: '拒绝所选' })).toHaveCount(0);
+});
+
 test('clears selection on page changes and restores the queue page on reload', async ({ page }) => {
   const pages = [11, 12, 13].map((count, image) => Array.from({ length: count }, (_, index) => ({
     ...item, id: image * 20 + index + 1, image_id: image + 1, proposal: { ...item.proposal, image_id: image + 1 },
@@ -269,6 +305,9 @@ test('shows the exact source change and distinguishes a review note from a galle
     await page.setViewportSize({ width, height: 900 });
     await page.goto(queue);
     await expect(page.getByRole('heading', { name: /更正帖子来源/ })).toBeVisible();
+    await page.getByRole('checkbox', { name: /全选本图建议.*#41）/ }).check();
+    await expect(page.getByText('已选 1 条')).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: /全选本图建议.*#42）/ })).toHaveCount(0);
     await expect(page.getByText(source.proposed, { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '查看审核结论' })).toHaveCount(0);
     await expect(page.getByRole('article', { name: '建议 #101' }).getByRole('button', { name: '接受', exact: true })).toBeEnabled();
