@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from app import db, review_packages as packages, review_results as results
+from app import db, review_packages as packages, review_results as results, worker
 from test_workflows import client, image
 
 BASE = '/api/v1/admin/review-packages'
@@ -22,18 +22,18 @@ def seed(count=1):
         return [image(conn) for _ in range(count)]
 
 
-def export(client, **params):
+def export(client, *, expected_status='ready', **params):
     response = client.post(BASE + '/exports', json=dict(state='all', **params))
     assert response.status_code == 202, response.text
     batch = response.json()['id']
     for _ in range(200):
         status = client.get(BASE + '/exports/' + batch).json()
         if status['status'] != 'building':
-            assert status['status'] == 'ready', status
+            assert status['status'] == expected_status, status
             break
         time.sleep(0.02)
     else:
-        pytest.fail('Package never became ready')
+        pytest.fail('Package generation did not finish')
     return batch
 
 
@@ -104,6 +104,47 @@ def test_scope_rules_and_download_once(client):
                     'SELECT image_id FROM review_snapshots WHERE batch=? ORDER BY image_id', (batch,)
                 )
             ] == expected
+
+
+def test_export_waits_for_references_and_concurrent_display_recovery(client, monkeypatch, tmp_path):
+    monkeypatch.setenv('MEDIA_CACHE_WAIT_SECONDS', '0')
+    first, second, reference = seed(3)
+    sources = {}
+    with db.connect(True) as conn:
+        for identifier in (first, second, reference):
+            source = sources[identifier] = tmp_path / f'input-{identifier}.png'
+            Image.new('RGB', (100, 100), (identifier, 0, 0)).save(source)
+            conn.execute('''UPDATE images SET filename=?, original_filename=?, sha256=?, image_evicted=1,
+                original_evicted=1 WHERE id=?''', (f'{identifier}.jpg', source.name, db.file_hash(source), identifier))
+        person = conn.execute("INSERT INTO people(name) VALUES('Alice')").lastrowid
+        conn.execute('''INSERT INTO reference_images(person_id,face_id,image_id,embedding,model_version)
+            SELECT ?,id,image_id,embedding,model_version FROM faces WHERE image_id=?''', (person, reference))
+
+    concurrent_downloads = threading.Barrier(2)
+
+    def download(task, payload, attempt, restore_id):
+        if restore_id != reference:
+            concurrent_downloads.wait(timeout=3)
+        (attempt / 'photo.png').write_bytes(sources[restore_id].read_bytes())
+        return attempt
+
+    monkeypatch.setattr(worker, 'download_media', download)
+    batch = export(client, ids=[first, second])
+    with zipfile.ZipFile(packages.directory() / (batch + '.zip')) as archive:
+        for identifier in (first, second):
+            item = json.loads(archive.read(f'images/{identifier}/metadata.json'))
+            assert Image.open(io.BytesIO(archive.read(item['display']))).size == (100, 100)
+            assert item['faces'][0]['crop'] in archive.namelist()
+        person, = json.loads(archive.read('people.json'))
+        assert not person['missing_references'] and person['references'][0] in archive.namelist()
+
+
+def test_export_fails_if_required_display_cannot_be_recovered(client):
+    identifier, = seed()
+    with db.connect(True) as conn:
+        conn.execute("UPDATE images SET filename='missing.jpg', image_evicted=1, original_lost=1 WHERE id=?", (identifier,))
+    batch = export(client, expected_status='failed')
+    assert not list(packages.directory().glob(batch + '.*'))
 
 
 def test_transfer_interruption_expiry_and_restart_cleanup(client):

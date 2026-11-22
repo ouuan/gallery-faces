@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import db as storage, trash
+from . import db as storage, media_cache, trash
 from .group_index import REVIEW_FLAGS
 from .representatives import complete_source_sql
 from .review_format import Identifier, Result
@@ -164,9 +164,12 @@ def write_json(archive, name, value):
 
 def snapshot_rows(db, batch):
     after = 0
-    while rows := db.execute('''SELECT image_id,snapshot FROM review_snapshots
-        WHERE batch=? AND image_id>? ORDER BY image_id LIMIT 32''', (batch, after)).fetchall():
-        yield from rows
+    while rows := db.execute('''SELECT s.image_id,s.snapshot,i.id,i.filename,i.image_evicted,i.original_lost,i.cache_retry_at
+        FROM review_snapshots s LEFT JOIN images i ON i.id=s.image_id AND i.hidden=0
+        WHERE s.batch=? AND s.image_id>? ORDER BY s.image_id LIMIT ?''', (batch, after, media_cache.RECOVERY_WORKERS)).fetchall():
+        recoveries = [media_cache.prefetch(row, 'image') for row in rows]
+        for row, recovery in zip(rows, recoveries):
+            yield row['image_id'], row['snapshot'], recovery
         after = rows[-1]['image_id']
 
 
@@ -187,7 +190,7 @@ def build(batch, instructions, selected_state):
                     (person['id'],),
                 ).fetchall():
                     try:
-                        with MediaRead() as reads:
+                        with MediaRead(background=True) as reads:
                             data = reference_crop(row['id'], reads).body
                     except (HTTPException, OSError, ValueError):
                         continue
@@ -201,12 +204,12 @@ def build(batch, instructions, selected_state):
             groups = db.execute('SELECT exported_id AS id,name,name_ja FROM review_group_roster WHERE batch=? ORDER BY exported_id', (batch,))
             write_json(archive, 'groups.json', [dict(row) for row in groups])
             images = []
-            for identifier, raw in snapshot_rows(db, batch):
+            for identifier, raw, recovery in snapshot_rows(db, batch):
                 item = json.loads(raw)
                 item.pop('scope_token')
                 item.pop('sha256')
-                with MediaRead() as reads:
-                    path = reads.pin({'id': identifier}, 'image')
+                with MediaRead(background=True) as reads:
+                    path = reads.pin({'id': identifier}, 'image', recovery=recovery)
                     item['display'] = f'images/{identifier}/display.jpg'
                     with path.open('rb') as source, archive.open(item['display'], 'w', force_zip64=True) as target:
                         shutil.copyfileobj(source, target)

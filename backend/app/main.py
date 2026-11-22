@@ -82,14 +82,15 @@ def media_wait_seconds():
 
 
 class MediaRead(ExitStack):
-    def __init__(self):
+    def __init__(self, *, background=False):
         super().__init__()
         self.wait_seconds = media_wait_seconds()
-        self.deadline = time.monotonic() + self.wait_seconds
+        self.deadline = None if background else time.monotonic() + self.wait_seconds
 
     def pin(self, row, variant, *, recover_missing=True, recovery=None):
         try:
-            return self.enter_context(media_cache.asset(row, variant, timeout=max(0, self.deadline - time.monotonic()),
+            timeout = None if self.deadline is None else max(0, self.deadline - time.monotonic())
+            return self.enter_context(media_cache.asset(row, variant, timeout=timeout,
                                                        descriptor=True, recover_missing=recover_missing, recovery=recovery))
         except FileNotFoundError:
             fail('图片不存在', 404)
