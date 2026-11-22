@@ -65,6 +65,43 @@ def test_archive_budget_released_after_requests(client, monkeypatch):
     assert main.archive_budget.used == 0
 
 
+@pytest.mark.parametrize('value,expected', [(None, 10), ('', 10), ('0', 0), ('15', 15)])
+def test_media_wait_configuration(monkeypatch, value, expected):
+    if value is None:
+        monkeypatch.delenv('MEDIA_CACHE_WAIT_SECONDS', raising=False)
+    else:
+        monkeypatch.setenv('MEDIA_CACHE_WAIT_SECONDS', value)
+    monkeypatch.setattr(main.time, 'monotonic', lambda: 100)
+    with main.MediaRead() as reads:
+        assert reads.deadline == 100 + expected
+
+
+@pytest.mark.parametrize('value', ['-1', '1.5', 'no', '999999999999999999'])
+def test_invalid_media_wait_configuration(monkeypatch, value):
+    monkeypatch.setenv('MEDIA_CACHE_WAIT_SECONDS', value)
+    with pytest.raises(ValueError, match='MEDIA_CACHE_WAIT_SECONDS'):
+        main.media_wait_seconds()
+
+
+@pytest.mark.parametrize('missing,seconds', [(0, 0), (1, 7), (2, 7), (3, 14), (4, 14), (5, 21), (8, 21)])
+def test_zip_preflight_budget_counts_recoveries_not_selection(client, monkeypatch, missing, seconds):
+    monkeypatch.setenv('MEDIA_CACHE_WAIT_SECONDS', '7')
+    photos = [seed() for _ in range(8)]
+    evicted = {identifier for identifier, _ in photos[:missing]}
+    monkeypatch.setattr(main.media_cache, 'prefetch', lambda row, variant: object() if row['id'] in evicted else None)
+    deadlines = []
+
+    def pin(reads, row, variant, *, recovery):
+        deadlines.append(reads.deadline)
+        return variant, None, row
+
+    monkeypatch.setattr(main, 'pin_public', pin)
+    with main.MediaRead() as reads:
+        reads.deadline = 100 + reads.wait_seconds
+        main.gallery_download_files([group for _, group in photos], reads, preflight=True)
+    assert deadlines == [100 + seconds] * len(photos)
+
+
 @pytest.mark.parametrize("original", [True, False])
 def test_download_uses_earliest_public_post_time(client, original):
     _, group = seed(date="2024-05-06T07:08:09Z")

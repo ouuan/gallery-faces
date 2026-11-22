@@ -32,7 +32,7 @@ const photos = Array.from({ length: 6 }, (_, index) => ({
   matched_source: { platform: "x", author: "fixture", published_at: "2026-01-01T00:00:00Z" },
 }));
 
-async function setup(page: Page, archiveUrl: string, options: { fail?: boolean; count?: number } = {}) {
+async function setup(page: Page, archiveUrl: string, options: { fail?: boolean; count?: number; displayCount?: number } = {}) {
   const selections: number[][] = [];
   await page.route("**/fixtures/download-*.svg", route => route.fulfill({
     contentType: "image/svg+xml",
@@ -43,7 +43,8 @@ async function setup(page: Page, archiveUrl: string, options: { fail?: boolean; 
     if (url.pathname.endsWith("/gallery/downloads")) {
       selections.push(route.request().postDataJSON().group_ids);
       if (options.fail) return route.fulfill({ status: 404, json: { detail: "部分照片已不可用，请刷新后重新选择" } });
-      return route.fulfill({ json: { download_url: archiveUrl + "?groups=" + selections.at(-1)!.join(",") } });
+      return route.fulfill({ json: { download_url: archiveUrl + "?groups=" + selections.at(-1)!.join(","),
+        display_count: options.displayCount ?? 0, thumbnail_count: 0 } });
     }
     if (url.pathname.endsWith("/gallery")) return route.fulfill({ json: {
       items: options.count ? Array.from({ length: options.count }, (_, i) => ({ ...photos[i % 6], id: i + 1 })) :
@@ -112,7 +113,7 @@ for (const width of [390, 1280]) {
 }
 
 test("download error keeps selection for retry; filter changes clear it", async ({ page, archiveUrl }) => {
-  const options = { fail: true };
+  const options = { fail: true, displayCount: 1 };
   const selections = await setup(page, archiveUrl, options);
   await page.getByRole("button", { name: "下载", exact: true }).click();
   await page.getByRole("button", { name: "选择 人物 1 的照片" }).click();
@@ -123,6 +124,7 @@ test("download error keeps selection for retry; filter changes clear it", async 
   const downloaded = page.waitForEvent("download");
   await page.getByRole("button", { name: "下载 ZIP" }).click();
   await downloaded;
+  await expect(page.getByText(/1 张使用展示图/)).toBeVisible();
   expect(selections).toEqual([[1], [1]]);
   await page.locator('[aria-label="排序"]').click();
   await page.locator(".n-base-select-option").filter({ hasText: /^最早发布$/ }).click();
@@ -147,10 +149,11 @@ test("cancelling preparation prevents a late download", async ({ page, archiveUr
   await page.getByRole("button", { name: "选择 人物 1 的照片" }).click();
   await page.getByRole("button", { name: "下载 ZIP" }).click();
   await expect(page.getByRole("button", { name: "下载 ZIP" })).toHaveClass(/n-button--loading/);
-  await page.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(page.getByRole("button", { name: "正在准备 ZIP…" })).toBeVisible();
+  await page.getByRole("button", { name: "取消等待", exact: true }).click();
   release();
-  await page.getByRole("button", { name: "下载", exact: true }).click();
-  await expect(page.getByText("已选 0 张", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "下载 ZIP" })).toBeEnabled();
+  await expect(page.getByText("已选 1 张", { exact: true })).toBeVisible();
   expect(downloads).toEqual([]);
 });
 

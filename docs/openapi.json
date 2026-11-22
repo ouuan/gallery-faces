@@ -1007,6 +1007,16 @@
               "maxLength": 4000,
               "title": "Groups"
             }
+          },
+          {
+            "name": "prepared",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Prepared"
+            }
           }
         ],
         "responses": {
@@ -3717,11 +3727,21 @@
           "download_url": {
             "type": "string",
             "title": "Download Url"
+          },
+          "display_count": {
+            "type": "integer",
+            "title": "Display Count"
+          },
+          "thumbnail_count": {
+            "type": "integer",
+            "title": "Thumbnail Count"
           }
         },
         "type": "object",
         "required": [
-          "download_url"
+          "download_url",
+          "display_count",
+          "thumbnail_count"
         ],
         "title": "GalleryDownloadLink"
       },

@@ -52,6 +52,7 @@ const authenticated = ref(false);
 const selecting = ref(false),
   downloadSelection = ref(new Set<number>()),
   preparingDownload = ref(false),
+  slowPreparation = ref(false),
   downloadError = ref(""),
   downloadNotice = ref("");
 const allLoadedSelected = computed(() => photos.value.length > 0 && photos.value.every(photo => downloadSelection.value.has(photo.id)));
@@ -61,10 +62,14 @@ function coauthorLabel(coauthor: { username: string; full_name?: string | null }
   return name && username ? `${name} (@${username})` : name || (username ? `@${username}` : "");
 }
 let downloadController: AbortController | null = null;
-function stopSelecting() {
+function cancelPreparation() {
   downloadController?.abort();
   downloadController = null;
   preparingDownload.value = false;
+  slowPreparation.value = false;
+}
+function stopSelecting() {
+  cancelPreparation();
   selecting.value = false;
   downloadSelection.value.clear();
   downloadError.value = "";
@@ -88,10 +93,13 @@ async function downloadSelected() {
   const controller = new AbortController();
   downloadController = controller;
   preparingDownload.value = true;
+  const timer = setTimeout(() => {
+    if (!controller.signal.aborted) slowPreparation.value = true;
+  }, 1000);
   downloadError.value = "";
   downloadNotice.value = "";
   try {
-    const result = await api<{ download_url: string }>("/gallery/downloads", {
+    const result = await api<{ download_url: string; display_count: number; thumbnail_count: number }>("/gallery/downloads", {
       method: "POST",
       body: JSON.stringify({ group_ids: [...downloadSelection.value] }),
       signal: controller.signal,
@@ -104,11 +112,16 @@ async function downloadSelected() {
     document.body.append(link);
     link.click();
     link.remove();
-    downloadNotice.value = "已发起下载，可在浏览器中查看进度";
+    const substitutes = [];
+    if (result.display_count) substitutes.push(`${result.display_count} 张使用展示图`);
+    if (result.thumbnail_count) substitutes.push(`${result.thumbnail_count} 张使用缩略图`);
+    downloadNotice.value = substitutes.length ? `已发起下载；准备时有 ${substitutes.join('，')}` : "已发起下载，可在浏览器中查看进度";
   } catch (e) {
     if (!controller.signal.aborted) downloadError.value = (e as Error).message;
   } finally {
+    clearTimeout(timer);
     if (downloadController === controller) {
+      slowPreparation.value = false;
       preparingDownload.value = false;
       downloadController = null;
     }
@@ -315,11 +328,12 @@ onUnmounted(() => {
           <n-button :disabled="loading || preparingDownload || !photos.length" @click="toggleAllLoaded">
             {{ allLoadedSelected ? '取消全选' : '全选已加载' }}
           </n-button>
-          <n-button type="primary" class="stable-loading-button" :loading="preparingDownload"
+          <n-button type="primary" :loading="preparingDownload"
             :disabled="!downloadSelection.size || downloadSelection.size > 200" @click="downloadSelected">
-            下载 ZIP
+            {{ slowPreparation ? '正在准备 ZIP…' : '下载 ZIP' }}
           </n-button>
-          <n-button @click="stopSelecting">取消</n-button>
+          <n-button v-if="preparingDownload" @click="cancelPreparation">取消等待</n-button>
+          <n-button v-else @click="stopSelecting">取消</n-button>
         </div>
         <n-alert v-if="downloadError" type="error" title="无法下载" class="selection-feedback">
           {{ downloadError }}

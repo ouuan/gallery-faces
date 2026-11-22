@@ -1233,6 +1233,10 @@ export interface components {
         GalleryDownloadLink: {
             /** Download Url */
             download_url: string;
+            /** Display Count */
+            display_count: number;
+            /** Thumbnail Count */
+            thumbnail_count: number;
         };
         /** GalleryPage */
         GalleryPage: {
@@ -2426,6 +2430,7 @@ export interface operations {
         parameters: {
             query: {
                 groups: string;
+                prepared?: boolean;
             };
             header?: never;
             path?: never;

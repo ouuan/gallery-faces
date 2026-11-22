@@ -27,7 +27,8 @@ PRIVATE_FIELDS = {'image_used', 'original_used', 'image_evicted', 'original_evic
 LOST_AFTER = 12
 DAY = 86400
 logger = logging.getLogger(__name__)
-pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix='media-cache')
+RECOVERY_WORKERS = 2
+pool = ThreadPoolExecutor(max_workers=RECOVERY_WORKERS, thread_name_prefix='media-cache')
 pending = {}
 pending_lock = threading.Lock()
 
@@ -310,13 +311,13 @@ def recover(identifier, variant):
             return
 
 
-def request_recovery(identifier, variant, timeout):
+def start_recovery(identifier, variant):
     key = (storage.DATA, identifier, variant)
     with pending_lock:
         future = pending.get(key)
         if future is None:
             if len(pending) >= 64:
-                raise Unavailable('Media recovery queue is full')
+                return None
             future = pending[key] = pool.submit(recover, identifier, variant)
             owner = True
         else:
@@ -327,6 +328,24 @@ def request_recovery(identifier, variant, timeout):
                 if pending.get(key) is done:
                     pending.pop(key)
         future.add_done_callback(finished)
+    return future
+
+
+def prefetch(row, variant):
+    if not row[variant + '_evicted'] or row['original_lost']:
+        return None
+    path = asset_path(row, variant)
+    if path is None or (row['cache_retry_at'] > time.time() and not path.is_file()):
+        return None
+    future = start_recovery(row['id'], variant)
+    if future is not None:
+        record_access(row, variant, hit=False)
+    return future
+
+
+def wait_for_recovery(future, identifier, timeout):
+    if future is None:
+        raise Unavailable('Media recovery queue is full')
     try:
         future.result(timeout=timeout)
     except TimeoutError:
@@ -352,10 +371,12 @@ def record_access(row, variant, *, hit, touch=False):
 
 
 @contextmanager
-def asset(row, variant, *, timeout=None, descriptor=False, recover_missing=True):
+def asset(row, variant, *, timeout=None, descriptor=False, recover_missing=True, recovery=None):
     identifier = row['id']
     until = None if timeout is None else time.monotonic() + timeout
-    missed = False
+    missed = recovery is not None
+    if missed:
+        wait_for_recovery(recovery, identifier, timeout)
     while True:
         with storage.connect() as db:
             row = active(db, identifier)
@@ -371,7 +392,8 @@ def asset(row, variant, *, timeout=None, descriptor=False, recover_missing=True)
                 raise FileNotFoundError(identifier)
             if row['original_lost'] or (row['cache_retry_at'] > time.time() and not path.is_file()):
                 raise Unavailable('Original lost or in backoff', retry_at=row['cache_retry_at'])
-            request_recovery(identifier, variant, None if until is None else max(0, until - time.monotonic()))
+            wait_for_recovery(start_recovery(identifier, variant), identifier,
+                              None if until is None else max(0, until - time.monotonic()))
             continue
         try:
             handle = path.open('rb')

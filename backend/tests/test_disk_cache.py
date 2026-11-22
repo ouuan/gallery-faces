@@ -375,6 +375,85 @@ def test_joint_remote_recovery_and_zip(client, tmp_path, monkeypatch):
     assert client.get(original_url).content == source.read_bytes()
 
 
+@pytest.mark.parametrize('preflight', [True, False])
+def test_zip_starts_other_recoveries_even_when_first_times_out(client, tmp_path, monkeypatch, preflight):
+    photos = [photo(tmp_path), photo(tmp_path, 2, 'blue')]
+    sources = {row['id']: source for row, source in photos}
+    groups = [row['group_id'] for row, _ in photos]
+    assert len(set(groups)) == 2
+    url = '/api/v1/gallery/download.zip?groups=' + ','.join(map(str, groups))
+    started = {identifier: threading.Event() for identifier in sources}
+    release = threading.Event()
+    calls = []
+    for row, _ in photos:
+        evict(row, 'image')
+        evict(row, 'original')
+
+    def download(task, payload, attempt, restore_id):
+        calls.append(restore_id)
+        started[restore_id].set()
+        assert release.wait(5)
+        (attempt / 'original.png').write_bytes(sources[restore_id].read_bytes())
+        return attempt
+
+    init = main.MediaRead.__init__
+
+    def no_wait(reads):
+        init(reads)
+        reads.deadline = time.monotonic()
+
+    monkeypatch.setattr(worker, 'download_media', download)
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(main.MediaRead, '__init__', no_wait)
+            response = client.post('/api/v1/gallery/downloads', json={'group_ids': groups}) if preflight else client.get(url)
+        assert response.status_code == 503
+        assert all(event.wait(3) for event in started.values())
+    finally:
+        release.set()
+        for row, _ in photos:
+            with cache.asset(row, 'original', timeout=5):
+                pass
+    assert sorted(calls) == sorted(sources)
+    with ZipFile(io.BytesIO(client.get(url).content)) as archive:
+        assert [archive.read(name) for name in archive.namelist()] == [source.read_bytes() for _, source in photos]
+
+
+def test_prepared_zip_does_not_wait_again_and_can_upgrade(client, tmp_path, monkeypatch):
+    row, source = photo(tmp_path)
+    evict(row, 'original')
+    release = threading.Event()
+
+    def download(task, payload, attempt, restore_id):
+        assert release.wait(5)
+        (attempt / 'original.png').write_bytes(source.read_bytes())
+        return attempt
+
+    monkeypatch.setattr(worker, 'download_media', download)
+    wait = cache.wait_for_recovery
+    budgets = []
+
+    def expire(future, identifier, timeout):
+        budgets.append(timeout)
+        wait(future, identifier, 0)
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(cache, 'wait_for_recovery', expire)
+            prepared = client.post('/api/v1/gallery/downloads', json={'group_ids': [row['group_id']]}).json()
+            assert prepared['display_count'] == 1 and prepared['thumbnail_count'] == 0
+            url = prepared['download_url']
+            with ZipFile(io.BytesIO(client.get(url).content)) as archive:
+                assert archive.read(archive.namelist()[0]) == cache.asset_path(row, 'image').read_bytes()
+            assert len(budgets) == 2 and 0 < budgets[0] <= 10 and budgets[1] == 0
+    finally:
+        release.set()
+        with cache.asset(row, 'original', timeout=5):
+            pass
+    with ZipFile(io.BytesIO(client.get(url).content)) as archive:
+        assert archive.read(archive.namelist()[0]) == source.read_bytes()
+
+
 @pytest.mark.parametrize('failure', ['changed', 'download-full', 'target-full', 'trash'])
 def test_recovery_failures_do_not_publish_bytes(client, tmp_path, monkeypatch, failure):
     row, source = photo(tmp_path)

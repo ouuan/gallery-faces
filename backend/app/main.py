@@ -45,6 +45,7 @@ from .hashtags import Hashtags
 
 @asynccontextmanager
 async def lifespan(app):
+    media_wait_seconds()
     init()
     cleanup_deleted_files()
     feedback_limits()
@@ -67,15 +68,23 @@ def fail(message, code=400):
     raise HTTPException(code, message)
 
 
+def media_wait_seconds():
+    value = os.getenv('MEDIA_CACHE_WAIT_SECONDS') or '10'
+    if not value.isascii() or not value.isdecimal() or int(value) > threading.TIMEOUT_MAX // 3:
+        raise ValueError('MEDIA_CACHE_WAIT_SECONDS must be a non-negative integer within the supported timeout range')
+    return int(value)
+
+
 class MediaRead(ExitStack):
     def __init__(self):
         super().__init__()
-        self.deadline = time.monotonic() + 10
+        self.wait_seconds = media_wait_seconds()
+        self.deadline = time.monotonic() + self.wait_seconds
 
-    def pin(self, row, variant, *, recover_missing=True):
+    def pin(self, row, variant, *, recover_missing=True, recovery=None):
         try:
             return self.enter_context(media_cache.asset(row, variant, timeout=max(0, self.deadline - time.monotonic()),
-                                                       descriptor=True, recover_missing=recover_missing))
+                                                       descriptor=True, recover_missing=recover_missing, recovery=recovery))
         except FileNotFoundError:
             fail('图片不存在', 404)
         except media_cache.Unavailable as error:
@@ -1003,6 +1012,8 @@ class GalleryDownloadInput(BaseModel):
 
 class GalleryDownloadLink(BaseModel):
     download_url: str
+    display_count: int
+    thumbnail_count: int
 
 
 class ArchiveBudget:
@@ -1029,6 +1040,7 @@ archive_budget = ArchiveBudget()
 
 def gallery_download_files(group_ids, reads, *, preflight=False):
     files = []
+    variants = []
     selected = []
     with connect() as db:
         db.execute("BEGIN")
@@ -1049,44 +1061,56 @@ def gallery_download_files(group_ids, reads, *, preflight=False):
             ).fetchone()[0]
             selected.append((group_id, row, published_at))
     archive_budget.reserve(reads, 1 if preflight else len(selected) + 1)
+    entries = []
     for group_id, row, published_at in selected:
         variant = download_variant(row)
+        entries.append((group_id, row, published_at, variant, media_cache.prefetch(row, variant)))
+    if preflight:
+        missing = sum(recovery is not None for *_, recovery in entries)
+        rounds = min(3, math.ceil(missing / media_cache.RECOVERY_WORKERS))
+        reads.deadline += (rounds - 1) * reads.wait_seconds
+        entries.sort(key=lambda entry: entry[-1] is not None)
+    for group_id, row, published_at, variant, recovery in entries:
         if preflight:
             with MediaRead() as probe:
                 probe.deadline = reads.deadline
-                pin_public(probe, row, variant)
+                actual, _, _ = pin_public(probe, row, variant, recovery=recovery)
+                variants.append(actual)
             continue
-        actual, path, current = pin_public(reads, row, variant)
+        actual, path, current = pin_public(reads, row, variant, recovery=recovery)
         files.append((f"{group_id}-{media_name(current, actual)}", path, datetime.fromisoformat(published_at)))
     with connect() as db:
         db.execute('BEGIN')
         for group_id, row, _ in selected:
             if db.execute(f"SELECT {representative_sql('?', public=True)}", (group_id,)).fetchone()[0] != row['id']:
                 fail('部分照片已不可用，请刷新后重新选择', 404)
-    return files
+    return files, variants
 
 
 @app.post("/api/v1/gallery/downloads", response_model=GalleryDownloadLink)
 def prepare_gallery_download(body: GalleryDownloadInput, reads: MediaReads):
     ids = list(dict.fromkeys(body.group_ids))
-    gallery_download_files(ids, reads, preflight=True)
+    _, variants = gallery_download_files(ids, reads, preflight=True)
     # Validate before handing the request to the browser's download manager.
     # This stores no archive or job; GET rechecks visibility and availability.
-    return {"download_url": "/api/v1/gallery/download.zip?groups=" + ",".join(map(str, ids))}
+    return {"download_url": "/api/v1/gallery/download.zip?prepared=true&groups=" + ",".join(map(str, ids)),
+            "display_count": variants.count('image'), "thumbnail_count": variants.count('thumbnail')}
 
 
 @app.get(
     "/api/v1/gallery/download.zip", response_class=StreamingResponse,
     responses={200: {"content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}}}},
 )
-def download_gallery(reads: MediaReads, groups: str = Query(min_length=1, max_length=4000)):
+def download_gallery(reads: MediaReads, groups: str = Query(min_length=1, max_length=4000), prepared: bool = False):
     parts = groups.split(",")
     if len(parts) > 200 or any(not re.fullmatch(r"[0-9]{1,19}", part) for part in parts):
         fail("请选择 1–200 张照片")
     ids = [int(part) for part in parts]
     if any(not 0 < identifier <= 9223372036854775807 for identifier in ids):
         fail("照片编号无效")
-    files = gallery_download_files(ids, reads)
+    if prepared:
+        reads.deadline = time.monotonic()
+    files, _ = gallery_download_files(ids, reads)
     filename = datetime.now(timezone.utc).strftime("gallery-%Y%m%d-%H%M%S.zip")
     return StreamingResponse(stream_zip(files), media_type="application/zip", headers={
         "Content-Disposition": f'attachment; filename="{filename}"',
@@ -1226,9 +1250,9 @@ def fallback_asset(reads, row, variant, error):
     raise error
 
 
-def pin_public(reads, row, variant):
+def pin_public(reads, row, variant, *, recovery=None):
     try:
-        path = reads.pin(row, variant)
+        path = reads.pin(row, variant, recovery=recovery)
     except HTTPException as error:
         return fallback_asset(reads, row, variant, error)
     return variant, path, public_row(row['id'])
