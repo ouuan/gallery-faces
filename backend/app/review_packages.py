@@ -53,7 +53,8 @@ def cleanup(startup=False):
 def service():
     global executor
     directory().mkdir(exist_ok=True)
-    cleanup(startup=True)
+    with storage.startup_phase('review package cleanup'):
+        cleanup(startup=True)
     stop = threading.Event()
 
     def sweep():

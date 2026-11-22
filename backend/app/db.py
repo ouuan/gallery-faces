@@ -113,6 +113,13 @@ def connect(write=False, *, wait=True):
         db.close()
 
 
+@contextmanager
+def startup_phase(name):
+    started = time.monotonic()
+    yield
+    logging.getLogger('uvicorn.error').info('Startup: %s took %.3fs', name, time.monotonic() - started)
+
+
 def init():
     for folder in (
         "images",
@@ -124,10 +131,10 @@ def init():
         "downloads",
     ):
         (DATA / folder).mkdir(parents=True, exist_ok=True)
-    with connect() as db:
+    with startup_phase('database schema'), connect() as db:
         db.execute("PRAGMA journal_mode=WAL")
         db.executescript(SCHEMA)
-    with connect(True) as db:
+    with startup_phase('database migrations'), connect(True) as db:
         if 'detection_id' not in {row[1] for row in db.execute('PRAGMA table_info(review_suggestions)')}:
             db.execute('ALTER TABLE review_suggestions ADD COLUMN detection_id INTEGER REFERENCES review_detections')
             db.execute('INSERT INTO review_detections(attachment,model,detections) SELECT digest,model,detections FROM review_attachments')
@@ -224,8 +231,6 @@ def init():
             db.execute("ALTER TABLE tasks ADD COLUMN result TEXT NOT NULL DEFAULT '{}'")
         db.execute("CREATE INDEX IF NOT EXISTS image_trash ON images(hidden,trashed_at,id)")
         if db.execute("SELECT version FROM schema_version").fetchone()[0] < 9:
-            for row in db.execute("SELECT * FROM images WHERE hidden=1").fetchall():
-                queue_image_cleanup(db, row)
             db.execute("UPDATE images SET trashed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE hidden=1 AND trashed_at IS NULL")
             db.execute("UPDATE tasks SET status='cancelled',cancel_requested=1,finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE image_id IN (SELECT id FROM images WHERE hidden=1) AND kind IN ('detect','rematch') AND status IN ('queued','running')")
             if db.execute("SELECT 1 FROM reference_images r JOIN images i ON i.id=r.image_id WHERE i.hidden=1").fetchone():
@@ -244,14 +249,28 @@ def init():
         if db.execute('SELECT version FROM schema_version').fetchone()[0] < 14:
             group_index.install(db)
             db.execute('UPDATE schema_version SET version=14')
-        # Recover files written by a restore interrupted before its transaction
-        # committed, including tasks cancelled during process recovery.
-        for row in db.execute("SELECT * FROM images WHERE hidden=1").fetchall():
-            if (DATA / "images" / row["filename"]).exists() or next((DATA / "originals").glob(row["sha256"] + ".*"), None):
-                queue_image_cleanup(db, row)
         for column in ("image_sha256", "thumbnail_sha256"):
             db.execute(f"CREATE INDEX IF NOT EXISTS image_{column} ON images({column})")
-    backfill_media_hashes()
+    with startup_phase('interrupted restore cleanup scan'), connect(True) as db:
+        recover_hidden_files(db)
+    with startup_phase('media hash backfill'):
+        backfill_media_hashes()
+
+
+def recover_hidden_files(db):
+    hidden = {row['sha256']: row for row in db.execute('SELECT sha256,filename FROM images WHERE hidden=1')}
+    if not hidden:
+        return
+    originals = {}
+    with os.scandir(DATA / 'originals') as entries:
+        for entry in entries:
+            digest, separator, _ = entry.name.partition('.')
+            if separator and digest in hidden:
+                originals.setdefault(digest, []).append(Path(entry.path))
+    for digest, row in hidden.items():
+        paths = originals.get(digest, ())
+        if paths or (DATA / 'images' / row['filename']).exists():
+            queue_image_cleanup(db, row, paths)
 
 
 def file_hash(path):
@@ -313,9 +332,9 @@ def cleanup_deleted_files():
         return db.execute("SELECT count(*) FROM pending_file_deletions").fetchone()[0]
 
 
-def queue_image_cleanup(db, image):
+def queue_image_cleanup(db, image, originals=None):
     paths = [DATA / "images" / image["filename"]]
-    paths.extend((DATA / "originals").glob(image["sha256"] + ".*"))
+    paths.extend((DATA / "originals").glob(image["sha256"] + ".*") if originals is None else originals)
     db.executemany(
         "INSERT OR IGNORE INTO pending_file_deletions(path,sha256,filename) VALUES(?,?,?)",
         [(str(path.relative_to(DATA)), image["sha256"], image["filename"]) for path in paths],

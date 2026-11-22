@@ -32,7 +32,7 @@ from .open_graph import render_open_graph
 from . import daily, list_queries, review_packages
 from .review_format import fits
 from .group_index import REVIEW_FLAGS
-from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, cleanup_deleted_files
+from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, cleanup_deleted_files, startup_phase
 from .security import download_url, cookie_bytes, save_cookie
 from .importer import validate_url, safe_directory
 from .vision import MODEL_VERSION, Vision, candidates, models_ready, validate_embedding
@@ -51,7 +51,8 @@ from .hashtags import Hashtags
 async def lifespan(app):
     media_wait_seconds()
     init()
-    cleanup_deleted_files()
+    with startup_phase('pending file deletions'):
+        cleanup_deleted_files()
     feedback_limits()
     with review_packages.service():
         yield

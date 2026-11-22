@@ -322,15 +322,29 @@ def test_cleanup_serializes_with_restore_commit(client, tmp_path, monkeypatch):
 
 def test_startup_cleans_assets_left_by_interrupted_restore(client, tmp_path, monkeypatch):
     identifier, path, _ = photo(tmp_path, monkeypatch)
-    assert recycle(client, [identifier]).status_code == 200
+    other, _, _ = photo(tmp_path, monkeypatch, '2', 'blue')
+    _, active, _ = photo(tmp_path, monkeypatch, '3', 'green')
+    assert recycle(client, [identifier, other]).status_code == 200
     with db.connect() as conn:
         row = conn.execute("SELECT * FROM images WHERE id=?", (identifier,)).fetchone()
     # Simulate a process exit after writing files but before committing activation.
     importer.write_assets(path, row["sha256"])
+    originals = db.DATA / 'originals'
+    (originals / (row['sha256'] + '.other.png')).touch()
+    scans = []
+    scandir = db.os.scandir
+
+    def count_scans(directory):
+        if directory == originals or directory == str(originals):
+            scans.append(directory)
+        return scandir(directory)
+
+    monkeypatch.setattr(db.os, 'scandir', count_scans)
     db.init()
+    assert len(scans) == 1
     assert db.cleanup_deleted_files() == 0
     assert not (db.DATA / "images" / row["filename"]).exists()
-    assert not list((db.DATA / "originals").iterdir())
+    assert list(originals.iterdir()) == [originals / (db.file_hash(active) + '.png')]
     assert (db.DATA / "thumbs" / row["filename"]).exists()
 
 
