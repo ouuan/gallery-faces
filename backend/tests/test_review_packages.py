@@ -47,15 +47,24 @@ def upload(client, batch, ops, files=None):
                 archive.writestr(path, data)
             archive.writestr(name, raw)
         name, raw = 'result.zip', stream.getvalue()
-    return client.post(BASE + '/imports', files={'file': (name, raw)})
+    response = client.post(BASE + '/imports', files={'file': (name, raw)})
+    assert response.status_code == 202, response.text
+    for _ in range(200):
+        job = client.get(BASE + '/imports/' + response.json()['id']).json()
+        if job['status'] not in ('queued', 'running'):
+            assert job['status'] in ('done', 'failed')
+            assert job['error'] != '导入失败，请检查文件后重试', job
+            return job
+        time.sleep(0.02)
+    pytest.fail('Result import did not finish')
 
 
 def suggestion(kind, identifier, image_id, **params):
     return dict(kind=kind, id=identifier, image_id=image_id, reason='人工复核测试', **params)
 
 
-def queue(client, status='pending'):
-    response = client.get(BASE + '/suggestions', params={'status': status})
+def queue(client, status=None):
+    response = client.get(BASE + '/suggestions', params={'status': status} if status else {})
     assert response.status_code == 200, response.text
     return response.json()['items']
 
@@ -89,11 +98,11 @@ def test_scope_rules_and_download_once(client):
     assert client.get(url).status_code == 410
     assert not (packages.directory() / (batch + '.zip')).exists()
     match = suggestion('match', 'first', ids[0], face_id=items[0]['faces'][0]['id'], person_id=None)
-    assert upload(client, batch, [match]).json() == {'added': 1, 'duplicates': 0}
-    assert upload(client, batch, [match]).json() == {'added': 0, 'duplicates': 1}
-    assert upload(client, batch, [{**match, 'id': 'alias'}]).json() == {'added': 0, 'duplicates': 1}
-    assert upload(client, batch, [{**match, 'reason': '不同理由'}]).status_code == 409
-    assert upload(client, batch, [{**match, 'image_id': excluded}]).status_code == 400
+    assert upload(client, batch, [match])['added'] == 1
+    assert upload(client, batch, [match])['duplicates'] == 1
+    assert upload(client, batch, [{**match, 'id': 'alias'}])['duplicates'] == 1
+    assert upload(client, batch, [{**match, 'reason': '不同理由'}])['error'].endswith('的内容与已导入记录不同')
+    assert upload(client, batch, [{**match, 'image_id': excluded}])['status'] == 'failed'
     assert len(queue(client)) == 1
     for params, expected in [({'ids': ids[-2:]}, ids[-2:]), ({'image_id': excluded}, [excluded])]:
         batch = export(client, **params)
@@ -194,7 +203,7 @@ def test_transfer_interruption_expiry_and_restart_cleanup(client):
     packages.cleanup(startup=True)
     assert not partial.exists() and not path.exists()
     assert client.get(f'{BASE}/exports/{stale}').json()['status'] == 'expired'
-    assert upload(client, stale, []).status_code == 200
+    assert upload(client, stale, [])['status'] == 'done'
 
 
 def test_optional_agent_confidence(client):
@@ -202,11 +211,11 @@ def test_optional_agent_confidence(client):
     batch = export(client)
     original = suggestion('recycle', 'recycle', identifier, confidence='low')
     for invalid in (0, 0.85, 1, 'unknown', True):
-        assert upload(client, batch, [{**original, 'confidence': invalid}]).status_code == 400
-    assert upload(client, batch, [original]).json()['added'] == 1
+        assert upload(client, batch, [{**original, 'confidence': invalid}])['status'] == 'failed'
+    assert upload(client, batch, [original])['added'] == 1
     assert queue(client)[0]['proposal']['confidence'] == 'low'
-    assert upload(client, batch, [{**original, 'confidence': 'medium'}]).status_code == 409
-    assert upload(client, batch, [{**original, 'id': 'alias', 'confidence': 'high'}]).json()['duplicates'] == 1
+    assert upload(client, batch, [{**original, 'confidence': 'medium'}])['error'].endswith('的内容与已导入记录不同')
+    assert upload(client, batch, [{**original, 'id': 'alias', 'confidence': 'high'}])['duplicates'] == 1
     assert len(queue(client)) == 1
 
 
@@ -221,9 +230,9 @@ def test_create_person_with_groups(client):
     op = suggestion('create_person', 'alice', identifier, person_id='new:a', name='Alice',
                     group_ids=[group], new_groups=[' Guests ', 'Speakers', 'Guests'])
     for invalid in ({'group_ids': [group + 1]}, {'new_groups': ['   ']}, {'new_groups': ['a' * 101]}):
-        assert upload(client, batch, [{**op, **invalid}]).status_code == 400
-    assert upload(client, batch, [op]).json()['added'] == 1
-    assert upload(client, batch, [{**op, 'new_groups': ['Speakers', 'Guests']}]).json()['duplicates'] == 1
+        assert upload(client, batch, [{**op, **invalid}])['status'] == 'failed'
+    assert upload(client, batch, [op])['added'] == 1
+    assert upload(client, batch, [{**op, 'new_groups': ['Speakers', 'Guests']}])['duplicates'] == 1
     item, = queue(client)
     assert f'Speakers (#{group})' in item['proposed'] and 'Guests' in item['proposed']
     assert client.get('/api/v1/people').json() == [] and len(client.get('/api/v1/groups').json()) == 1
@@ -231,7 +240,7 @@ def test_create_person_with_groups(client):
     person, = client.get('/api/v1/people').json()
     assert {entry['name'] for entry in person['groups']} == {'Guests', 'Speakers'}
     assert [entry['members'] for entry in client.get('/api/v1/groups').json()] == [1, 1]
-    assert upload(client, batch, [op]).json()['duplicates'] == 1
+    assert upload(client, batch, [op])['duplicates'] == 1
 
 
 def test_create_person_does_not_use_replacement_group(client):
@@ -241,7 +250,7 @@ def test_create_person_does_not_use_replacement_group(client):
     batch = export(client)
     op = suggestion('create_person', 'person', identifier, person_id='new:p', name='Person',
                     group_ids=[group], new_groups=['Guests'])
-    assert upload(client, batch, [op]).json()['added'] == 1
+    assert upload(client, batch, [op])['added'] == 1
     with db.connect(True) as conn:
         conn.execute('DELETE FROM groups WHERE id=?', (group,))
         assert conn.execute("INSERT INTO groups(name) VALUES('Replacement')").lastrowid == group
@@ -294,9 +303,9 @@ def test_localized_person_and_additive_edits(client):
                   suggestion('add_person_account', 'account', identifier, person_id=person, account=account),
                   suggestion('set_group_name_ja', 'group', identifier, group_id=group, name_ja='ゲスト'),
                   suggestion('set_person_name_ja', 'person', identifier, person_id=person, name_ja='コウ')]
-    assert upload(client, batch, [{**operations[1], 'group_id': group + 100}]).status_code == 400
-    assert upload(client, batch, [{**create, 'accounts': [{'platform': 'x', 'username': '@bad'}]}]).status_code == 400
-    assert upload(client, batch, operations).json()['added'] == 5
+    assert upload(client, batch, [{**operations[1], 'group_id': group + 100}])['status'] == 'failed'
+    assert upload(client, batch, [{**create, 'accounts': [{'platform': 'x', 'username': '@bad'}]}])['status'] == 'failed'
+    assert upload(client, batch, operations)['added'] == 5
     items = queue(client)
     assert all(label in items[0]['proposed'] for label in ('新組', 'オツ', '@alice'))
     assert len(client.get('/api/v1/people').json()) == 1
@@ -306,9 +315,9 @@ def test_localized_person_and_additive_edits(client):
     assert {entry['name']: entry['name_ja'] for entry in original['groups']} == {'原组': None, '嘉宾': 'ゲスト'}
     assert (new['name_ja'], new['groups'][0]['name_ja'], new['accounts'][0]['username']) == ('オツ', '新組', 'alice')
     conflict = {**operations[-1], 'id': 'conflict', 'name_ja': '別名'}
-    assert upload(client, batch, [conflict]).json()['added'] == 1
+    assert upload(client, batch, [conflict])['added'] == 1
     assert decide(client, queue(client)[0])['failures']
-    assert upload(client, batch, operations).json()['duplicates'] == 5
+    assert upload(client, batch, operations)['duplicates'] == 5
 
 
 def test_source_correction_and_image_outcomes(client):
@@ -321,19 +330,48 @@ def test_source_correction_and_image_outcomes(client):
     for invalid in ({**correct, 'post_id': unrelated}, {**correct, 'field': 'url', 'value': 'not a URL'},
                     {**correct, 'field': 'url', 'value': 'https://instagram.com/p/123/'}, {**correct, 'value': None},
                     {**correct, 'field': 'published_at', 'value': '2026-01-01'}, {**outcome, 'image_id': other}):
-        assert upload(client, batch, [invalid]).status_code == 400
+        assert upload(client, batch, [invalid])['status'] == 'failed'
     edits = [correct, {**correct, 'id': 'text', 'field': 'post_text', 'value': '修正正文'}, outcome]
-    assert upload(client, batch, edits).json()['added'] == 3
+    job = upload(client, batch, edits)
+    assert (job['added'], job['recorded'], job['duplicates']) == (2, 1, 0)
     with db.connect(True) as conn:
         conn.execute("UPDATE posts SET author='manual' WHERE id=?", (post,))
     conflict, text, note = queue(client)
+    assert note['status'] == 'recorded' and queue(client, 'pending') == [conflict, text]
     assert 'manual' in conflict['current'] and decide(client, conflict)['failures']
-    assert decide(client, text)['applied'] and decide(client, note)['applied']
+    assert decide(client, text)['applied'] and decide(client, note)['failures']
+    assert decide(client, note, 'reject')['failures']
     with db.connect() as conn:
         assert tuple(conn.execute('SELECT author,post_text FROM posts WHERE id=?', (post,)).fetchone()) == ('manual', '修正正文')
         assert conn.execute('SELECT locked FROM faces WHERE image_id=?', (identifier,)).fetchone()[0] == 0
-    assert upload(client, batch, [{**outcome, 'id': 'other', 'outcome': 'no_faces'}]).json()['added'] == 1
-    assert decide(client, queue(client)[-1])['failures']
+    assert upload(client, batch, [{**outcome, 'id': 'alias'}])['duplicates'] == 1
+    assert upload(client, batch, [{**outcome, 'id': 'other', 'outcome': 'no_faces'}])['status'] == 'failed'
+
+
+def test_import_returns_before_processing_and_resumes_after_restart(client, monkeypatch):
+    (identifier,) = seed()
+    batch = export(client)
+    note = suggestion('review_outcome', 'note', identifier, outcome='no_change')
+    raw = json.dumps(dict(version=1, batch=batch, suggestions=[note])).encode()
+    with monkeypatch.context() as patch:
+        patch.setattr(packages.executor, 'submit', lambda *_: None)
+        response = client.post(BASE + '/imports', files={'file': ('result.json', raw)})
+    assert response.status_code == 202 and response.json()['status'] == 'queued'
+    job_id = response.json()['id']
+    assert client.get(BASE + '/imports/' + job_id).json()['status'] == 'queued'
+    assert not queue(client)
+    with db.connect(True) as conn:
+        conn.execute("UPDATE review_imports SET status='running' WHERE id=?", (job_id,))
+    with packages.service():
+        pass
+    job = client.get(BASE + '/imports/' + job_id).json()
+    assert job['status'] == 'done' and job['recorded'] == 1
+    with db.connect(True) as conn:
+        assert conn.execute('SELECT upload FROM review_imports WHERE id=?', (job_id,)).fetchone()[0] is None
+        conn.execute("UPDATE review_suggestions SET status='pending' WHERE batch=?", (batch,))
+    db.init()
+    note, = queue(client)
+    assert note['status'] == 'recorded' and not queue(client, 'pending')
 
 
 def test_legacy_snapshot_and_result_keys(client):
@@ -346,10 +384,10 @@ def test_legacy_snapshot_and_result_keys(client):
             VALUES(?,?,?,?,?)''', (batch, original['id'], identifier, results.encode(original), 'legacy')).lastrowid
         conn.execute('INSERT INTO review_result_keys VALUES(?,?,?,?)', (batch, original['id'],
                      results.digest(results.encode([original, None]).encode()), identifier_key))
-    assert upload(client, batch, [original]).json() == {'added': 0, 'duplicates': 1}
+    assert upload(client, batch, [original])['duplicates'] == 1
     assert decide(client, queue(client)[0])['applied']
     assert upload(client, batch, [suggestion('correct_source', 'post', identifier, post_id=1,
-                                             field='post_text', value=None)]).status_code == 400
+                                             field='post_text', value=None)])['status'] == 'failed'
 
 
 def test_external_first_reference_and_dependencies(client, monkeypatch):
@@ -372,8 +410,8 @@ def test_external_first_reference_and_dependencies(client, monkeypatch):
     )
     new = suggestion('create_person', 'person', identifier, name='Alice', person_id='new:a')
     files = {'attachments/ref.png': binary.getvalue()}
-    assert upload(client, batch, [ref], files).json()['added'] == 1
-    assert upload(client, batch, [new]).json()['added'] == 1
+    assert upload(client, batch, [ref], files)['added'] == 1
+    assert upload(client, batch, [new])['added'] == 1
     pending = queue(client)
     ref_item, new_item = pending
     assert ref_item['attachment']['suggested_index'] is None
@@ -386,7 +424,7 @@ def test_external_first_reference_and_dependencies(client, monkeypatch):
     assert decide(client, ref_item, face_index=1)['applied'] == [ref_item['id']]
     reviewed = next(item for item in queue(client, 'accepted') if item['id'] == ref_item['id'])
     assert reviewed['attachment']['suggested_index'] == 1
-    assert upload(client, batch, [ref], files).json()['duplicates'] == 1
+    assert upload(client, batch, [ref], files)['duplicates'] == 1
     with db.connect() as conn:
         row = conn.execute('SELECT r.*,p.name FROM reference_images r JOIN people p ON p.id=r.person_id').fetchone()
         assert row['name'] == 'Alice' and json.loads(row['box']) == [65, 10, 15, 20]
@@ -413,7 +451,7 @@ def test_library_reference_conflicts_and_recycle(client):
         suggestion('add_face', 'draw', identifier, box=[40, 40, 20, 20]),
         suggestion('recycle', 'trash', identifier),
     ]
-    assert upload(client, batch, operations).json()['added'] == len(operations)
+    assert upload(client, batch, operations)['added'] == len(operations)
     lock, ref, remove, draw, recycle = queue(client)
     assert decide(client, ref)['failures']
     assert decide(client, lock)['applied']
@@ -439,15 +477,15 @@ def test_reject_unsafe_archives_and_unknown_faces(client, monkeypatch):
     (identifier,) = seed()
     batch = export(client)
     for path in ['../bad.jpg', '/outside', 'attachments/sub/image.jpg', 'attachments\\bad.jpg', 'unknown.txt']:
-        assert upload(client, batch, [], {path: b'x'}).status_code == 400
+        assert upload(client, batch, [], {path: b'x'})['status'] == 'failed'
     source = 'attachments/ref.jpg'
     ref = suggestion('add_reference', 'empty', identifier, person_id='new:unused', source={'attachment': source})
-    assert upload(client, batch, [ref], {source: b'invalid'}).status_code == 400
+    assert upload(client, batch, [ref], {source: b'invalid'})['status'] == 'failed'
     data = io.BytesIO()
     Image.new('RGB', (30, 50)).save(data, 'JPEG')
     monkeypatch.setattr(results, 'Vision', lambda: SimpleNamespace(detect=lambda *args, **kwargs: []))
     new = suggestion('create_person', 'unused', identifier, name='Unused', person_id='new:unused')
-    assert upload(client, batch, [new, ref], {source: data.getvalue()}).status_code == 200
+    assert upload(client, batch, [new, ref], {source: data.getvalue()})['status'] == 'done'
     person, reference = queue(client)
     assert decide(client, person)['applied']
     assert not reference['attachment']['boxes'] and decide(client, reference, face_index=0)['failures']
@@ -477,7 +515,7 @@ def test_reused_face_and_changed_recycle_scope_remain_pending(client):
         suggestion('recycle', 'trash', identifier),
         suggestion('add_reference', 'ref', identifier, person_id=person, source={'face_id': old['id']}),
     ]
-    assert upload(client, batch, ops).json()['added'] == 3
+    assert upload(client, batch, ops)['added'] == 3
     remove, recycle, ref = queue(client)
     assert remove['box'] == json.loads(old['box']) and remove['current'] == '人脸不存在'
     assert ref['face_token'] is None and not ref['reference_ids'] and '已删除人物' in ref['proposed']
@@ -511,7 +549,7 @@ def test_attachment_versions_survive_migration_and_reimport(client, monkeypatch)
     monkeypatch.setattr(results, 'Vision', lambda: SimpleNamespace(detect=detect))
     original_model = results.MODEL_VERSION
     first = export(client)
-    assert upload(client, first, [ref], files).json()['added'] == 1
+    assert upload(client, first, [ref], files)['added'] == 1
     with db.connect(True) as conn:
         conn.execute('ALTER TABLE review_attachments ADD COLUMN detections TEXT NOT NULL DEFAULT \'[]\'')
         conn.execute('ALTER TABLE review_attachments ADD COLUMN model TEXT NOT NULL DEFAULT \'legacy\'')
@@ -521,16 +559,16 @@ def test_attachment_versions_survive_migration_and_reimport(client, monkeypatch)
     with db.connect(True) as conn:
         conn.execute("UPDATE settings SET value='0.3' WHERE key='detection_threshold'")
     second = export(client)
-    assert upload(client, second, [ref], files).json()['added'] == 1
-    assert upload(client, second, [ref], files).json()['duplicates'] == 1
+    assert upload(client, second, [ref], files)['added'] == 1
+    assert upload(client, second, [ref], files)['duplicates'] == 1
     old, new = queue(client)
     assert old['attachment']['boxes'] == [] and new['attachment']['boxes'] == [[1, 2, 3, 4]]
     assert decide(client, old, face_index=0)['failures'] and decide(client, new)['applied']
     with db.connect(True) as conn:
         conn.execute("UPDATE settings SET value='0.5' WHERE key='detection_threshold'")
-    assert upload(client, export(client), [ref], files).json()['added'] == 1
+    assert upload(client, export(client), [ref], files)['added'] == 1
     monkeypatch.setattr(results, 'MODEL_VERSION', 'new-model')
-    assert upload(client, export(client), [ref], files).json()['added'] == 1
+    assert upload(client, export(client), [ref], files)['added'] == 1
     assert calls == [(original_model, 0.5), (original_model, 0.3), (original_model, 0.5), ('new-model', 0.5)]
     with db.connect() as conn:
         assert conn.execute('SELECT count(*) FROM review_attachments').fetchone()[0] == 1

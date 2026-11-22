@@ -46,7 +46,8 @@ const label = '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">
 async function mockQueue(page: Page, items: Fixture[]) {
   await page.route(`**${root}/suggestions?**`, route => {
     const params = new URL(route.request().url()).searchParams;
-    const filtered = items.filter(entry => entry.status === params.get('status'));
+    const status = params.get('status');
+    const filtered = items.filter(entry => status === 'review' ? ['pending', 'recorded'].includes(entry.status) : entry.status === status);
     const number = Math.min(Number(params.get('page')), Math.max(1, Math.ceil(filtered.length / 20)));
     return route.fulfill({ json: { items: filtered.slice((number - 1) * 20, number * 20), total: filtered.length, page: number, page_size: 20 } });
   });
@@ -109,7 +110,7 @@ test('resumes the selected export after navigation and permits another after exp
   await page.getByRole('button', { name: '全选本页' }).click();
   await page.getByRole('button', { name: '导出所选 1 张' }).click();
   await page.getByRole('link', { name: '建议复核' }).click();
-  await expect(page.getByRole('heading', { name: '没有待复核的建议' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '暂无建议或审核结论' })).toBeVisible();
   const previous = polls;
   await page.clock.fastForward(5000);
   expect(polls).toBe(previous);
@@ -127,12 +128,17 @@ test('imports without applying changes, reloads the queue, and requires a valid 
   const rows: Fixture[] = [];
   const decisions: unknown[] = [];
   await mockQueue(page, rows);
+  let finished = false;
   await page.route(`**${root}/imports`, route => {
     expect(route.request().headers()['content-type']).toContain('multipart/form-data');
     expect(route.request().postDataBuffer()?.toString()).toContain('name="file"; filename="result.zip"');
+    return route.fulfill({ status: 202, json: { id: 'import', status: 'queued' } });
+  });
+  await page.route(`**${root}/imports/import`, route => {
+    if (!finished) return route.fulfill({ json: { id: 'import', status: 'running' } });
     if (!rows.length) rows.push({ ...external }, { ...external, id: 108, attachment: { ...external.attachment, boxes: [] } },
       { ...external, id: 109, attachment: { ...external.attachment, boxes: [[50, 100, 70, 80]] } });
-    return route.fulfill({ json: { added: 3, duplicates: 1 } });
+    return route.fulfill({ json: { id: 'import', status: 'done', added: 3, recorded: 0, duplicates: 1 } });
   });
   await page.route(`**${root}/decisions`, route => {
     const body = route.request().postDataJSON();
@@ -144,8 +150,12 @@ test('imports without applying changes, reloads the queue, and requires a valid 
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: '导入审核结果' }).click();
   await (await chooser).setFiles({ name: 'result.zip', mimeType: 'application/zip', buffer: Buffer.from('result') });
-  await expect(page.getByText('已导入 3 条建议，跳过 1 条重复建议。')).toBeVisible();
+  await expect(page.getByText(/正在后台导入/)).toBeVisible();
+  await expect(page.getByRole('button', { name: '刷新建议' })).toBeEnabled();
   await page.reload();
+  await expect(page.getByText(/正在后台导入/)).toBeVisible();
+  finished = true;
+  await expect(page.getByText('已导入 3 条建议，记录 0 条审核结论，跳过 1 条重复记录。')).toBeVisible();
   const multi = page.getByRole('article', { name: '建议 #102' });
   const empty = page.getByRole('article', { name: '建议 #108' });
   await expect(multi.getByRole('button', { name: '接受', exact: true })).toBeDisabled();
@@ -236,23 +246,34 @@ test('shows the exact source change and distinguishes a review note from a galle
   const source: Fixture = { ...item, proposal: { id: 'source', image_id: 41, kind: 'correct_source', post_id: 5,
     field: 'author_name', value: '林青', reason: '与原帖署名一致。' }, current: '帖子 #5 · 发布者名称：未填写',
     proposed: '帖子 #5 · 发布者名称：林青（所有引用此帖的图片共用）', box: null, reference_ids: [] };
-  const note: Fixture = { ...source, id: 102, proposal: { id: 'note', image_id: 41, kind: 'review_outcome',
+  const note: Fixture = { ...source, id: 102, status: 'recorded', proposal: { id: 'note', image_id: 41, kind: 'review_outcome',
     outcome: 'needs_human', reason: '第二张图片没有可用预览。' }, current: '仅记录本批审核结论，不修改图库', proposed: '证据不足，请人工复核' };
-  await mockQueue(page, [source, note]);
-  await page.goto(queue);
+  const noteOnly = { ...note, id: 103, image_id: 42, proposal: { ...note.proposal, image_id: 42 } };
+  await mockQueue(page, [source, note, noteOnly]);
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
+    await page.goto(queue);
     await expect(page.getByRole('heading', { name: /更正帖子来源/ })).toBeVisible();
     await expect(page.getByText(source.proposed, { exact: true })).toBeVisible();
-    await expect(page.getByRole('heading', { name: /记录逐图审核结论/ })).toBeVisible();
-    await expect(page.getByText(note.current, { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '查看审核结论' })).toHaveCount(0);
+    await expect(page.getByRole('article', { name: '建议 #101' }).getByRole('button', { name: '接受', exact: true })).toBeEnabled();
+    for (const record of [note, noteOnly]) {
+      const group = page.getByRole('region', { name: `图片 #${record.image_id} 的审核记录` });
+      const entry = group.getByRole('article', { name: `结论 #${record.id}` });
+      await expect(entry.getByText(record.proposed, { exact: true })).toBeVisible();
+      await expect(entry.getByText(record.proposal.reason, { exact: true })).toBeVisible();
+      await expect(entry.getByRole('button')).toHaveCount(0);
+      await expect(entry.getByRole('checkbox')).toHaveCount(0);
+    }
+    await page.getByRole('link', { name: '图片 #41', exact: true }).click();
+    await expect(page).toHaveURL(/\/admin\/review\?state=image&image=41$/);
   }
 });
 
 test('groups evidence and reflows the review workspace without horizontal overflow', async ({ page }) => {
   await mockQueue(page, [item, external, recycle]);
   await page.goto(queue);
-  const group = page.getByRole('region', { name: '图片 #41 的建议' });
+  const group = page.getByRole('region', { name: '图片 #41 的审核记录' });
   await expect(group.getByRole('article')).toHaveCount(2);
   await expect(group.getByText('Agent 置信度：高', { exact: true })).toBeVisible();
   await expect(group.getByRole('article').nth(1).getByText('Agent 置信度', { exact: false })).toHaveCount(0);

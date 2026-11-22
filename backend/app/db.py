@@ -42,6 +42,7 @@ CREATE INDEX IF NOT EXISTS decision_right_image ON duplicate_decisions(b,a);
 CREATE TABLE IF NOT EXISTS review_history(id INTEGER PRIMARY KEY, face_id INTEGER REFERENCES faces, before_json TEXT NOT NULL, after_revision INTEGER NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, expires REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS review_batches(id TEXT PRIMARY KEY, status TEXT NOT NULL, instructions TEXT NOT NULL, total INTEGER NOT NULL, done INTEGER NOT NULL DEFAULT 0, expires REAL, error TEXT);
+CREATE TABLE IF NOT EXISTS review_imports(id TEXT PRIMARY KEY, status TEXT NOT NULL, extension TEXT NOT NULL, upload BLOB, added INTEGER NOT NULL DEFAULT 0, recorded INTEGER NOT NULL DEFAULT 0, duplicates INTEGER NOT NULL DEFAULT 0, error TEXT);
 CREATE TABLE IF NOT EXISTS review_snapshots(batch TEXT REFERENCES review_batches, image_id INTEGER NOT NULL, snapshot TEXT NOT NULL, PRIMARY KEY(batch,image_id));
 CREATE TABLE IF NOT EXISTS review_roster(batch TEXT REFERENCES review_batches, exported_id INTEGER NOT NULL, person_id INTEGER REFERENCES people ON DELETE SET NULL, PRIMARY KEY(batch,exported_id));
 CREATE TABLE IF NOT EXISTS review_group_roster(batch TEXT REFERENCES review_batches, exported_id INTEGER NOT NULL, group_id INTEGER REFERENCES groups ON DELETE SET NULL, name TEXT NOT NULL, name_ja TEXT, PRIMARY KEY(batch,exported_id));
@@ -50,6 +51,8 @@ CREATE TABLE IF NOT EXISTS review_attachments(digest TEXT PRIMARY KEY, jpeg BLOB
 CREATE TABLE IF NOT EXISTS review_detections(id INTEGER PRIMARY KEY, attachment TEXT NOT NULL REFERENCES review_attachments, model TEXT NOT NULL, threshold REAL, detections TEXT NOT NULL, UNIQUE(attachment,model,threshold));
 CREATE TABLE IF NOT EXISTS review_suggestions(id INTEGER PRIMARY KEY, batch TEXT NOT NULL, key TEXT NOT NULL, image_id INTEGER NOT NULL, payload TEXT NOT NULL, fingerprint TEXT NOT NULL, attachment TEXT REFERENCES review_attachments, detection_id INTEGER REFERENCES review_detections, chosen_face INTEGER, status TEXT NOT NULL DEFAULT 'pending', created_person INTEGER REFERENCES people ON DELETE SET NULL, UNIQUE(batch,key), UNIQUE(batch,fingerprint), FOREIGN KEY(batch,image_id) REFERENCES review_snapshots(batch,image_id));
 CREATE INDEX IF NOT EXISTS review_suggestions_page ON review_suggestions(status,image_id,id);
+CREATE INDEX IF NOT EXISTS review_queue_page ON review_suggestions(image_id,id) WHERE status IN ('pending','recorded');
+CREATE INDEX IF NOT EXISTS review_outcomes ON review_suggestions(status,batch,image_id) WHERE json_extract(payload,'$.kind')='review_outcome';
 CREATE TABLE IF NOT EXISTS review_result_keys(batch TEXT NOT NULL, key TEXT NOT NULL, content TEXT NOT NULL, suggestion INTEGER NOT NULL REFERENCES review_suggestions, PRIMARY KEY(batch,key));
 CREATE TABLE IF NOT EXISTS review_match_versions(suggestion INTEGER PRIMARY KEY REFERENCES review_suggestions, face_id INTEGER REFERENCES faces ON DELETE SET NULL, revision INTEGER NOT NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS review_person_keys ON review_suggestions(batch,json_extract(payload,'$.person_id')) WHERE json_extract(payload,'$.kind')='create_person';
@@ -135,6 +138,7 @@ def init():
         db.execute("PRAGMA journal_mode=WAL")
         db.executescript(SCHEMA)
     with startup_phase('database migrations'), connect(True) as db:
+        db.execute("UPDATE review_suggestions SET status='recorded' WHERE status='pending' AND json_extract(payload,'$.kind')='review_outcome'")
         if 'detection_id' not in {row[1] for row in db.execute('PRAGMA table_info(review_suggestions)')}:
             db.execute('ALTER TABLE review_suggestions ADD COLUMN detection_id INTEGER REFERENCES review_detections')
             db.execute('INSERT INTO review_detections(attachment,model,detections) SELECT digest,model,detections FROM review_attachments')

@@ -3257,12 +3257,51 @@
           "required": true
         },
         "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/review-packages/imports/{identifier}": {
+      "get": {
+        "summary": "Import Status",
+        "operationId": "import_status_api_v1_admin_review_packages_imports__identifier__get",
+        "parameters": [
+          {
+            "name": "identifier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Identifier"
+            }
+          }
+        ],
+        "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ImportCount"
+                  "$ref": "#/components/schemas/ImportJob"
                 }
               }
             }
@@ -3291,12 +3330,13 @@
             "required": false,
             "schema": {
               "enum": [
+                "review",
                 "pending",
                 "accepted",
                 "rejected"
               ],
               "type": "string",
-              "default": "pending",
+              "default": "review",
               "title": "Status"
             }
           },
@@ -5428,24 +5468,6 @@
         ],
         "title": "ImageSelection"
       },
-      "ImportCount": {
-        "properties": {
-          "added": {
-            "type": "integer",
-            "title": "Added"
-          },
-          "duplicates": {
-            "type": "integer",
-            "title": "Duplicates"
-          }
-        },
-        "type": "object",
-        "required": [
-          "added",
-          "duplicates"
-        ],
-        "title": "ImportCount"
-      },
       "ImportInput": {
         "properties": {
           "urls": {
@@ -5488,6 +5510,56 @@
         },
         "type": "object",
         "title": "ImportInput"
+      },
+      "ImportJob": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "added": {
+            "type": "integer",
+            "title": "Added",
+            "default": 0
+          },
+          "recorded": {
+            "type": "integer",
+            "title": "Recorded",
+            "default": 0
+          },
+          "duplicates": {
+            "type": "integer",
+            "title": "Duplicates",
+            "default": 0
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "ImportJob"
       },
       "Inventory": {
         "properties": {

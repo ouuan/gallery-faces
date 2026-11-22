@@ -68,6 +68,10 @@ def service():
 
     with ThreadPoolExecutor(max_workers=1) as pool:
         executor = pool
+        from .review_results import run_import
+        with storage.connect() as db:
+            for row in db.execute("SELECT id FROM review_imports WHERE status IN ('queued','running') ORDER BY rowid"):
+                pool.submit(run_import, row['id'])
         thread = threading.Thread(target=sweep, daemon=True)
         thread.start()
         try:

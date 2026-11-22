@@ -1,9 +1,15 @@
-<script setup lang="ts">
+<script lang="ts">
 import { computed, onScopeDispose, ref, watch } from 'vue';
+const importKey = 'review-import.active';
+const importId = ref(sessionStorage.getItem(importKey));
+const uploading = ref(false);
+</script>
+
+<script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowRight, RefreshCw, SignalHigh, SignalLow, SignalMedium, Upload } from '@lucide/vue';
 import { NAlert, NButton, NCheckbox, NModal, NRadio, NRadioGroup, NSelect } from 'naive-ui';
-import { api, send } from './api';
+import { api, ApiError, send } from './api';
 import ListPagination from './ListPagination.vue';
 import ReviewPackageImage from './ReviewPackageImage.vue';
 import { useLatestRequest } from './use-latest-request';
@@ -22,7 +28,7 @@ const root = '/admin/review-packages';
 const confidenceTiers = { high: { label: '高', icon: SignalHigh }, medium: { label: '中', icon: SignalMedium }, low: { label: '低', icon: SignalLow } };
 const route = useRoute();
 const router = useRouter();
-const statuses = [{ value: 'pending', label: '待复核' }, { value: 'accepted', label: '已接受' }, { value: 'rejected', label: '已拒绝' }];
+const statuses = [{ value: 'review', label: '建议与结论' }, { value: 'accepted', label: '已接受' }, { value: 'rejected', label: '已拒绝' }];
 const status = computed(() => statuses.find(option => option.value === route.query.suggestion_status) ?? statuses[0]);
 const page = computed(() => {
   const value = Number(route.query.suggestion_page);
@@ -40,8 +46,9 @@ const groups = computed(() => {
 });
 const loading = ref(false);
 const writing = ref(false);
-const importing = ref(false);
-const busy = computed(() => loading.value || writing.value || importing.value);
+const busy = computed(() => loading.value || writing.value);
+const importNotice = ref('');
+const importError = ref('');
 const loadError = ref('');
 const actionError = ref('');
 const notice = ref('');
@@ -50,13 +57,13 @@ const selected = ref<number[]>([]);
 const faceChoices = ref<Record<number, number>>({});
 const fileInput = ref<HTMLInputElement>();
 const confirmation = ref<Suggestion[]>([]);
-const selectedItems = computed(() => result.value.items.filter(item => selected.value.includes(item.id)));
+const selectedItems = computed(() => result.value.items.filter(item => actionable(item) && selected.value.includes(item.id)));
 const read = useLatestRequest();
 let disposed = false;
 onScopeDispose(() => { disposed = true; });
 
 function navigate(value: string, number: number) {
-  return router.replace({ query: { ...route.query, suggestion_status: value === 'pending' ? undefined : value,
+  return router.replace({ query: { ...route.query, suggestion_status: value === 'review' ? undefined : value,
     suggestion_page: number === 1 ? undefined : String(number) } });
 }
 async function load() {
@@ -89,19 +96,50 @@ async function importFile(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = '';
-  if (!file || busy.value) return;
-  importing.value = true; notice.value = ''; actionError.value = ''; failures.value = [];
+  if (!file || uploading.value || importId.value) return;
+  uploading.value = true; importError.value = ''; importNotice.value = ''; notice.value = '';
   const body = new FormData();
   body.append('file', file);
   try {
-    const response = await api<Schema['ImportCount']>(`${root}/imports`, { method: 'POST', body });
-    if (disposed) return;
-    notice.value = `已导入 ${response.added} 条建议，跳过 ${response.duplicates} 条重复建议。`;
-    if (status.value.value !== 'pending' || page.value !== 1) await navigate('pending', 1);
-    else await load();
-  } catch (cause) { actionError.value = (cause as Error).message; }
-  finally { importing.value = false; }
+    const job = await api<Schema['ImportJob']>(`${root}/imports`, { method: 'POST', body });
+    sessionStorage.setItem(importKey, job.id);
+    importId.value = job.id;
+  } catch (cause) { importError.value = (cause as Error).message; }
+  finally { uploading.value = false; }
 }
+watch(importId, (id, _, onCleanup) => {
+  if (!id) return;
+  const path = `${root}/imports/${encodeURIComponent(id)}`;
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout>;
+  onCleanup(() => { controller.abort(); clearTimeout(timer); });
+  async function poll() {
+    try {
+      const job = await api<Schema['ImportJob']>(path, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      importError.value = '';
+      if (job.status === 'queued' || job.status === 'running') {
+        timer = setTimeout(poll, 1000);
+        return;
+      }
+      if (job.status === 'failed') importError.value = job.error || '导入失败，请重新上传。';
+      else {
+        importNotice.value = `已导入 ${job.added} 条建议，记录 ${job.recorded} 条审核结论，跳过 ${job.duplicates} 条重复记录。`;
+        void load();
+      }
+    } catch (cause) {
+      if (controller.signal.aborted) return;
+      importError.value = (cause as Error).message;
+      if (!(cause instanceof ApiError && cause.status === 404)) { timer = setTimeout(poll, 5000); return; }
+    }
+    sessionStorage.removeItem(importKey);
+    importId.value = null;
+  }
+  void poll();
+}, { immediate: true });
+function reviewLink(image: number) { return { path: '/admin/review', query: { state: 'image', image } }; }
+function actionable(item: Suggestion) { return item.status === 'pending' && item.proposal.kind !== 'review_outcome'; }
+function itemLabel(item: Suggestion) { return item.proposal.kind === 'review_outcome' ? '结论' : '建议'; }
 function toggle(id: number, checked: boolean) {
   selected.value = checked ? [...new Set([...selected.value, id])] : selected.value.filter(selectedId => selectedId !== id);
 }
@@ -111,7 +149,7 @@ function canAccept(item: Suggestion) {
 }
 function destructive(item: Suggestion) { return ['recycle', 'remove_face'].includes(item.proposal.kind); }
 function decide(decision: Decision, items: Suggestion[]) {
-  if (busy.value || status.value.value !== 'pending' || !items.length) return;
+  if (busy.value || !items.length || !items.every(actionable)) return;
   if (decision === 'accept' && items.some(item => !canAccept(item))) return;
   if (decision === 'accept' && items.some(destructive)) confirmation.value = [...items];
   else void apply(decision, items);
@@ -152,14 +190,16 @@ function externalSource(item: Suggestion) {
     <header class="queue-tools">
       <div class="controls">
         <n-select aria-label="建议状态" :options="statuses" :value="status.value" :disabled="busy" @update:value="navigate($event, 1)" />
-        <span v-if="!loading && !loadError" class="muted">共 {{ result.total }} 条建议</span>
+        <span v-if="!loading && !loadError" class="muted">共 {{ result.total }} 条记录</span>
       </div>
       <div class="controls">
         <n-button :disabled="busy" aria-label="刷新建议" title="刷新建议" @click="load"><template #icon><RefreshCw /></template></n-button>
         <input ref="fileInput" hidden type="file" accept=".json,.zip" @change="importFile" />
-        <n-button :disabled="busy" :loading="importing" @click="fileInput?.click()"><template #icon><Upload /></template>导入审核结果</n-button>
+        <n-button :disabled="uploading || !!importId" :loading="uploading" @click="fileInput?.click()"><template #icon><Upload /></template>导入审核结果</n-button>
       </div>
     </header>
+    <p v-if="importId || importNotice" role="status">{{ importId ? '正在后台导入审核结果，可以继续审核或离开此页。' : importNotice }}</p>
+    <n-alert v-if="importError" type="error">{{ importError }}</n-alert>
     <p v-if="notice" role="status">{{ notice }}</p>
     <n-alert v-if="actionError" type="error">{{ actionError }}</n-alert>
     <n-alert v-if="failures.length" type="warning" title="以下建议未应用">
@@ -174,31 +214,32 @@ function externalSource(item: Suggestion) {
         <n-button quaternary :disabled="busy" @click="selected = []">取消选择</n-button>
       </div>
       <div v-if="!groups.length" class="empty-state" role="status">
-        <h2>{{ loading ? '正在加载建议…' : `没有${status.label}的建议` }}</h2>
-        <p v-if="!loading && status.value === 'pending'">可导入 review-result.json 或含附件的结果 ZIP。</p>
+        <h2>{{ loading ? '正在加载…' : status.value === 'review' ? '暂无建议或审核结论' : `没有${status.label}的建议` }}</h2>
+        <p v-if="!loading && status.value === 'review'">可导入 review-result.json 或含附件的结果 ZIP。</p>
       </div>
-      <section v-for="items in groups" :key="items[0].image_id" class="image-group" :aria-label="`图片 #${items[0].image_id} 的建议`">
+      <section v-for="items in groups" :key="items[0].image_id" class="image-group" :aria-label="`图片 #${items[0].image_id} 的审核记录`">
         <div class="image-column">
-          <h3>图片 #{{ items[0].image_id }} <small>{{ items.length }} 条建议</small></h3>
+          <h3><router-link :to="reviewLink(items[0].image_id)">图片 #{{ items[0].image_id }}</router-link> <small>{{ items.length }} 条记录</small></h3>
           <ReviewPackageImage :src="`/api/v1/admin/media/${items[0].image_id}`" :fallback="`/api/v1/admin/media/${items[0].image_id}?thumbnail=true`"
             :width="items[0].width" :height="items[0].height" :alt="`图片 #${items[0].image_id}`" :boxes="positions(items)" />
           <p class="hint">{{ items[0].width }} × {{ items[0].height }} px</p>
         </div>
         <div class="suggestions">
-          <article v-for="(item, index) in items" :key="item.id" :aria-label="`建议 #${item.id}`">
+          <article v-for="(item, index) in items" :key="item.id" :aria-label="`${itemLabel(item)} #${item.id}`">
             <header class="item-heading">
               <div class="proposal-title"><h4>{{ index + 1 }}. {{ kinds[item.proposal.kind] }}</h4>
                 <span v-if="item.proposal.confidence" class="confidence" :class="item.proposal.confidence" title="Agent 对这条建议的判断，不是人脸匹配分数">
                   <component :is="confidenceTiers[item.proposal.confidence].icon" :size="16" aria-hidden="true" />Agent 置信度：{{ confidenceTiers[item.proposal.confidence].label }}
                 </span>
               </div>
-              <n-checkbox v-if="status.value === 'pending'" :disabled="busy"
+              <n-checkbox v-if="actionable(item)" :disabled="busy"
                 :checked="selected.includes(item.id)" @update:checked="toggle(item.id, $event)">选择<span class="sr-only">建议 #{{ item.id }}</span></n-checkbox>
             </header>
-            <dl class="change"><div><dt>当前</dt><dd>{{ item.current }}</dd></div><ArrowRight aria-hidden="true" /><div><dt>建议</dt><dd>{{ item.proposed }}</dd></div></dl>
+            <p v-if="item.proposal.kind === 'review_outcome'">{{ item.proposed }}</p>
+            <dl v-else class="change"><div><dt>当前</dt><dd>{{ item.current }}</dd></div><ArrowRight aria-hidden="true" /><div><dt>建议</dt><dd>{{ item.proposed }}</dd></div></dl>
             <p class="reason">{{ item.proposal.reason }}</p>
             <p v-if="item.box" class="hint">定位（x, y, 宽, 高）：{{ coords(item.box) }} px</p>
-            <p v-if="item.proposal.kind === 'recycle'" class="hint">整组 {{ item.member_ids.length }} 张：{{ item.member_ids.map(id => `#${id}`).join('、') }}</p>
+            <p v-if="item.proposal.kind === 'recycle'" class="hint">整组 {{ item.member_ids.length }} 张：<template v-for="(id, index) in item.member_ids" :key="id">{{ index ? '、' : '' }}<router-link :to="reviewLink(id)">#{{ id }}</router-link></template></p>
             <div v-if="sourceFace(item) || item.reference_ids.length" class="references">
               <figure v-if="sourceFace(item)"><img :src="`/api/v1/admin/faces/${sourceFace(item)}/crop?token=${item.face_token}`" alt="拟添加的图库人脸" loading="lazy" /><figcaption>来源人脸 #{{ sourceFace(item) }}</figcaption></figure>
               <figure v-for="id in item.reference_ids" :key="id"><img :src="`/api/v1/admin/references/${id}/crop`" :alt="`参考图 #${id}`" loading="lazy" /><figcaption>参考 #{{ id }}</figcaption></figure>
@@ -208,7 +249,7 @@ function externalSource(item: Suggestion) {
               <ReviewPackageImage :src="`/api/v1${root}/suggestions/${item.id}/attachment`" :alt="`建议 #${item.id} 的外部参考图`" :width="item.attachment.width" :height="item.attachment.height"
                 :boxes="item.attachment.boxes.map((box, position) => ({ box, label: String(position + 1), active: position === faceChoices[item.id] }))" />
               <a v-if="externalSource(item)?.source_url" :href="externalSource(item)?.source_url ?? undefined" target="_blank" rel="noopener noreferrer">查看参考图来源</a>
-              <template v-if="status.value === 'pending'">
+              <template v-if="actionable(item)">
                 <p v-if="!item.attachment.boxes.length" class="error-text">未检测到有效人脸，无法接受此建议。</p>
                 <template v-else>
                   <p class="hint">{{ canAccept(item) ? `目标人脸 ${faceChoices[item.id] + 1}：${coords(item.attachment.boxes[faceChoices[item.id]])} px` : '请选择要加入参考库的人脸。' }}</p>
@@ -219,8 +260,8 @@ function externalSource(item: Suggestion) {
               </template>
             </div>
             <footer class="item-footer">
-              <span class="hint">建议 #{{ item.id }}</span>
-              <div v-if="status.value === 'pending'" class="controls">
+              <span class="hint">{{ itemLabel(item) }} #{{ item.id }}</span>
+              <div v-if="actionable(item)" class="controls">
                 <n-button :disabled="busy" @click="decide('reject', [item])">拒绝</n-button>
                 <n-button secondary type="primary" :disabled="busy || !canAccept(item)" @click="decide('accept', [item])">接受</n-button>
               </div>
@@ -234,8 +275,8 @@ function externalSource(item: Suggestion) {
       <section class="form-dialog confirm-scope" role="dialog" aria-modal="true" aria-labelledby="confirm-scope-heading">
         <h2 id="confirm-scope-heading">确认接受 {{ confirmation.length }} 条建议？</h2>
         <p v-for="item in confirmation" :key="item.id"><strong>建议 #{{ item.id }} · {{ kinds[item.proposal.kind] }}</strong><br />
-          <template v-if="item.proposal.kind === 'recycle'">图片 #{{ item.image_id }} 的整组 {{ item.member_ids.length }} 张：{{ item.member_ids.map(id => `#${id}`).join('、') }}。原图和大图将清理。</template>
-          <template v-else>图片 #{{ item.image_id }}<template v-if="'face_id' in item.proposal"> · 人脸 #{{ item.proposal.face_id }}</template></template>
+          <router-link :to="reviewLink(item.image_id)">图片 #{{ item.image_id }}</router-link><template v-if="item.proposal.kind === 'recycle'"> 的整组 {{ item.member_ids.length }} 张：<template v-for="(id, index) in item.member_ids" :key="id">{{ index ? '、' : '' }}<router-link :to="reviewLink(id)">#{{ id }}</router-link></template>。原图和大图将清理。</template>
+          <template v-else-if="'face_id' in item.proposal"> · 人脸 #{{ item.proposal.face_id }}</template>
         </p>
         <div class="form-actions"><n-button @click="confirmation = []">取消</n-button><n-button type="error" @click="apply('accept', confirmation)">确认接受</n-button></div>
       </section>

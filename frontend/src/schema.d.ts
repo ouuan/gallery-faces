@@ -1036,6 +1036,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/review-packages/imports/{identifier}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Import Status */
+        get: operations["import_status_api_v1_admin_review_packages_imports__identifier__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/review-packages/suggestions": {
         parameters: {
             query?: never;
@@ -1778,13 +1795,6 @@ export interface components {
             /** Ids */
             ids: number[];
         };
-        /** ImportCount */
-        ImportCount: {
-            /** Added */
-            added: number;
-            /** Duplicates */
-            duplicates: number;
-        };
         /** ImportInput */
         ImportInput: {
             /**
@@ -1806,6 +1816,33 @@ export interface components {
              * @default
              */
             end: string;
+        };
+        /** ImportJob */
+        ImportJob: {
+            /** Id */
+            id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "done" | "failed";
+            /**
+             * Added
+             * @default 0
+             */
+            added: number;
+            /**
+             * Recorded
+             * @default 0
+             */
+            recorded: number;
+            /**
+             * Duplicates
+             * @default 0
+             */
+            duplicates: number;
+            /** Error */
+            error?: string | null;
         };
         /** Inventory */
         Inventory: {
@@ -4581,12 +4618,43 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_status_api_v1_admin_review_packages_imports__identifier__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identifier: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ImportCount"];
+                    "application/json": components["schemas"]["ImportJob"];
                 };
             };
             /** @description Validation Error */
@@ -4603,7 +4671,7 @@ export interface operations {
     review_queue_api_v1_admin_review_packages_suggestions_get: {
         parameters: {
             query?: {
-                status?: "pending" | "accepted" | "rejected";
+                status?: "review" | "pending" | "accepted" | "rejected";
                 page?: number;
                 page_size?: number;
             };

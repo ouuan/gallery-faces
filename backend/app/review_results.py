@@ -2,7 +2,9 @@ import base64
 import hashlib
 import io
 import json
+import logging
 import re
+import secrets
 import stat
 import tempfile
 import zipfile
@@ -14,7 +16,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, Up
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, Field, ValidationError
 
-from . import db as storage, trash
+from . import db as storage, review_packages, trash
 from .importer import atomic_asset
 from .metadata import post_identity
 from .representatives import require_representative
@@ -32,6 +34,7 @@ from .review_format import (
     Operation,
     Remove,
     Result,
+    ReviewOutcome,
     fits,
 )
 from .review_packages import PREFIX
@@ -54,13 +57,9 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def unpack(file):
-    name = (file.filename or '').lower()
-    raw = file.file.read(MAX_BYTES + 1)
-    if len(raw) > MAX_BYTES:
-        fail('结果文件超过 20 MiB', 413)
+def unpack(extension, raw):
     attachments = {}
-    if name.endswith('.zip'):
+    if extension == '.zip':
         try:
             with zipfile.ZipFile(io.BytesIO(raw)) as archive:
                 entries = archive.infolist()
@@ -91,8 +90,6 @@ def unpack(file):
                 raw = attachments.pop('review-result.json')
         except (OSError, ValueError, zipfile.BadZipFile, EOFError, RuntimeError, zlib.error) as error:
             raise HTTPException(400, '无法读取结果 ZIP') from error
-    elif not name.endswith('.json'):
-        fail('请选择 JSON 或 ZIP 文件')
     if len(raw) > MAX_JSON:
         fail('结果 JSON 过大', 413)
     try:
@@ -197,13 +194,33 @@ def validate_scope(db, batch, op):
             fail('更正链接必须是该来源平台的帖子链接')
 
 
-class ImportCount(BaseModel):
-    added: int
-    duplicates: int
+class ImportJob(BaseModel):
+    id: str
+    status: Literal['queued', 'running', 'done', 'failed']
+    added: int = 0
+    recorded: int = 0
+    duplicates: int = 0
+    error: str | None = None
 
 
-def import_file(file):
-    result, attachments = unpack(file)
+def run_import(identifier):
+    try:
+        with storage.connect(True) as db:
+            db.execute("UPDATE review_imports SET status='running' WHERE id=?", (identifier,))
+            row = db.execute('SELECT extension,upload FROM review_imports WHERE id=?', (identifier,)).fetchone()
+        import_file(identifier, *row)
+    except Exception as error:
+        if isinstance(error, HTTPException):
+            detail = error.detail
+        else:
+            logging.getLogger(__name__).exception('Review result import failed: %s', identifier)
+            detail = '导入失败，请检查文件后重试'
+        with storage.connect(True) as db:
+            db.execute("UPDATE review_imports SET status='failed',error=?,upload=NULL WHERE id=?", (detail, identifier))
+
+
+def import_file(job_id, extension, raw):
+    result, attachments = unpack(extension, raw)
     batch = result.batch
     hashes = {path: digest(data) for path, data in attachments.items()}
     with storage.connect() as db:
@@ -213,7 +230,7 @@ def import_file(file):
         for op in result.suggestions:
             validate_scope(db, batch, op)
         threshold = float(storage.settings(db)['detection_threshold'])
-    added = 0
+    added = recorded = 0
     if sum(attachment_pixels(path, raw) for path, raw in attachments.items()) > 96_000_000:
         fail('附件总像素过多，请分次导入', 413)
     with tempfile.TemporaryDirectory(dir=storage.DATA) as temp:
@@ -293,14 +310,23 @@ def import_file(file):
                 else:
                     if isinstance(op, CreatePerson) and temporary_person(db, batch, op.person_id):
                         fail('临时人物编号已被使用', 409)
+                    note = isinstance(op, ReviewOutcome)
+                    if note and db.execute("""SELECT 1 FROM review_suggestions WHERE batch=? AND image_id=?
+                        AND status IN ('recorded','accepted') AND json_extract(payload,'$.kind')='review_outcome'""",
+                        (batch, op.image_id)).fetchone():
+                        fail(f'本批次的图片 #{op.image_id} 已有审核结论', 409)
                     identifier = db.execute(
-                        '''INSERT INTO review_suggestions(batch,key,image_id,payload,fingerprint,attachment,detection_id)
-                        VALUES(?,?,?,?,?,?,?)''',
-                        (batch, op.id, op.image_id, encode(payload), fingerprint, key, detection_id),
+                        '''INSERT INTO review_suggestions(batch,key,image_id,payload,fingerprint,attachment,detection_id,status)
+                        VALUES(?,?,?,?,?,?,?,?)''',
+                        (batch, op.id, op.image_id, encode(payload), fingerprint, key, detection_id, 'recorded' if note else 'pending'),
                     ).lastrowid
-                    added += 1
+                    if note:
+                        recorded += 1
+                    else:
+                        added += 1
                 db.execute('INSERT INTO review_result_keys VALUES(?,?,?,?)', (batch, op.id, content, identifier))
-    return ImportCount(added=added, duplicates=len(result.suggestions) - added)
+            db.execute("UPDATE review_imports SET status='done',added=?,recorded=?,duplicates=?,upload=NULL WHERE id=?",
+                       (added, recorded, len(result.suggestions) - added - recorded, job_id))
 
 
 def temporary_person(db, batch, key):
@@ -627,10 +653,6 @@ def apply(db, row, choice, created_files):
         if not post or field not in SOURCE_FIELDS or post[field] not in (old[field], payload['value']):
             fail('来源已移除或字段已更改，请重新导出', 409)
         db.execute(f'UPDATE posts SET {field}=? WHERE id=?', (payload['value'], post['id']))
-    elif kind == 'review_outcome':
-        if db.execute('''SELECT 1 FROM review_suggestions WHERE batch=? AND image_id=? AND status='accepted'
-            AND json_extract(payload,'$.kind')='review_outcome' ''', (batch, image_id)).fetchone():
-            fail('本批次的这张图片已有已接受的审核结论', 409)
     elif kind in ('match', 'remove_face'):
         write_face_edit(
             db, face_id, FaceEdit(person_id=person, ignored=kind == 'remove_face', revision=face['revision'])
@@ -699,25 +721,46 @@ JOIN_SNAPSHOT = (
 def install(app, admin):
     router = APIRouter(prefix=PREFIX, dependencies=[Depends(admin)])
 
-    @router.post('/imports', response_model=ImportCount)
+    @router.post('/imports', response_model=ImportJob, status_code=202)
     def import_review(file: UploadFile = File(...)):
-        return import_file(file)
+        extension = Path(file.filename or '').suffix.lower()
+        if extension not in ('.json', '.zip'):
+            fail('请选择 JSON 或 ZIP 文件')
+        limit = MAX_JSON if extension == '.json' else MAX_BYTES
+        raw = file.file.read(limit + 1)
+        if len(raw) > limit:
+            fail('结果 JSON 过大' if extension == '.json' else '结果文件超过 20 MiB', 413)
+        job = ImportJob(id=secrets.token_hex(16), status='queued')
+        with storage.connect(True) as db:
+            db.execute('INSERT INTO review_imports(id,status,extension,upload) VALUES(?,?,?,?)',
+                       (job.id, job.status, extension, raw))
+        review_packages.executor.submit(run_import, job.id)
+        return job
+
+    @router.get('/imports/{identifier}', response_model=ImportJob)
+    def import_status(identifier: str):
+        with storage.connect() as db:
+            row = db.execute('SELECT id,status,added,recorded,duplicates,error FROM review_imports WHERE id=?', (identifier,)).fetchone()
+            if not row:
+                fail('导入任务不存在', 404)
+            return dict(row)
 
     @router.get('/suggestions', response_model=QueuePage)
     def review_queue(
-        status: Literal['pending', 'accepted', 'rejected'] = 'pending',
+        status: Literal['review', 'pending', 'accepted', 'rejected'] = 'review',
         page: int = Query(1, ge=1),
         page_size: int = Query(20, ge=1, le=100),
     ):
         with storage.connect() as db:
             db.execute('BEGIN')
-            total = db.execute('SELECT count(*) FROM review_suggestions WHERE status=?', (status,)).fetchone()[0]
+            condition, params = ("status IN ('pending','recorded')", ()) if status == 'review' else ('status=?', (status,))
+            total = db.execute('SELECT count(*) FROM review_suggestions WHERE ' + condition, params).fetchone()[0]
             page = min(page, max(1, (total + page_size - 1) // page_size))
             rows = db.execute(
                 'SELECT s.*,snap.snapshot '
                 + JOIN_SNAPSHOT
-                + ' WHERE status=? ORDER BY s.image_id,s.id LIMIT ? OFFSET ?',
-                (status, page_size, (page - 1) * page_size),
+                + f' WHERE {condition} ORDER BY s.image_id,s.id LIMIT ? OFFSET ?',
+                (*params, page_size, (page - 1) * page_size),
             )
             return QueuePage(items=[queue_item(db, row) for row in rows], total=total, page=page, page_size=page_size)
 
