@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from time import monotonic
 from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
@@ -124,7 +125,7 @@ def test_visibility_and_headers(client):
 def test_limits_restart_cleanup(client, monkeypatch):
     target, _ = seed()
     other, _ = seed()
-    clock = SimpleNamespace(time=lambda: 2000000000.0)
+    clock = SimpleNamespace(time=lambda: 2000000000.0, monotonic=monotonic)
     monkeypatch.setattr(main, 'time', clock)
     monkeypatch.setattr(db, 'time', clock)
     monkeypatch.setenv('FEEDBACK_RATE_LIMIT_PER_DAY', '6')
