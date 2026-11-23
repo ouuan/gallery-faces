@@ -43,6 +43,7 @@ for (const width of [390, 1280]) {
     await page.locator('.post-header time').click();
     await expect(page.getByRole('tooltip')).toContainText(/:\d\d:56/);
     await page.locator('.post-copy').click();
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
     await expect(page.locator('.post-pictures a')).toHaveCount(3);
     for (const tile of await postDialog.locator('.post-pictures a').all()) {
       const bounds = await tile.boundingBox();
@@ -59,8 +60,27 @@ for (const width of [390, 1280]) {
     await expect(page).toHaveURL(/\/?\?publishers=x(?::|%3A)alice$/);
     const time = page.locator('.photo-card time');
     await time.click();
+    await expect(page.getByRole('tooltip')).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    if (width === 390) await page.getByRole('button', { name: '筛选', exact: true }).click();
+    const card = page.locator('.photo-card');
+    await page.mouse.move(0, 0);
+    await card.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(card).toBeFocused();
+    await expect(page.getByRole('tooltip')).toBeVisible();
+    await card.press('Enter');
+    await expect(photoDialog).toBeVisible();
+    await time.dispatchEvent('pointerenter');
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
+    await photoDialog.getByRole('button', { name: '关闭详情' }).click();
+    await expect(photoDialog).toHaveCount(0);
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
+    if (width === 390) {
+      await time.hover();
+      await expect(page.getByRole('tooltip')).toBeVisible();
+      await page.getByRole('button', { name: '筛选', exact: true }).click();
+      await expect(page.getByRole('tooltip')).toHaveCount(0);
+    }
     await expect(page.getByRole('link', { name: '订阅图库 RSS' })).toHaveAttribute('href', '/api/v1/gallery/rss.xml?publishers=x%3Aalice');
     await page.goto('/posts/x:42?people=3');
     await expect(postDialog).toBeVisible();

@@ -391,7 +391,7 @@ onUnmounted(() => {
             }}</strong
             ><span
               >{{ store.publisherName(photo.matched_source) }} ·
-              <SocialTime :value="photo.matched_source.published_at" in-card /></span
+              <SocialTime :value="photo.matched_source.published_at" in-card :disabled="!!selectedId || postOpen || drawer" /></span
             ><span v-if="photo.source_count > 1"
               >{{ photo.source_count }} 个来源</span
             ></span

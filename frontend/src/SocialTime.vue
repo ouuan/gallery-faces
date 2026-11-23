@@ -1,42 +1,46 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, useId } from 'vue';
+import { computed, onMounted, onUnmounted, ref, useId, watch } from 'vue';
 import { NTooltip } from 'naive-ui';
 import { dateLabel } from './api';
 import { socialTime, useClock } from './social-time';
 
-const props = defineProps<{ value: string; inCard?: boolean }>();
+const props = defineProps<{ value: string; inCard?: boolean; disabled?: boolean }>();
 const now = useClock();
 const full = computed(() => Number.isFinite(Date.parse(props.value)) ? dateLabel(props.value) : '缺少日期');
 const element = ref<HTMLElement>();
 const tooltipId = useId();
-const anchor = ref<{ x: number; y: number }>();
+const visible = ref(false);
 let card: HTMLElement | null;
 function show() {
-  const box = element.value?.getBoundingClientRect();
-  if (box) anchor.value = { x: box.left + box.width / 2, y: box.top };
+  if (!props.disabled) visible.value = true;
 }
 function hide() {
-  anchor.value = undefined;
-  document.removeEventListener('pointerdown', outside, true);
+  visible.value = false;
 }
 function outside(event: Event) { if (!element.value?.contains(event.target as Node)) hide(); }
-function openTip() {
-  show();
-  document.addEventListener('pointerdown', outside, true);
+function onFocus(event: FocusEvent) {
+  if ((event.currentTarget as HTMLElement).matches(':focus-visible')) show();
 }
+function onCardKey(event: KeyboardEvent) { if (event.key === 'Escape') hide(); }
+watch(() => props.disabled, disabled => { if (disabled) hide(); });
 onMounted(() => {
   card = props.inCard ? element.value?.closest('button') ?? null : null;
-  card?.addEventListener('focus', show);
+  card?.addEventListener('focus', onFocus);
   card?.addEventListener('blur', hide);
+  card?.addEventListener('keydown', onCardKey);
 });
 onUnmounted(() => {
-  card?.removeEventListener('focus', show);
+  card?.removeEventListener('focus', onFocus);
   card?.removeEventListener('blur', hide);
-  document.removeEventListener('pointerdown', outside, true);
+  card?.removeEventListener('keydown', onCardKey);
 });
 </script>
 <template>
-  <time ref="element" :datetime="value" :aria-label="full" :aria-describedby="anchor ? tooltipId : undefined" :tabindex="inCard ? undefined : 0"
-    @pointerenter="show" @pointerleave="hide" @focus="show" @blur="hide" @click.stop="openTip" @keydown.esc="hide">{{ socialTime(value, now) }}</time>
-  <n-tooltip v-if="anchor" :show="true" trigger="manual" :x="anchor.x" :y="anchor.y" :animated="false"><span :id="tooltipId" role="tooltip">{{ full }}</span></n-tooltip>
+  <n-tooltip :show="visible" :disabled="disabled" trigger="manual" :animated="false" @clickoutside="outside">
+    <template #trigger>
+      <time ref="element" :datetime="value" :aria-label="full" :aria-describedby="visible ? tooltipId : undefined" :tabindex="inCard ? undefined : 0"
+        @pointerenter="show" @pointerleave="hide" @focus="onFocus" @blur="hide" @click.stop="show" @keydown.esc="hide">{{ socialTime(value, now) }}</time>
+    </template>
+    <span :id="tooltipId" role="tooltip">{{ full }}</span>
+  </n-tooltip>
 </template>
