@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import LoadingOverlay from "./LoadingOverlay.vue";
-import { ref, watch, computed, onMounted, onUnmounted } from "vue";
+import { ref, watch, computed, nextTick, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   NButton,
@@ -50,6 +50,38 @@ const photos = ref<Photo[]>([]),
   detail = ref<Photo | null>(null),
   detailError = ref(""),
   zoom = ref(1);
+const viewport = ref<HTMLElement | null>(null), photoImage = ref<HTMLImageElement | null>(null);
+const drag = ref<{ pointer: number; x: number; y: number; left: number; top: number } | null>(null);
+
+async function zoomTo(value: number, point?: MouseEvent) {
+  const frame = viewport.value, image = photoImage.value;
+  const scale = Math.max(1, Math.min(3, value));
+  if (!frame || !image || scale === zoom.value) return;
+  const before = image.getBoundingClientRect(), bounds = frame.getBoundingClientRect();
+  if (!before.width || !before.height) return;
+  const x = point?.clientX ?? bounds.left + bounds.width / 2;
+  const y = point?.clientY ?? bounds.top + bounds.height / 2;
+  const fractionX = (x - before.left) / before.width, fractionY = (y - before.top) / before.height;
+  zoom.value = scale;
+  await nextTick();
+  if (frame !== viewport.value || zoom.value !== scale) return;
+  const after = image.getBoundingClientRect();
+  frame.scrollBy(after.left + fractionX * after.width - x, after.top + fractionY * after.height - y);
+}
+function wheelZoom(event: WheelEvent) {
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.value!.clientHeight : 1;
+  zoomTo(zoom.value * Math.exp(-event.deltaY * unit * 0.002), event);
+}
+function startDrag(event: PointerEvent) {
+  const frame = viewport.value;
+  if (!frame || event.pointerType !== 'mouse' || event.button !== 0 || zoom.value <= 1) return;
+  frame.setPointerCapture(event.pointerId);
+  drag.value = { pointer: event.pointerId, x: event.clientX, y: event.clientY, left: frame.scrollLeft, top: frame.scrollTop };
+}
+function pan(event: PointerEvent) {
+  const start = drag.value;
+  if (start?.pointer === event.pointerId) viewport.value?.scrollTo(start.left + start.x - event.clientX, start.top + start.y - event.clientY);
+}
 const alternate = (document.getElementById('gallery-rss') as HTMLLinkElement | null) ?? document.createElement('link');
 Object.assign(alternate, { id: 'gallery-rss', rel: 'alternate', type: 'application/rss+xml', title: '订阅图库 RSS' });
 watch([postOpen, () => feedHref(filter.value)], ([open, href]) => {
@@ -209,6 +241,7 @@ async function loadDetail() {
   detailError.value = "";
   detail.value = null;
   zoom.value = 1;
+  drag.value = null;
   if (!selectedId.value) return;
   try {
     const result = await api<Photo>(
@@ -449,10 +482,10 @@ onUnmounted(() => {
           ><ChevronRight /></n-button>
         </div>
         <div class="lightbox-tool-group" role="group" aria-label="图片操作">
-          <n-button aria-label="缩小" :disabled="zoom <= 1" @click="zoom = Math.max(1, zoom - 0.25)">
+          <n-button aria-label="缩小" :disabled="zoom <= 1" @click="zoomTo(zoom - 0.25)">
             <ZoomOut />
           </n-button>
-          <n-button aria-label="放大" :disabled="zoom >= 3" @click="zoom += 0.25">
+          <n-button aria-label="放大" :disabled="!detail || zoom >= 3" @click="zoomTo(zoom + 0.25)">
             <ZoomIn />
           </n-button>
           <a
@@ -468,17 +501,20 @@ onUnmounted(() => {
         >{{ detailError }}<n-button @click="loadDetail">重试</n-button></n-alert
       >
       <div v-else-if="detail" class="detail-body">
-        <div class="detail-image loading-region" :aria-busy="!detailImageUrls.has(detail.image_id) && !failedDetailImages.has(detail.image_id)">
+        <div ref="viewport" class="detail-image loading-region" :class="{ zoomed: zoom > 1, dragging: drag }"
+          :aria-busy="!detailImageUrls.has(detail.image_id) && !failedDetailImages.has(detail.image_id)"
+          @wheel.prevent="wheelZoom" @dblclick="zoomTo(zoom > 1 ? 1 : 2, $event)"
+          @pointerdown="startDrag" @pointermove="pan" @lostpointercapture="drag = null">
           <img
+            ref="photoImage"
             :key="detail.image_id"
             :src="!failedDetailImages.has(detail.image_id) && detailImageUrls.get(detail.image_id) || detail.thumbnail_url"
             :style="{
-              width: zoom === 1 ? `${detail.width}px` : `${zoom * 100}%`,
-              height: 'auto',
-              maxWidth: zoom === 1 ? '100%' : 'none',
-              maxHeight: zoom === 1 ? '100%' : 'none',
+              width: `calc(min(${detail.width}px, 100cqw, ${100 * detail.width / detail.height}cqh) * ${zoom})`,
+              aspectRatio: `${detail.width} / ${detail.height}`,
             }"
             alt="当前照片"
+            draggable="false"
             @error="detailImageUrls.has(detail.image_id) && failedDetailImages.add(detail.image_id)"
           />
           <LoadingOverlay :show="failedDetailImages.has(detail.image_id) || !detailImageUrls.has(detail.image_id)" center :error="failedDetailImages.has(detail.image_id)" :label="failedDetailImages.has(detail.image_id) ? '图片加载失败' : '正在加载图片…'" />

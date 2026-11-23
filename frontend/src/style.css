@@ -530,12 +530,18 @@ svg {
   min-height: 0;
 }
 .detail-image {
+  container-type: size;
   background: var(--bg);
   overflow: auto;
+  scrollbar-width: none;
+  user-select: none;
   display: flex;
   align-items: safe center;
   justify-content: safe center;
 }
+.detail-image img { cursor: zoom-in; }
+.detail-image.zoomed, .detail-image.zoomed img { cursor: grab; }
+.detail-image.dragging, .detail-image.dragging img { cursor: grabbing; }
 .detail-image img {
   object-fit: contain;
   flex-shrink: 0;
