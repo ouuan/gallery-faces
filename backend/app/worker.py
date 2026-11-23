@@ -418,7 +418,7 @@ def restore_task(task):
                 queue_image_cleanup(db, current)
 
 
-def claim(kinds=("detect", "rematch", "import", "download", "restore", "monitor")):
+def claim(kinds=("detect", "rematch", "import", "download", "restore", "monitor", "avatar")):
     with connect(True) as db:
         placeholders = ",".join("?" for _ in kinds)
         ordering = 't.id' if set(kinds) <= {'detect', 'rematch'} else 't.queue_rank_at,t.rounds,t.id'
@@ -527,6 +527,9 @@ def execute(task):
         elif task["kind"] == "restore":
             restore_task(task)
             return True
+        elif task['kind'] == 'avatar':
+            from .publisher_avatars import refresh
+            refresh(json.loads(task['payload']))
         else:
             import_task(task)
         with connect(True) as db:
@@ -698,7 +701,7 @@ def run_worker(stop, limits, min_idle):
                 next_schedule = time.monotonic() + 30
             for executor, limit, kinds in (
                 (compute, concurrency, ("detect", "rematch")),
-                (io, 1, ("download", "import", "restore", "monitor")),
+                (io, 1, ("download", "import", "restore", "monitor", "avatar")),
             ):
                 finished = {future for future in running[executor] if future.done()}
                 for future in finished:

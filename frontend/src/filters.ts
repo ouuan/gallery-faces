@@ -55,3 +55,12 @@ export const hasFilters = (f: Filter) => Boolean(
 export const clearFilters = (f: Filter): Filter => ({ ...emptyFilter(), sort: f.sort });
 
 export const dailyQuery = (filter: Filter) => toQuery({ ...filter, sort: 'newest' });
+
+export function feedHref(filter: Filter) {
+  const query = new URLSearchParams(dailyQuery(filter)).toString();
+  return '/api/v1/gallery/rss.xml' + (query ? '?' + query : '');
+}
+
+export const publisherRoute = (platform: string, author: string) => ({
+  path: '/', query: { publishers: `${platform}:${author}` },
+});

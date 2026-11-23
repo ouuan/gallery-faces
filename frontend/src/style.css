@@ -595,6 +595,8 @@ svg {
   display: grid;
   gap: 0;
 }
+.source-header h3 { display: flex; align-items: center; gap: 4px; }
+.source-header h3 .source-title-link { min-width: 0; }
 .detail-sidebar .source-meta {
   display: flex;
   flex-wrap: wrap;

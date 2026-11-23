@@ -52,8 +52,12 @@ ZIP 响应不缓存，并设置 `X-Accel-Buffering: no`。反向代理应保留�
 
 在应用域名上创建两条互斥规则（将 `gallery.example.com` 替换为实际域名）：
 
-1. **公开静态资源**：表达式 `(http.host eq "gallery.example.com" and (starts_with(http.request.uri.path, "/assets/") or starts_with(http.request.uri.path, "/api/v1/media/by-hash/")))`。Cache eligibility 选 **Eligible for cache**；Edge TTL 选遵循源站 Cache-Control、缺少该响应头时绕过缓存；Browser TTL 选 **Respect origin**。
-2. **其余请求**：表达式 `(http.host eq "gallery.example.com" and not (starts_with(http.request.uri.path, "/assets/") or starts_with(http.request.uri.path, "/api/v1/media/by-hash/")))`。Cache eligibility 选 **Bypass cache**。
+1. **公开静态资源**：表达式 `(http.host eq "gallery.example.com" and (starts_with(http.request.uri.path, "/assets/") or starts_with(http.request.uri.path, "/api/v1/media/by-hash/") or starts_with(http.request.uri.path, "/api/v1/publisher-avatars/by-hash/")))`。Cache eligibility 选 **Eligible for cache**；Edge TTL 选遵循源站 Cache-Control、缺少该响应头时绕过缓存；Browser TTL 选 **Respect origin**。
+2. **其余请求**：表达式 `(http.host eq "gallery.example.com" and not (starts_with(http.request.uri.path, "/assets/") or starts_with(http.request.uri.path, "/api/v1/media/by-hash/") or starts_with(http.request.uri.path, "/api/v1/publisher-avatars/by-hash/")))`。Cache eligibility 选 **Bypass cache**。
+
+发布者头像由 worker 按访问获取，同一平台账号共用缓存。距上次成功检查满 24 小时后，访问先返回现有头像，再排队刷新；失败保留旧图并退避重试。新头像使用新的内容哈希地址，账号查询接口及 RSS 不缓存。
+
+RSS 中的站内绝对链接使用请求的站点地址。对外部署时，反向代理需保留公开 `Host`，并向已配置为可信的后端传递正确的 `X-Forwarded-Proto`。
 
 保留完整查询字符串缓存键，尤其不能忽略 `download=true`。不要配置按管理员 cookie 绕过公开资源，也不要覆盖源站 TTL 或错误响应缓存策略。检查并移除冲突的旧 Page Rules、Cache Rules 和 Browser Cache TTL 覆盖。不要把存储目录作为静态目录公开。
 

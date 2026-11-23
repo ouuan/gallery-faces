@@ -42,6 +42,7 @@ export type Person = {
   avatar_reference_id: number | null;
 };
 export type Source = {
+  key?: string;
   id?: number;
   post_id?: number;
   platform: string;

@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, field_validator
 from .open_graph import render_open_graph
-from . import daily, list_queries, review_packages
+from . import daily, list_queries, publisher_avatars, review_packages, social
 from .review_format import fits
 from .group_index import REVIEW_FLAGS
 from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, cleanup_deleted_files, startup_phase
@@ -137,7 +137,7 @@ class SecurityHeaders:
                     headers.update({'Cache-Control': 'no-store', 'Cloudflare-CDN-Cache-Control': 'no-store'})
                 elif path.startswith('/assets/'):
                     headers['Cache-Control'] = IMMUTABLE
-                elif path.startswith('/api/v1/media/by-hash/'):
+                elif path.startswith(('/api/v1/media/by-hash/', '/api/v1/publisher-avatars/by-hash/')):
                     headers.setdefault('Cache-Control', 'no-store')
                 elif path.startswith('/api/'):
                     headers['Cache-Control'] = 'no-store'
@@ -836,6 +836,7 @@ class GalleryPage(BaseModel):
 
 def source_record(row):
     source = dict(row)
+    source['key'] = social.post_key(row)
     source.pop('embed_id')
     try:
         coauthors = json.loads(source.get("coauthors") or "[]")
@@ -877,6 +878,71 @@ class PublicPost(BaseModel):
 class PostPage(BaseModel):
     items: list[PublicPost]
     next_cursor: str | None
+
+
+class PostPicture(BaseModel):
+    id: int
+    width: int
+    height: int
+    people: list[dict]
+    image_url: str
+    thumbnail_url: str
+
+
+class PostDetail(BaseModel):
+    key: str
+    platform: str
+    author: str
+    author_name: str | None
+    published_at: str
+    url: str
+    post_text: str | None
+    coauthors: list[dict]
+    images: list[PostPicture]
+
+
+@app.get('/api/v1/publisher-avatars/by-hash/{digest}', response_class=Response,
+         responses={200: {'content': {'image/jpeg': {}}}})
+def publisher_avatar_image(digest: str):
+    return Response(publisher_avatars.image_bytes(digest), media_type='image/jpeg', headers={'Cache-Control': IMMUTABLE})
+
+
+class PublisherAvatar(BaseModel):
+    image_url: str | None
+    pending: bool
+
+
+@app.get('/api/v1/publisher-avatars/{platform}/{username}', response_model=PublisherAvatar)
+def publisher_avatar(platform: Literal['x', 'instagram'], username: str):
+    return publisher_avatars.status(platform, username)
+
+
+@app.get('/api/v1/posts/{key}', response_model=PostDetail)
+def post_detail(key: str):
+    with connect() as db:
+        db.execute('BEGIN')
+        row = social.find_post(db, key)
+        if not row:
+            fail('帖子不存在或已不可见', 404)
+        return social.hydrate(db, [row['id']], media_urls, gallery_labels)[0]
+
+
+class RSSResponse(Response):
+    media_type = 'application/rss+xml'
+
+
+@app.get(social.RSS_PATH, response_class=RSSResponse)
+def gallery_feed(request: Request, people: str = '', match: PeopleMatch = 'any', publishers: str = '',
+                 start: str = '', end: str = '', include_no_faces: bool = False):
+    ids, accounts = parse_people_publishers(people, publishers)
+    source, args = source_filter(accounts, *date_bounds(start, end), post='{post}')
+    with connect() as db:
+        db.execute('BEGIN')
+        rows = list_queries.post_rows(db, ids, match, source, args, include_no_faces, 'newest', (), 20)
+        entries = social.hydrate(db, [row['id'] for row in rows][:20], media_urls, gallery_labels,
+                                 ids, match, source.format(post='p'), args, include_no_faces)
+        title = settings(db)['site_title']
+    return RSSResponse(social.render_feed(title, str(request.base_url).rstrip('/'), request.query_params, entries))
 
 
 @app.get('/api/v1/posts', response_model=PostPage)
@@ -1922,7 +1988,7 @@ def import_create(body: ImportInput, _: None = Depends(admin)):
 def tasks(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    kind: list[Literal["download", "import", "detect", "rematch", "restore", "monitor"]] = Query(default=[]),
+    kind: list[Literal["download", "import", "detect", "rematch", "restore", "monitor", "avatar"]] = Query(default=[]),
     status: list[Literal["queued", "running", "done", "failed", "cancelled"]] = Query(default=[]),
     _: None = Depends(admin),
 ):
@@ -1964,6 +2030,8 @@ def task_action(
                 (task_id,),
             )
         elif row["status"] in ("failed", "cancelled"):
+            if row['kind'] == 'avatar' and db.execute("SELECT 1 FROM tasks WHERE kind='avatar' AND payload=? AND status IN ('queued','running')", (row['payload'],)).fetchone():
+                fail('已有头像更新任务', 409)
             if row["kind"] == "monitor":
                 from .monitors import enqueue
                 tid = enqueue(db, json.loads(row["payload"])["monitor_id"], retry=row)
@@ -2212,6 +2280,10 @@ def spa(request: Request, path: str):
         metadata = render_open_graph(settings(db))
     html = (static / "index.html").read_text(encoding="utf-8")
     html = html.replace("<!--open-graph-->", metadata)
+    if not path:
+        from html import escape
+        suffix = social.query(request.query_params) if 'query_string' in request.scope else ''
+        html = html.replace('</head>', f'<link id="gallery-rss" rel="alternate" type="application/rss+xml" title="订阅图库 RSS" href="{social.RSS_PATH}{escape(suffix)}"></head>')
     return HTMLResponse(html, headers={"Cache-Control": "no-store", "Cloudflare-CDN-Cache-Control": "no-store"})
 
 

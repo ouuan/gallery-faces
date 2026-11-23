@@ -25,17 +25,19 @@ import {
 import { useLibrary } from "./store";
 import { usePageTitle } from "./page-title";
 import { api, dateLabel, platformLabel, type Photo } from "./api";
+import SocialTime from './SocialTime.vue';
 import { t } from "./locale";
-import { hasFilters, clearFilters, emptyFilter, fromQuery, toQuery, type Filter } from "./filters";
+import { feedHref, hasFilters, clearFilters, emptyFilter, fromQuery, toQuery, type Filter } from "./filters";
 import Filters from "./Filters.vue";
 import FeedbackPanel from "./FeedbackPanel.vue";
 import SourceText from "./SourceText.vue";
 import { useMasonry } from "./use-masonry";
 import { useImageDownloads } from "./use-review-images";
-usePageTitle("照片库");
 const store = useLibrary(),
   route = useRoute(),
   router = useRouter();
+const postOpen = computed(() => route.name === 'gallery-post');
+usePageTitle(() => postOpen.value ? '帖子详情' : '照片库');
 const filter = computed(() => fromQuery(route.query)),
   draft = ref(emptyFilter()),
   drawer = ref(false),
@@ -48,6 +50,13 @@ const photos = ref<Photo[]>([]),
   detail = ref<Photo | null>(null),
   detailError = ref(""),
   zoom = ref(1);
+const alternate = (document.getElementById('gallery-rss') as HTMLLinkElement | null) ?? document.createElement('link');
+Object.assign(alternate, { id: 'gallery-rss', rel: 'alternate', type: 'application/rss+xml', title: '订阅图库 RSS' });
+watch([postOpen, () => feedHref(filter.value)], ([open, href]) => {
+  if (open) alternate.remove();
+  else { alternate.href = href; document.head.append(alternate); }
+}, { immediate: true });
+onUnmounted(() => alternate.remove());
 const authenticated = ref(false);
 const selecting = ref(false),
   downloadSelection = ref(new Set<number>()),
@@ -132,7 +141,7 @@ useMasonry(photoGrid, () => layout.value === "masonry", () => photos.value);
 let requestVersion = 0,
   detailVersion = 0,
   lastFocus: HTMLElement | null = null;
-const selectedId = computed(() => Number(route.query.photo) || null);
+const selectedId = computed(() => !postOpen.value && Number(route.query.photo) || null);
 const { urls: detailImageUrls, failed: failedDetailImages } = useImageDownloads(() =>
   selectedId.value && detail.value?.id === selectedId.value && detail.value.image_url
     ? [{ id: detail.value.image_id, url: detail.value.image_url }] : [],
@@ -190,6 +199,7 @@ function open(photo: Photo) {
   });
 }
 function close() {
+  if (window.history.state?.fromPost) { router.back(); return; }
   const { photo, source, ...query } = route.query;
   router.replace({ query });
   nextTick(() => lastFocus?.focus());
@@ -227,6 +237,7 @@ function move(delta: number) {
     });
 }
 function keys(event: KeyboardEvent) {
+  if (postOpen.value) return;
   if (event.key === "Escape" && selecting.value && !drawer.value && !selectedId.value) {
     stopSelecting();
     return;
@@ -238,7 +249,6 @@ function keys(event: KeyboardEvent) {
     return;
   if (event.key === "ArrowLeft") move(-1);
   if (event.key === "ArrowRight") move(1);
-  if (event.key === "Escape") close();
 }
 watch(
   () => JSON.stringify(toQuery(filter.value)),
@@ -381,7 +391,7 @@ onUnmounted(() => {
             }}</strong
             ><span
               >{{ store.publisherName(photo.matched_source) }} ·
-              {{ dateLabel(photo.matched_source.published_at) }}</span
+              <SocialTime :value="photo.matched_source.published_at" in-card /></span
             ><span v-if="photo.source_count > 1"
               >{{ photo.source_count }} 个来源</span
             ></span
@@ -484,10 +494,9 @@ onUnmounted(() => {
             <div v-for="source in detail.sources" :key="source.id" class="source-block">
               <header class="source-header">
                 <h3>
-                  <a class="source-title-link" :href="source.url" target="_blank" rel="noopener noreferrer">
+                  <router-link class="source-title-link" :to="{ path: '/posts/' + (source.key ?? `${source.platform}:record:${source.id}`), query: toQuery(filter), state: { fromPhoto: true } }">
                     <span>{{ platformLabel(source.platform) }} · {{ store.publisherName(source) }}</span>
-                    <ExternalLink :size="14" aria-hidden="true" />
-                  </a>
+                  </router-link><a class="icon-link" :href="source.url" target="_blank" rel="noopener noreferrer" title="打开原帖" aria-label="打开原帖"><ExternalLink :size="16" aria-hidden="true" /></a>
                 </h3>
                 <div class="source-meta">
                   <time :datetime="source.published_at">{{ dateLabel(source.published_at) }}</time>
@@ -509,4 +518,5 @@ onUnmounted(() => {
       </div>
       <div v-else class="detail-loading loading-region" aria-busy="true"><LoadingOverlay show center label="正在加载照片详情" /></div></div
   ></n-modal>
+  <router-view />
 </template>

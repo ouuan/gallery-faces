@@ -8,13 +8,15 @@ import "./style.css";
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", component: Gallery },
+    { path: "/", component: Gallery, children: [
+      { path: "posts/:key", name: "gallery-post", component: () => import("./PostDetail.vue"), props: route => ({ postKey: route.params.key }) },
+    ] },
     { path: "/daily", component: () => import("./DailyPhoto.vue") },
     { path: "/admin/:section?", component: Admin },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
   scrollBehavior(to, from, saved) {
-    if (to.path === from.path) return;
+    if (to.path === from.path || (to.matched[0] && to.matched[0] === from.matched[0])) return;
     return saved || { top: 0 };
   },
 });

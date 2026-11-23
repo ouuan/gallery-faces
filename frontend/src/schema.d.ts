@@ -299,6 +299,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/publisher-avatars/by-hash/{digest}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Publisher Avatar Image */
+        get: operations["publisher_avatar_image_api_v1_publisher_avatars_by_hash__digest__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/publisher-avatars/{platform}/{username}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Publisher Avatar */
+        get: operations["publisher_avatar_api_v1_publisher_avatars__platform___username__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/posts/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Post Detail */
+        get: operations["post_detail_api_v1_posts__key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gallery/rss.xml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Gallery Feed */
+        get: operations["gallery_feed_api_v1_gallery_rss_xml_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/posts": {
         parameters: {
             query?: never;
@@ -2052,6 +2120,29 @@ export interface components {
             /** Name Ja */
             name_ja: string;
         };
+        /** PostDetail */
+        PostDetail: {
+            /** Key */
+            key: string;
+            /** Platform */
+            platform: string;
+            /** Author */
+            author: string;
+            /** Author Name */
+            author_name: string | null;
+            /** Published At */
+            published_at: string;
+            /** Url */
+            url: string;
+            /** Post Text */
+            post_text: string | null;
+            /** Coauthors */
+            coauthors: {
+                [key: string]: unknown;
+            }[];
+            /** Images */
+            images: components["schemas"]["PostPicture"][];
+        };
         /** PostEdit */
         PostEdit: {
             /** Author */
@@ -2072,6 +2163,23 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** PostPicture */
+        PostPicture: {
+            /** Id */
+            id: number;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** People */
+            people: {
+                [key: string]: unknown;
+            }[];
+            /** Image Url */
+            image_url: string;
+            /** Thumbnail Url */
+            thumbnail_url: string;
+        };
         /** PublicPost */
         PublicPost: {
             /** Id */
@@ -2090,6 +2198,13 @@ export interface components {
             author_name: string | null;
             /** Published At */
             published_at: string;
+        };
+        /** PublisherAvatar */
+        PublisherAvatar: {
+            /** Image Url */
+            image_url: string | null;
+            /** Pending */
+            pending: boolean;
         };
         /** PublisherCandidate */
         PublisherCandidate: {
@@ -3009,6 +3124,136 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publisher_avatar_image_api_v1_publisher_avatars_by_hash__digest__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                digest: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publisher_avatar_api_v1_publisher_avatars__platform___username__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                platform: "x" | "instagram";
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublisherAvatar"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_detail_api_v1_posts__key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gallery_feed_api_v1_gallery_rss_xml_get: {
+        parameters: {
+            query?: {
+                people?: string;
+                match?: "any" | "all" | "exact" | "subset";
+                publishers?: string;
+                start?: string;
+                end?: string;
+                include_no_faces?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/rss+xml": string;
                 };
             };
             /** @description Validation Error */
@@ -3984,7 +4229,7 @@ export interface operations {
             query?: {
                 page?: number;
                 page_size?: number;
-                kind?: ("download" | "import" | "detect" | "rematch" | "restore" | "monitor")[];
+                kind?: ("download" | "import" | "detect" | "rematch" | "restore" | "monitor" | "avatar")[];
                 status?: ("queued" | "running" | "done" | "failed" | "cancelled")[];
             };
             header?: never;

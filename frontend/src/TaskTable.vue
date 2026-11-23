@@ -1,5 +1,6 @@
 <script lang="ts">
 export const taskKindLabels: Record<string, string> = {
+  avatar: "发布者头像",
   monitor: "发布者监控", download: "链接下载", import: "目录导入", detect: "人脸检测", rematch: "人物匹配", restore: "图片恢复",
 };
 export const taskStatusLabels: Record<string, string> = {

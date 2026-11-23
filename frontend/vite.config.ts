@@ -1,10 +1,16 @@
 import { defineConfig } from "vitest/config";
 import vue from "@vitejs/plugin-vue";
+import { feedHref, fromQuery } from './src/filters.ts';
 export default defineConfig(({ mode, command }) => ({
   plugins: [vue(), {
     name: 'edition-html',
-    transformIndexHtml: { order: "pre", async handler(html) {
+    transformIndexHtml: { order: "pre", async handler(html, context) {
       if (command === 'serve') {
+        const page = new URL(context.originalUrl || context.path, 'http://localhost');
+        if (mode !== 'ja' && page.pathname === '/') {
+          const href = feedHref(fromQuery(Object.fromEntries(page.searchParams))).replaceAll('&', '&amp;');
+          html = html.replace('</head>', `<link id="gallery-rss" rel="alternate" type="application/rss+xml" title="订阅图库 RSS" href="${href}"></head>`);
+        }
         try {
           const origin = process.env.API_PROXY_TARGET || 'http://127.0.0.1:8000';
           const response = await fetch(`${origin}/api/v1/site/open-graph?locale=${mode === 'ja' ? 'ja' : 'zh'}`, { signal: AbortSignal.timeout(2000) });
@@ -20,6 +26,6 @@ export default defineConfig(({ mode, command }) => ({
     } },
   }],
   build: { outDir: mode === 'ja' ? 'dist-ja' : 'dist' },
-  server: { proxy: { "/api": process.env.API_PROXY_TARGET || "http://127.0.0.1:8000" } },
+  server: { proxy: { "/api": { target: process.env.API_PROXY_TARGET || "http://127.0.0.1:8000", changeOrigin: false } } },
   test: { environment: "jsdom", include: ["tests/**/*.test.ts"] },
 }));
