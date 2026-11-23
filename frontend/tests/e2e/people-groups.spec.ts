@@ -3,9 +3,9 @@ import { expect, test } from "@playwright/test";
 test("people groups expand independently and load avatars only for visible members", async ({ page }) => {
   const groups = [{ id: 1, name: "朋友" }, { id: 2, name: "同事" }];
   const people = [
-    { id: 1, name: "共同成员", groups },
-    { id: 2, name: "同事甲", groups: [groups[1]] },
-    { id: 3, name: "独立人物", groups: [] },
+    { id: 1, name: "共同成员", groups, photo_group_count: 12 },
+    { id: 2, name: "同事甲", groups: [groups[1]], photo_group_count: 3 },
+    { id: 3, name: "独立人物", groups: [], photo_group_count: 0 },
   ].map(person => ({ ...person, accounts: [], reference_count: 1, avatar_reference_id: person.id }));
   const crops = new Set<number>();
   await page.route("**/api/v1/**", route => {
@@ -32,6 +32,7 @@ test("people groups expand independently and load avatars only for visible membe
   await expect.poll(() => [...crops]).toEqual([1]);
   await colleagues.click();
   await expect(shared).toHaveCount(2);
+  await expect(page.getByText("12 张图库照片", { exact: true })).toHaveCount(2);
   await expect.poll(() => [...crops]).toEqual([1, 2]);
   await friends.press("Space");
   await expect(shared).toHaveCount(1);
@@ -43,4 +44,5 @@ test("people groups expand independently and load avatars only for visible membe
   await expect(colleagues).toHaveAttribute("aria-expanded", "true");
   await ungrouped.click();
   await expect(page.getByRole("heading", { name: "独立人物" })).toBeVisible();
+  await expect(page.getByText("0 张图库照片", { exact: true })).toBeVisible();
 });

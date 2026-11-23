@@ -297,6 +297,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
               </p>
             </div>
             <div>
+              <p>{{ person.photo_group_count }} 张图库照片</p>
               <p>{{ person.reference_count }} 张参考图</p>
               <p v-if="!person.reference_count" class="hint">尚不能自动匹配</p>
             </div>

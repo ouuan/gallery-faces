@@ -372,7 +372,8 @@ def people():
     with connect() as db:
         db.execute('BEGIN')
         result = {row['id']: dict(row, groups=[], accounts=[], reference_count=0, avatar_reference_id=None)
-                  for row in db.execute('SELECT * FROM people ORDER BY id')}
+                  for row in db.execute('''SELECT p.*, (SELECT count(*) FROM public_group_people WHERE person_id=p.id) AS photo_group_count
+                                           FROM people p ORDER BY p.id''')}
         for row in db.execute('SELECT pg.person_id,g.* FROM person_groups pg JOIN groups g ON g.id=pg.group_id ORDER BY pg.person_id,g.id'):
             group = dict(row)
             result[group.pop('person_id')]['groups'].append(group)

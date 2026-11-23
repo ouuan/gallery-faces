@@ -50,6 +50,21 @@ def test_incremental_indexes_follow_members_sources_faces_and_feedback(client):
         assert_matches_rebuild()
 
 
+def test_people_photo_counts_match_public_gallery_groups(client):
+    with db.connect(True) as conn:
+        conn.execute("INSERT INTO people(id,name) VALUES(1,'one'),(2,'two')")
+        first = image(conn)
+        image(conn, group=first)
+        image(conn)
+        image(conn, author=None)
+        conn.execute('UPDATE faces SET person_id=1')
+        conn.execute("INSERT INTO faces(image_id,box,person_id) VALUES(?,'[]',1)", (first,))
+    people = client.get('/api/v1/people').json()
+    for person, expected in zip(people, [2, 0], strict=True):
+        gallery = client.get('/api/v1/gallery', params={'people': person['id']}).json()
+        assert person['photo_group_count'] == gallery['total'] == expected
+
+
 def test_refresh_is_atomic_for_readers_and_savepoints(client, monkeypatch):
     with db.connect(True) as conn:
         first = image(conn)

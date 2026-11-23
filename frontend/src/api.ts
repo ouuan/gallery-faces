@@ -37,6 +37,7 @@ export type Person = {
   name_ja?: string | null;
   groups: { id: number; name: string; name_ja?: string | null }[];
   accounts: { platform: string; username: string }[];
+  photo_group_count: number;
   reference_count: number;
   avatar_reference_id: number | null;
 };
