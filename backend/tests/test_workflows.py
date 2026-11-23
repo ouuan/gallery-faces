@@ -1328,6 +1328,17 @@ def test_detection_upgrade_append_retry(client):
     assert worker.claim(('detect',)) is None
 
 
+@pytest.mark.parametrize('kinds', [(('download', 'import', 'restore', 'monitor', 'avatar'),), ()], ids=['io', 'all'])
+def test_claim_prioritizes_publisher_avatars(client, kinds):
+    with db.connect(True) as conn:
+        conn.executemany('INSERT INTO tasks(kind,queue_rank_at) VALUES(?,?)', [('import', 2), ('download', 1)])
+        conn.executemany("INSERT INTO tasks(kind,payload,queue_rank_at) VALUES('avatar',?,3)",
+                         [('{"username":"alice"}',), ('{"username":"bob"}',)])
+        expected = [row[0] for row in conn.execute('SELECT id FROM tasks ORDER BY id')]
+    imported, download, first_avatar, second_avatar = expected
+    assert [worker.claim(*kinds)['id'] for _ in expected] == [first_avatar, second_avatar, download, imported]
+
+
 @pytest.mark.parametrize('kinds', [(('detect', 'rematch'),), ()], ids=['compute', 'all'])
 def test_claim_prioritizes_manual_redetection_then_ordinary_rematches(client, kinds):
     with db.connect(True) as conn:

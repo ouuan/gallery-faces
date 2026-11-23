@@ -428,6 +428,8 @@ def claim(kinds=("detect", "rematch", "import", "download", "restore", "monitor"
             ordering = """CASE WHEN (t.kind='detect' AND json_extract(t.payload,'$.mode')='highres')
                 OR (t.kind='rematch' AND json_extract(t.payload,'$.refresh_all')=1)
                 THEN 0 ELSE 1 END,""" + ordering
+        if 'avatar' in kinds:
+            ordering = "(t.kind='avatar') DESC," + ordering
         task = db.execute(
             f"""
             SELECT t.* FROM tasks t WHERE t.status='queued' AND t.kind IN ({placeholders})
