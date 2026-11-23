@@ -1,0 +1,593 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-23T17:15:48.669Z",
+  "title": "Design System: Gallery Faces",
+  "extensions": {
+    "colorMeta": {
+      "bg": {
+        "role": "neutral",
+        "displayName": "画布灰",
+        "canonical": "#f6f7f9",
+        "tonalRamp": [
+          "oklch(0.1500 0.0013 264.54)",
+          "oklch(0.2643 0.0021 264.54)",
+          "oklch(0.3786 0.0027 264.54)",
+          "oklch(0.4929 0.0029 264.54)",
+          "oklch(0.6071 0.0027 264.54)",
+          "oklch(0.7214 0.0022 264.54)",
+          "oklch(0.8357 0.0014 264.54)",
+          "oklch(0.9500 0.0004 264.54)"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "面板底色",
+        "canonical": "#fff",
+        "tonalRamp": [
+          "oklch(0.1500 0.0000 0.00)",
+          "oklch(0.2643 0.0000 0.00)",
+          "oklch(0.3786 0.0000 0.00)",
+          "oklch(0.4929 0.0000 0.00)",
+          "oklch(0.6071 0.0000 0.00)",
+          "oklch(0.7214 0.0000 0.00)",
+          "oklch(0.8357 0.0000 0.00)",
+          "oklch(0.9500 0.0000 0.00)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "主要文字",
+        "canonical": "#20242b",
+        "tonalRamp": [
+          "oklch(0.1500 0.0065 261.67)",
+          "oklch(0.2643 0.0106 261.67)",
+          "oklch(0.3786 0.0134 261.67)",
+          "oklch(0.4929 0.0144 261.67)",
+          "oklch(0.6071 0.0136 261.67)",
+          "oklch(0.7214 0.0111 261.67)",
+          "oklch(0.8357 0.0071 261.67)",
+          "oklch(0.9500 0.0023 261.67)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "次要文字",
+        "canonical": "#5c6470",
+        "tonalRamp": [
+          "oklch(0.1500 0.0098 258.37)",
+          "oklch(0.2643 0.0159 258.37)",
+          "oklch(0.3786 0.0200 258.37)",
+          "oklch(0.4929 0.0216 258.37)",
+          "oklch(0.6071 0.0203 258.37)",
+          "oklch(0.7214 0.0165 258.37)",
+          "oklch(0.8357 0.0106 258.37)",
+          "oklch(0.9500 0.0034 258.37)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "分隔线",
+        "canonical": "#dce1e7",
+        "tonalRamp": [
+          "oklch(0.1500 0.0045 252.82)",
+          "oklch(0.2643 0.0072 252.82)",
+          "oklch(0.3786 0.0091 252.82)",
+          "oklch(0.4929 0.0098 252.82)",
+          "oklch(0.6071 0.0093 252.82)",
+          "oklch(0.7214 0.0075 252.82)",
+          "oklch(0.8357 0.0048 252.82)",
+          "oklch(0.9500 0.0015 252.82)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "操作蓝",
+        "canonical": "#245ec7",
+        "tonalRamp": [
+          "oklch(0.1500 0.0794 261.13)",
+          "oklch(0.2643 0.1290 261.13)",
+          "oklch(0.3786 0.1623 261.13)",
+          "oklch(0.4929 0.1748 261.13)",
+          "oklch(0.6071 0.1650 261.13)",
+          "oklch(0.7214 0.1342 261.13)",
+          "oklch(0.8357 0.0863 261.13)",
+          "oklch(0.9500 0.0273 261.13)"
+        ]
+      },
+      "selection": {
+        "role": "primary",
+        "displayName": "选择底色",
+        "canonical": "#e5edfc",
+        "tonalRamp": [
+          "oklch(0.1500 0.0100 263.19)",
+          "oklch(0.2643 0.0162 263.19)",
+          "oklch(0.3786 0.0204 263.19)",
+          "oklch(0.4929 0.0220 263.19)",
+          "oklch(0.6071 0.0208 263.19)",
+          "oklch(0.7214 0.0169 263.19)",
+          "oklch(0.8357 0.0109 263.19)",
+          "oklch(0.9500 0.0034 263.19)"
+        ]
+      },
+      "bg-dark": {
+        "role": "neutral",
+        "displayName": "画布灰（深色）",
+        "canonical": "#17191d",
+        "tonalRamp": [
+          "oklch(0.1500 0.0038 264.38)",
+          "oklch(0.2643 0.0062 264.38)",
+          "oklch(0.3786 0.0079 264.38)",
+          "oklch(0.4929 0.0085 264.38)",
+          "oklch(0.6071 0.0080 264.38)",
+          "oklch(0.7214 0.0065 264.38)",
+          "oklch(0.8357 0.0042 264.38)",
+          "oklch(0.9500 0.0013 264.38)"
+        ]
+      },
+      "panel-dark": {
+        "role": "neutral",
+        "displayName": "面板底色（深色）",
+        "canonical": "#22262c",
+        "tonalRamp": [
+          "oklch(0.1500 0.0057 258.37)",
+          "oklch(0.2643 0.0093 258.37)",
+          "oklch(0.3786 0.0117 258.37)",
+          "oklch(0.4929 0.0126 258.37)",
+          "oklch(0.6071 0.0119 258.37)",
+          "oklch(0.7214 0.0097 258.37)",
+          "oklch(0.8357 0.0062 258.37)",
+          "oklch(0.9500 0.0020 258.37)"
+        ]
+      },
+      "text-dark": {
+        "role": "neutral",
+        "displayName": "主要文字（深色）",
+        "canonical": "#edf0f4",
+        "tonalRamp": [
+          "oklch(0.1500 0.0028 255.48)",
+          "oklch(0.2643 0.0046 255.48)",
+          "oklch(0.3786 0.0058 255.48)",
+          "oklch(0.4929 0.0063 255.48)",
+          "oklch(0.6071 0.0059 255.48)",
+          "oklch(0.7214 0.0048 255.48)",
+          "oklch(0.8357 0.0031 255.48)",
+          "oklch(0.9500 0.0010 255.48)"
+        ]
+      },
+      "muted-dark": {
+        "role": "neutral",
+        "displayName": "次要文字（深色）",
+        "canonical": "#b4bdc9",
+        "tonalRamp": [
+          "oklch(0.1500 0.0089 255.55)",
+          "oklch(0.2643 0.0145 255.55)",
+          "oklch(0.3786 0.0183 255.55)",
+          "oklch(0.4929 0.0197 255.55)",
+          "oklch(0.6071 0.0186 255.55)",
+          "oklch(0.7214 0.0151 255.55)",
+          "oklch(0.8357 0.0097 255.55)",
+          "oklch(0.9500 0.0031 255.55)"
+        ]
+      },
+      "line-dark": {
+        "role": "neutral",
+        "displayName": "分隔线（深色）",
+        "canonical": "#424a56",
+        "tonalRamp": [
+          "oklch(0.1500 0.0103 258.37)",
+          "oklch(0.2643 0.0168 258.37)",
+          "oklch(0.3786 0.0211 258.37)",
+          "oklch(0.4929 0.0227 258.37)",
+          "oklch(0.6071 0.0215 258.37)",
+          "oklch(0.7214 0.0175 258.37)",
+          "oklch(0.8357 0.0112 258.37)",
+          "oklch(0.9500 0.0036 258.37)"
+        ]
+      },
+      "accent-dark": {
+        "role": "primary",
+        "displayName": "操作蓝（深色）",
+        "canonical": "#85adff",
+        "tonalRamp": [
+          "oklch(0.1500 0.0575 263.78)",
+          "oklch(0.2643 0.0936 263.78)",
+          "oklch(0.3786 0.1176 263.78)",
+          "oklch(0.4929 0.1267 263.78)",
+          "oklch(0.6071 0.1196 263.78)",
+          "oklch(0.7214 0.0973 263.78)",
+          "oklch(0.8357 0.0626 263.78)",
+          "oklch(0.9500 0.0198 263.78)"
+        ]
+      },
+      "selection-dark": {
+        "role": "primary",
+        "displayName": "选择底色（深色）",
+        "canonical": "#263b60",
+        "tonalRamp": [
+          "oklch(0.1500 0.0318 261.08)",
+          "oklch(0.2643 0.0518 261.08)",
+          "oklch(0.3786 0.0651 261.08)",
+          "oklch(0.4929 0.0701 261.08)",
+          "oklch(0.6071 0.0662 261.08)",
+          "oklch(0.7214 0.0538 261.08)",
+          "oklch(0.8357 0.0346 261.08)",
+          "oklch(0.9500 0.0110 261.08)"
+        ]
+      },
+      "error-text": {
+        "role": "neutral",
+        "displayName": "错误文字",
+        "canonical": "#bd3b3b",
+        "tonalRamp": [
+          "oklch(0.1500 0.0756 24.60)",
+          "oklch(0.2643 0.1230 24.60)",
+          "oklch(0.3786 0.1547 24.60)",
+          "oklch(0.4929 0.1666 24.60)",
+          "oklch(0.6071 0.1573 24.60)",
+          "oklch(0.7214 0.1279 24.60)",
+          "oklch(0.8357 0.0822 24.60)",
+          "oklch(0.9500 0.0261 24.60)"
+        ]
+      },
+      "error-text-dark": {
+        "role": "neutral",
+        "displayName": "错误文字（深色）",
+        "canonical": "#ff9292",
+        "tonalRamp": [
+          "oklch(0.1500 0.0598 20.53)",
+          "oklch(0.2643 0.0972 20.53)",
+          "oklch(0.3786 0.1223 20.53)",
+          "oklch(0.4929 0.1317 20.53)",
+          "oklch(0.6071 0.1243 20.53)",
+          "oklch(0.7214 0.1011 20.53)",
+          "oklch(0.8357 0.0650 20.53)",
+          "oklch(0.9500 0.0206 20.53)"
+        ]
+      },
+      "placeholder": {
+        "role": "neutral",
+        "displayName": "输入占位文字",
+        "canonical": "#68717d",
+        "tonalRamp": [
+          "oklch(0.1500 0.0098 255.60)",
+          "oklch(0.2643 0.0160 255.60)",
+          "oklch(0.3786 0.0201 255.60)",
+          "oklch(0.4929 0.0217 255.60)",
+          "oklch(0.6071 0.0205 255.60)",
+          "oklch(0.7214 0.0166 255.60)",
+          "oklch(0.8357 0.0107 255.60)",
+          "oklch(0.9500 0.0034 255.60)"
+        ]
+      },
+      "placeholder-dark": {
+        "role": "neutral",
+        "displayName": "输入占位文字（深色）",
+        "canonical": "#a0a9b5",
+        "tonalRamp": [
+          "oklch(0.1500 0.0091 255.56)",
+          "oklch(0.2643 0.0149 255.56)",
+          "oklch(0.3786 0.0187 255.56)",
+          "oklch(0.4929 0.0201 255.56)",
+          "oklch(0.6071 0.0190 255.56)",
+          "oklch(0.7214 0.0154 255.56)",
+          "oklch(0.8357 0.0099 255.56)",
+          "oklch(0.9500 0.0031 255.56)"
+        ]
+      },
+      "accent-hover": {
+        "role": "primary",
+        "displayName": "操作蓝（悬停与聚焦）",
+        "canonical": "#1e50ab",
+        "tonalRamp": [
+          "oklch(0.1500 0.0707 261.18)",
+          "oklch(0.2643 0.1150 261.18)",
+          "oklch(0.3786 0.1446 261.18)",
+          "oklch(0.4929 0.1557 261.18)",
+          "oklch(0.6071 0.1470 261.18)",
+          "oklch(0.7214 0.1196 261.18)",
+          "oklch(0.8357 0.0769 261.18)",
+          "oklch(0.9500 0.0244 261.18)"
+        ]
+      },
+      "accent-pressed": {
+        "role": "primary",
+        "displayName": "操作蓝（按下）",
+        "canonical": "#19438f",
+        "tonalRamp": [
+          "oklch(0.1500 0.0611 261.11)",
+          "oklch(0.2643 0.0994 261.11)",
+          "oklch(0.3786 0.1249 261.11)",
+          "oklch(0.4929 0.1346 261.11)",
+          "oklch(0.6071 0.1271 261.11)",
+          "oklch(0.7214 0.1033 261.11)",
+          "oklch(0.8357 0.0664 261.11)",
+          "oklch(0.9500 0.0211 261.11)"
+        ]
+      },
+      "accent-hover-dark": {
+        "role": "primary",
+        "displayName": "操作蓝（深色悬停与聚焦）",
+        "canonical": "#a3c1ff",
+        "tonalRamp": [
+          "oklch(0.1500 0.0427 264.40)",
+          "oklch(0.2643 0.0695 264.40)",
+          "oklch(0.3786 0.0873 264.40)",
+          "oklch(0.4929 0.0941 264.40)",
+          "oklch(0.6071 0.0888 264.40)",
+          "oklch(0.7214 0.0722 264.40)",
+          "oklch(0.8357 0.0464 264.40)",
+          "oklch(0.9500 0.0147 264.40)"
+        ]
+      },
+      "accent-pressed-dark": {
+        "role": "primary",
+        "displayName": "操作蓝（深色按下）",
+        "canonical": "#6994e8",
+        "tonalRamp": [
+          "oklch(0.1500 0.0608 262.75)",
+          "oklch(0.2643 0.0988 262.75)",
+          "oklch(0.3786 0.1242 262.75)",
+          "oklch(0.4929 0.1338 262.75)",
+          "oklch(0.6071 0.1263 262.75)",
+          "oklch(0.7214 0.1027 262.75)",
+          "oklch(0.8357 0.0661 262.75)",
+          "oklch(0.9500 0.0209 262.75)"
+        ]
+      },
+      "on-primary": {
+        "role": "neutral",
+        "displayName": "主按钮文字",
+        "canonical": "#fff",
+        "tonalRamp": [
+          "oklch(0.1500 0.0000 0.00)",
+          "oklch(0.2643 0.0000 0.00)",
+          "oklch(0.3786 0.0000 0.00)",
+          "oklch(0.4929 0.0000 0.00)",
+          "oklch(0.6071 0.0000 0.00)",
+          "oklch(0.7214 0.0000 0.00)",
+          "oklch(0.8357 0.0000 0.00)",
+          "oklch(0.9500 0.0000 0.00)"
+        ]
+      },
+      "on-primary-dark": {
+        "role": "neutral",
+        "displayName": "主按钮文字（深色）",
+        "canonical": "#000",
+        "tonalRamp": [
+          "oklch(0.1500 0.0000 0.00)",
+          "oklch(0.2643 0.0000 0.00)",
+          "oklch(0.3786 0.0000 0.00)",
+          "oklch(0.4929 0.0000 0.00)",
+          "oklch(0.6071 0.0000 0.00)",
+          "oklch(0.7214 0.0000 0.00)",
+          "oklch(0.8357 0.0000 0.00)",
+          "oklch(0.9500 0.0000 0.00)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "title",
+        "purpose": "对应 DESIGN.md Typography 中的角色；以实际渲染为准。"
+      },
+      "heading": {
+        "displayName": "heading",
+        "purpose": "对应 DESIGN.md Typography 中的角色；以实际渲染为准。"
+      },
+      "section-label": {
+        "displayName": "section-label",
+        "purpose": "对应 DESIGN.md Typography 中的角色；以实际渲染为准。"
+      },
+      "subheading": {
+        "displayName": "subheading",
+        "purpose": "对应 DESIGN.md Typography 中的角色；以实际渲染为准。"
+      },
+      "body": {
+        "displayName": "body",
+        "purpose": "对应 DESIGN.md Typography 中的角色；以实际渲染为准。"
+      },
+      "paragraph": {
+        "displayName": "paragraph",
+        "purpose": "对应 DESIGN.md Typography 中的角色；以实际渲染为准。"
+      },
+      "label": {
+        "displayName": "label",
+        "purpose": "对应 DESIGN.md Typography 中的角色；以实际渲染为准。"
+      },
+      "hint": {
+        "displayName": "hint",
+        "purpose": "对应 DESIGN.md Typography 中的角色；以实际渲染为准。"
+      },
+      "photo-caption": {
+        "displayName": "photo-caption",
+        "purpose": "对应 DESIGN.md Typography 中的角色；以实际渲染为准。"
+      },
+      "photo-caption-mobile": {
+        "displayName": "photo-caption-mobile",
+        "purpose": "对应 DESIGN.md Typography 中的角色；以实际渲染为准。"
+      },
+      "photo-title": {
+        "displayName": "photo-title",
+        "purpose": "对应 DESIGN.md Typography 中的角色；以实际渲染为准。"
+      },
+      "photo-title-mobile": {
+        "displayName": "photo-title-mobile",
+        "purpose": "对应 DESIGN.md Typography 中的角色；以实际渲染为准。"
+      },
+      "button": {
+        "displayName": "button",
+        "purpose": "对应 DESIGN.md Typography 中的角色；以实际渲染为准。"
+      }
+    },
+    "shadows": [
+      {
+        "name": "modal",
+        "value": "0 6px 16px -9px rgba(0,0,0,.08), 0 9px 28px 0 rgba(0,0,0,.05), 0 12px 48px 16px rgba(0,0,0,.03)",
+        "purpose": "Naive UI 照片详情浮层实测阴影。"
+      },
+      {
+        "name": "input-focus",
+        "value": "0 0 0 2px rgba(36,94,199,.2)",
+        "purpose": "浅色输入框焦点。"
+      },
+      {
+        "name": "input-focus-dark",
+        "value": "0 0 8px 0 rgba(133,173,255,.3)",
+        "purpose": "深色输入框焦点。"
+      }
+    ],
+    "motion": [
+      {
+        "name": "library-ease-in-out",
+        "value": "cubic-bezier(.4, 0, .2, 1)",
+        "purpose": "Naive UI 状态与浮层过渡使用的缓动；减少动态效果时全局禁用。"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "mobile-max",
+        "value": "640px"
+      },
+      {
+        "name": "detail-mobile-max",
+        "value": "768px"
+      },
+      {
+        "name": "compact-max",
+        "value": "900px"
+      },
+      {
+        "name": "review-columns-min",
+        "value": "1200px"
+      },
+      {
+        "name": "wide-min",
+        "value": "1440px"
+      },
+      {
+        "name": "short-viewport-max-height",
+        "value": "600px"
+      },
+      {
+        "name": "short-viewport-caption-min-width",
+        "value": "700px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "主按钮",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "中号主操作；浅深主题的悬停、聚焦和按下态使用操作蓝。",
+      "html": "<button type=\"button\" class=\"ds-primary\">保存设置</button>",
+      "css": ":host{--ds-bg:#f6f7f9;--ds-panel:#fff;--ds-text:#20242b;--ds-muted:#5c6470;--ds-line:#dce1e7;--ds-accent:#245ec7;--ds-selection:#e5edfc;--ds-hover:#1e50ab;--ds-pressed:#19438f;--ds-on-primary:#fff;--ds-control-text:rgb(51,54,57);--ds-control-line:rgb(224,224,230);--ds-placeholder:#68717d;--ds-disabled:.5;--ds-input-bg:#fff;--ds-tag-bg:rgb(250,250,252);--ds-focus:0 0 0 2px rgba(36,94,199,.2);font:14px/1.6 v-sans, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\";color:var(--text,var(--ds-text));} :host([data-theme=\"dark\"]){--ds-bg:#17191d;--ds-panel:#22262c;--ds-text:#edf0f4;--ds-muted:#b4bdc9;--ds-line:#424a56;--ds-accent:#85adff;--ds-selection:#263b60;--ds-hover:#a3c1ff;--ds-pressed:#6994e8;--ds-on-primary:#000;--ds-control-text:rgba(255,255,255,.82);--ds-control-line:rgba(255,255,255,.24);--ds-placeholder:#a0a9b5;--ds-disabled:.38;--ds-input-bg:rgba(255,255,255,.1);--ds-tag-bg:transparent;--ds-focus:0 0 8px 0 rgba(133,173,255,.3);} .ds-primary{font:14px/1 v-sans, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\";height:44px;padding:0 14px;border-radius:6px;cursor:pointer;transition:background-color .3s,color .3s,border-color .3s;border:0;background:var(--accent,var(--ds-accent));color:var(--ds-on-primary);}.ds-primary:hover:not(:disabled),.ds-primary:focus:not(:disabled){background:var(--ds-hover)}.ds-primary:active:not(:disabled){background:var(--ds-pressed)}.ds-primary:focus-visible{outline:2px solid var(--accent,var(--ds-accent));outline-offset:3px;}.ds-primary:disabled{opacity:var(--ds-disabled);cursor:not-allowed} @media(prefers-reduced-motion:reduce){[class^=\"ds-\"]{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+    },
+    {
+      "name": "普通按钮",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "透明底描边的次要操作。",
+      "html": "<button type=\"button\" class=\"ds-default\">取消</button>",
+      "css": ":host{--ds-bg:#f6f7f9;--ds-panel:#fff;--ds-text:#20242b;--ds-muted:#5c6470;--ds-line:#dce1e7;--ds-accent:#245ec7;--ds-selection:#e5edfc;--ds-hover:#1e50ab;--ds-pressed:#19438f;--ds-on-primary:#fff;--ds-control-text:rgb(51,54,57);--ds-control-line:rgb(224,224,230);--ds-placeholder:#68717d;--ds-disabled:.5;--ds-input-bg:#fff;--ds-tag-bg:rgb(250,250,252);--ds-focus:0 0 0 2px rgba(36,94,199,.2);font:14px/1.6 v-sans, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\";color:var(--text,var(--ds-text));} :host([data-theme=\"dark\"]){--ds-bg:#17191d;--ds-panel:#22262c;--ds-text:#edf0f4;--ds-muted:#b4bdc9;--ds-line:#424a56;--ds-accent:#85adff;--ds-selection:#263b60;--ds-hover:#a3c1ff;--ds-pressed:#6994e8;--ds-on-primary:#000;--ds-control-text:rgba(255,255,255,.82);--ds-control-line:rgba(255,255,255,.24);--ds-placeholder:#a0a9b5;--ds-disabled:.38;--ds-input-bg:rgba(255,255,255,.1);--ds-tag-bg:transparent;--ds-focus:0 0 8px 0 rgba(133,173,255,.3);} .ds-default{font:14px/1 v-sans, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\";height:44px;padding:0 14px;border-radius:6px;cursor:pointer;transition:background-color .3s,color .3s,border-color .3s;border:1px solid var(--ds-control-line);background:transparent;color:var(--ds-control-text)}.ds-default:hover:not(:disabled),.ds-default:focus:not(:disabled){border-color:var(--ds-hover);color:var(--ds-hover)}.ds-default:active:not(:disabled){border-color:var(--ds-pressed);color:var(--ds-pressed)}.ds-default:focus-visible{outline:2px solid var(--accent,var(--ds-accent));outline-offset:3px;}.ds-default:disabled{opacity:var(--ds-disabled);cursor:not-allowed} @media(prefers-reduced-motion:reduce){[class^=\"ds-\"]{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+    },
+    {
+      "name": "文字按钮",
+      "kind": "button",
+      "refersTo": "button-text",
+      "description": "筛选清空等轻量操作；不额外创造悬停效果。",
+      "html": "<button type=\"button\" class=\"ds-text-button\">清空</button>",
+      "css": ":host{--ds-bg:#f6f7f9;--ds-panel:#fff;--ds-text:#20242b;--ds-muted:#5c6470;--ds-line:#dce1e7;--ds-accent:#245ec7;--ds-selection:#e5edfc;--ds-hover:#1e50ab;--ds-pressed:#19438f;--ds-on-primary:#fff;--ds-control-text:rgb(51,54,57);--ds-control-line:rgb(224,224,230);--ds-placeholder:#68717d;--ds-disabled:.5;--ds-input-bg:#fff;--ds-tag-bg:rgb(250,250,252);--ds-focus:0 0 0 2px rgba(36,94,199,.2);font:14px/1.6 v-sans, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\";color:var(--text,var(--ds-text));} :host([data-theme=\"dark\"]){--ds-bg:#17191d;--ds-panel:#22262c;--ds-text:#edf0f4;--ds-muted:#b4bdc9;--ds-line:#424a56;--ds-accent:#85adff;--ds-selection:#263b60;--ds-hover:#a3c1ff;--ds-pressed:#6994e8;--ds-on-primary:#000;--ds-control-text:rgba(255,255,255,.82);--ds-control-line:rgba(255,255,255,.24);--ds-placeholder:#a0a9b5;--ds-disabled:.38;--ds-input-bg:rgba(255,255,255,.1);--ds-tag-bg:transparent;--ds-focus:0 0 8px 0 rgba(133,173,255,.3);} .ds-text-button{font:inherit;min-height:44px;padding:8px 0;border:0;background:none;color:var(--accent,var(--ds-accent));cursor:pointer}.ds-text-button:hover{color:var(--accent,var(--ds-accent))}.ds-text-button:focus-visible{outline:2px solid var(--accent,var(--ds-accent));outline-offset:3px;} @media(prefers-reduced-motion:reduce){[class^=\"ds-\"]{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+    },
+    {
+      "name": "文本输入",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "以单行输入为例，保留焦点与禁用态。",
+      "html": "<input class=\"ds-input\" aria-label=\"发布者用户名\" placeholder=\"输入用户名\" />",
+      "css": ":host{--ds-bg:#f6f7f9;--ds-panel:#fff;--ds-text:#20242b;--ds-muted:#5c6470;--ds-line:#dce1e7;--ds-accent:#245ec7;--ds-selection:#e5edfc;--ds-hover:#1e50ab;--ds-pressed:#19438f;--ds-on-primary:#fff;--ds-control-text:rgb(51,54,57);--ds-control-line:rgb(224,224,230);--ds-placeholder:#68717d;--ds-disabled:.5;--ds-input-bg:#fff;--ds-input-line:rgb(224,224,230);--ds-input-focus-bg:#fff;--ds-tag-bg:rgb(250,250,252);--ds-focus:0 0 0 2px rgba(36,94,199,.2);font:14px/1.6 v-sans, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\";color:var(--text,var(--ds-text));} :host([data-theme=\"dark\"]){--ds-bg:#17191d;--ds-panel:#22262c;--ds-text:#edf0f4;--ds-muted:#b4bdc9;--ds-line:#424a56;--ds-accent:#85adff;--ds-selection:#263b60;--ds-hover:#a3c1ff;--ds-pressed:#6994e8;--ds-on-primary:#000;--ds-control-text:rgba(255,255,255,.82);--ds-control-line:rgba(255,255,255,.24);--ds-placeholder:#a0a9b5;--ds-disabled:.38;--ds-input-bg:rgba(255,255,255,.1);--ds-input-line:transparent;--ds-input-focus-bg:rgba(133,173,255,.1);--ds-tag-bg:transparent;--ds-focus:0 0 8px 0 rgba(133,173,255,.3);} .ds-input{font:14px/1.5 v-sans, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\";box-sizing:border-box;width:100%;height:44px;padding:0 12px;border:1px solid var(--ds-input-line);border-radius:6px;background:var(--ds-input-bg);color:var(--ds-control-text)}.ds-input:hover:not(:disabled){border-color:var(--ds-hover)}.ds-input:focus{background:var(--ds-input-focus-bg);border-color:var(--ds-hover);box-shadow:var(--ds-focus)}.ds-input:focus-visible{outline:2px solid var(--accent,var(--ds-accent));outline-offset:3px;}.ds-input::placeholder{color:var(--ds-placeholder)}.ds-input:disabled{opacity:var(--ds-disabled);cursor:not-allowed} @media(prefers-reduced-motion:reduce){[class^=\"ds-\"]{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+    },
+    {
+      "name": "人物分组标签",
+      "kind": "chip",
+      "refersTo": "tag",
+      "description": "展示型分组标签，无点击或选中语义。",
+      "html": "<span class=\"ds-tag\">分组示例</span>",
+      "css": ":host{--ds-bg:#f6f7f9;--ds-panel:#fff;--ds-text:#20242b;--ds-muted:#5c6470;--ds-line:#dce1e7;--ds-accent:#245ec7;--ds-selection:#e5edfc;--ds-hover:#1e50ab;--ds-pressed:#19438f;--ds-on-primary:#fff;--ds-control-text:rgb(51,54,57);--ds-control-line:rgb(224,224,230);--ds-placeholder:#68717d;--ds-disabled:.5;--ds-input-bg:#fff;--ds-tag-bg:rgb(250,250,252);--ds-focus:0 0 0 2px rgba(36,94,199,.2);font:14px/1.6 v-sans, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\";color:var(--text,var(--ds-text));} :host([data-theme=\"dark\"]){--ds-bg:#17191d;--ds-panel:#22262c;--ds-text:#edf0f4;--ds-muted:#b4bdc9;--ds-line:#424a56;--ds-accent:#85adff;--ds-selection:#263b60;--ds-hover:#a3c1ff;--ds-pressed:#6994e8;--ds-on-primary:#000;--ds-control-text:rgba(255,255,255,.82);--ds-control-line:rgba(255,255,255,.24);--ds-placeholder:#a0a9b5;--ds-disabled:.38;--ds-input-bg:rgba(255,255,255,.1);--ds-tag-bg:transparent;--ds-focus:0 0 8px 0 rgba(133,173,255,.3);} .ds-tag{display:inline-flex;align-items:center;height:28px;padding:0 7px;box-sizing:border-box;border:1px solid var(--ds-control-line);border-radius:2px;background:var(--ds-tag-bg);color:var(--ds-control-text);font-size:14px} @media(prefers-reduced-motion:reduce){[class^=\"ds-\"]{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+    },
+    {
+      "name": "管理导航",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "常规与当前页状态；链接仅用于文档预览。",
+      "html": "<nav aria-label=\"管理导航预览\"><a class=\"ds-nav\" href=\"#import\" aria-current=\"page\">导入任务</a><a class=\"ds-nav\" href=\"#people\">人物与分组</a></nav>",
+      "css": ":host{--ds-bg:#f6f7f9;--ds-panel:#fff;--ds-text:#20242b;--ds-muted:#5c6470;--ds-line:#dce1e7;--ds-accent:#245ec7;--ds-selection:#e5edfc;--ds-hover:#1e50ab;--ds-pressed:#19438f;--ds-on-primary:#fff;--ds-control-text:rgb(51,54,57);--ds-control-line:rgb(224,224,230);--ds-placeholder:#68717d;--ds-disabled:.5;--ds-input-bg:#fff;--ds-tag-bg:rgb(250,250,252);--ds-focus:0 0 0 2px rgba(36,94,199,.2);font:14px/1.6 v-sans, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\";color:var(--text,var(--ds-text));} :host([data-theme=\"dark\"]){--ds-bg:#17191d;--ds-panel:#22262c;--ds-text:#edf0f4;--ds-muted:#b4bdc9;--ds-line:#424a56;--ds-accent:#85adff;--ds-selection:#263b60;--ds-hover:#a3c1ff;--ds-pressed:#6994e8;--ds-on-primary:#000;--ds-control-text:rgba(255,255,255,.82);--ds-control-line:rgba(255,255,255,.24);--ds-placeholder:#a0a9b5;--ds-disabled:.38;--ds-input-bg:rgba(255,255,255,.1);--ds-tag-bg:transparent;--ds-focus:0 0 8px 0 rgba(133,173,255,.3);} .ds-nav{box-sizing:border-box;display:flex;align-items:center;min-height:44px;padding:12px;margin:4px 0;border-radius:6px;text-decoration:none;color:var(--muted,var(--ds-muted))}.ds-nav[aria-current]{background:var(--selection,var(--ds-selection));color:var(--accent,var(--ds-accent));font-weight:600}.ds-nav:hover{background:var(--bg,var(--ds-bg))}.ds-nav:focus-visible{outline:2px solid var(--accent,var(--ds-accent));outline-offset:3px;} @media(prefers-reduced-motion:reduce){[class^=\"ds-\"]{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+    },
+    {
+      "name": "表单容器",
+      "kind": "card",
+      "refersTo": "form-container",
+      "description": "导入表单的表面、边框和响应式内边距。",
+      "html": "<section class=\"ds-form\" aria-label=\"表单容器预览\"><p class=\"ds-form-label\">链接，每行一个</p><p class=\"ds-form-hint\">表单容器样式示例</p></section>",
+      "css": ":host{--ds-bg:#f6f7f9;--ds-panel:#fff;--ds-text:#20242b;--ds-muted:#5c6470;--ds-line:#dce1e7;--ds-accent:#245ec7;--ds-selection:#e5edfc;--ds-hover:#1e50ab;--ds-pressed:#19438f;--ds-on-primary:#fff;--ds-control-text:rgb(51,54,57);--ds-control-line:rgb(224,224,230);--ds-placeholder:#68717d;--ds-disabled:.5;--ds-input-bg:#fff;--ds-tag-bg:rgb(250,250,252);--ds-focus:0 0 0 2px rgba(36,94,199,.2);font:14px/1.6 v-sans, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\";color:var(--text,var(--ds-text));} :host([data-theme=\"dark\"]){--ds-bg:#17191d;--ds-panel:#22262c;--ds-text:#edf0f4;--ds-muted:#b4bdc9;--ds-line:#424a56;--ds-accent:#85adff;--ds-selection:#263b60;--ds-hover:#a3c1ff;--ds-pressed:#6994e8;--ds-on-primary:#000;--ds-control-text:rgba(255,255,255,.82);--ds-control-line:rgba(255,255,255,.24);--ds-placeholder:#a0a9b5;--ds-disabled:.38;--ds-input-bg:rgba(255,255,255,.1);--ds-tag-bg:transparent;--ds-focus:0 0 8px 0 rgba(133,173,255,.3);} .ds-form{background:var(--panel,var(--ds-panel));color:var(--text,var(--ds-text));border:1px solid var(--line,var(--ds-line));border-radius:8px;padding:8px 24px 24px;max-width:700px}.ds-form-label{font-weight:550;margin:16px 0}.ds-form-hint{font-size:13px;color:var(--muted,var(--ds-muted));margin:8px 0 0}@media(max-width:640px){.ds-form{padding:4px 16px 20px}} @media(prefers-reduced-motion:reduce){[class^=\"ds-\"]{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+    },
+    {
+      "name": "照片卡片",
+      "kind": "custom",
+      "refersTo": "photo-card",
+      "description": "几何占位仅用于布局预览，不代表照片库内容。",
+      "html": "<button type=\"button\" class=\"ds-photo\" aria-label=\"布局示例，非真实照片\"><svg class=\"ds-photo-image\" viewBox=\"0 0 400 220\" role=\"img\" aria-label=\"照片布局示例\"><rect width=\"400\" height=\"220\" fill=\"currentColor\"/><text x=\"200\" y=\"110\" text-anchor=\"middle\" dominant-baseline=\"middle\" class=\"ds-placeholder-text\">布局示例</text></svg><span class=\"ds-photo-meta\"><strong class=\"ds-photo-title\">人物名称示例</strong><span>来源与日期示例</span></span></button>",
+      "css": ":host{--ds-bg:#f6f7f9;--ds-panel:#fff;--ds-text:#20242b;--ds-muted:#5c6470;--ds-line:#dce1e7;--ds-accent:#245ec7;--ds-selection:#e5edfc;--ds-hover:#1e50ab;--ds-pressed:#19438f;--ds-on-primary:#fff;--ds-control-text:rgb(51,54,57);--ds-control-line:rgb(224,224,230);--ds-placeholder:#68717d;--ds-disabled:.5;--ds-input-bg:#fff;--ds-tag-bg:rgb(250,250,252);--ds-focus:0 0 0 2px rgba(36,94,199,.2);font:14px/1.6 v-sans, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\";color:var(--text,var(--ds-text));} :host([data-theme=\"dark\"]){--ds-bg:#17191d;--ds-panel:#22262c;--ds-text:#edf0f4;--ds-muted:#b4bdc9;--ds-line:#424a56;--ds-accent:#85adff;--ds-selection:#263b60;--ds-hover:#a3c1ff;--ds-pressed:#6994e8;--ds-on-primary:#000;--ds-control-text:rgba(255,255,255,.82);--ds-control-line:rgba(255,255,255,.24);--ds-placeholder:#a0a9b5;--ds-disabled:.38;--ds-input-bg:rgba(255,255,255,.1);--ds-tag-bg:transparent;--ds-focus:0 0 8px 0 rgba(133,173,255,.3);} .ds-photo{font:inherit;display:block;padding:0;border:0;background:none;text-align:left;width:100%;color:var(--text,var(--ds-text));cursor:pointer}.ds-photo-image{display:block;width:100%;height:220px;border-radius:4px;color:var(--panel,var(--ds-panel));background:var(--panel,var(--ds-panel))}.ds-placeholder-text{fill:var(--muted,var(--ds-muted));font-size:14px}.ds-photo:hover .ds-photo-image{filter:brightness(.94)}.ds-photo:focus-visible{outline:2px solid var(--accent,var(--ds-accent));outline-offset:3px;}.ds-photo-meta{display:flex;flex-direction:column;gap:3px;padding:9px 0 14px;font-size:12px;color:var(--muted,var(--ds-muted))}.ds-photo-title{font-size:14px;font-weight:550;color:var(--text,var(--ds-text))}@media(max-width:640px){.ds-photo-image{height:170px}.ds-photo-meta{font-size:11px}.ds-photo-title{font-size:13px}}@media(min-width:1440px){.ds-photo-image{height:250px}} @media(prefers-reduced-motion:reduce){[class^=\"ds-\"]{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+    },
+    {
+      "name": "人物头像",
+      "kind": "custom",
+      "refersTo": "person-avatar",
+      "description": "没有参考图时使用的圆形占位，图标来自现有 UserRound。",
+      "html": "<span class=\"ds-avatar\" role=\"img\" aria-label=\"暂无参考图\"><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"8\" r=\"5\"/><path d=\"M20 21a8 8 0 0 0-16 0\"/></svg></span>",
+      "css": ":host{--ds-bg:#f6f7f9;--ds-panel:#fff;--ds-text:#20242b;--ds-muted:#5c6470;--ds-line:#dce1e7;--ds-accent:#245ec7;--ds-selection:#e5edfc;--ds-hover:#1e50ab;--ds-pressed:#19438f;--ds-on-primary:#fff;--ds-control-text:rgb(51,54,57);--ds-control-line:rgb(224,224,230);--ds-placeholder:#68717d;--ds-disabled:.5;--ds-input-bg:#fff;--ds-tag-bg:rgb(250,250,252);--ds-focus:0 0 0 2px rgba(36,94,199,.2);font:14px/1.6 v-sans, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\";color:var(--text,var(--ds-text));} :host([data-theme=\"dark\"]){--ds-bg:#17191d;--ds-panel:#22262c;--ds-text:#edf0f4;--ds-muted:#b4bdc9;--ds-line:#424a56;--ds-accent:#85adff;--ds-selection:#263b60;--ds-hover:#a3c1ff;--ds-pressed:#6994e8;--ds-on-primary:#000;--ds-control-text:rgba(255,255,255,.82);--ds-control-line:rgba(255,255,255,.24);--ds-placeholder:#a0a9b5;--ds-disabled:.38;--ds-input-bg:rgba(255,255,255,.1);--ds-tag-bg:transparent;--ds-focus:0 0 8px 0 rgba(133,173,255,.3);} .ds-avatar{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:50%;background:var(--selection,var(--ds-selection));color:var(--accent,var(--ds-accent));flex-shrink:0} @media(prefers-reduced-motion:reduce){[class^=\"ds-\"]{transition:none!important;animation:none!important;scroll-behavior:auto!important;}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "照片档案馆",
+    "overview": "照片档案馆以照片及其来源记录为中心。中性的画布承托图像，文字保留人物、发布者与时间的线索；蓝色用于引导操作和标记选择，让浏览有秩序，也让每张照片的来处可追溯。\n\n整理工具沿用熟悉的表单、列表和导航。组件克制、清晰、易用，管理界面紧凑但保留操作空间。系统字体、细边界和浅深主题构成持续的视觉身份，不引入装饰性渐变或营销叙事。",
+    "keyCharacteristics": [
+      "照片优先，来源信息可读。",
+      "中性色承托内容，蓝色指示操作与选择。",
+      "平面为主、浮层突出。",
+      "中文界面，熟悉的控件与明确的状态。"
+    ],
+    "rules": [
+      {
+        "name": "照片优先",
+        "body": "强调色服务于操作与选择；内容区的视觉重心留给照片。",
+        "section": "colors"
+      },
+      {
+        "name": "按角色排字",
+        "body": "以实际使用角色区分标题、正文、提示和照片元信息，不用一个字号概括所有文本。",
+        "section": "typography"
+      },
+      {
+        "name": "平面为主",
+        "body": "常驻容器通过表面色与细边框划分；浮层通过遮罩和组件库阴影建立临时层级。",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do 沿用语义颜色变量，同时检查浅色与深色主题。",
+      "Do 区分内容、提示和操作层级，保留来源文字的换行与长链接折行。",
+      "Do 保留主要控件的 44px 高度、可见键盘焦点及减少动态效果支持。",
+      "Do 将空、加载、失败、禁用与选中状态写清楚，错误提供恢复操作。",
+      "Do 使用真实照片；文档预览中的几何占位图必须标明“布局示例”。",
+      "Do 简单文案末尾不要逗号。"
+    ],
+    "donts": [
+      "Don't 绕过 App 的蓝色状态配置，重新引入组件库默认绿色交互态。",
+      "Don't 把根字号当作实际正文字号，或把所有说明文字统一描述成同一字号。",
+      "Don't 添加装饰性渐变、营销文案或虚构照片库内容。",
+      "Don't 将主要触控目标的尺寸要求误写为所有小按钮均已满足。",
+      "Don't 将等高排列与瀑布流的完整图像展示规则套用到允许裁切的方形布局。"
+    ]
+  }
+}

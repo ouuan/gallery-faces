@@ -1,0 +1,18 @@
+{
+  "buildPath": "comp",
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "frontend/src/Review.vue"
+        ],
+        "createdAt": "2026-11-18T11:41:03.712Z",
+        "reason": "Codex: review strip images intentionally receive src from useStripThumbnails IntersectionObserver; unloaded images reserve dimensions and are hidden until src is assigned."
+      }
+    ]
+  }
+}

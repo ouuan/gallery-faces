@@ -4,7 +4,10 @@ __pycache__/
 *.pyc
 node_modules/
 dist/
-.impeccable/
+.impeccable/*
+!.impeccable/config.json
+!.impeccable/design.json
+!.impeccable/design-full.md
 .agents/skills/impeccable
 data/
 .env

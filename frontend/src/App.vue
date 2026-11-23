@@ -12,6 +12,7 @@ import {
 } from "naive-ui";
 import { Code2, Images, Settings } from "@lucide/vue";
 import { useLibrary } from "./store";
+import { themeColors } from "./theme-colors";
 const store = useLibrary();
 onMounted(() => {
   void store.loadSite().catch(() => {});
@@ -26,11 +27,7 @@ watchEffect(
     :theme="store.dark ? darkTheme : null"
     :theme-overrides="{
       common: {
-        primaryColor: store.dark ? '#85adff' : '#245ec7',
-        primaryColorHover: store.dark ? '#a3c1ff' : '#1e50ab',
-        primaryColorPressed: store.dark ? '#6994e8' : '#19438f',
-        primaryColorSuppl: store.dark ? '#a3c1ff' : '#1e50ab',
-        placeholderColor: store.dark ? '#a0a9b5' : '#68717d',
+        ...themeColors(store.dark),
         borderRadius: '6px',
         fontFamily: 'system-ui, -apple-system, sans-serif',
       },
