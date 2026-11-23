@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import LoadingOverlay from "./LoadingOverlay.vue";
-import { ref, watch, computed, onMounted, onUnmounted, nextTick } from "vue";
+import { ref, watch, computed, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   NButton,
@@ -139,9 +139,9 @@ async function downloadSelected() {
 const photoGrid = ref<HTMLElement | null>(null);
 useMasonry(photoGrid, () => layout.value === "masonry", () => photos.value);
 let requestVersion = 0,
-  detailVersion = 0,
-  lastFocus: HTMLElement | null = null;
+  detailVersion = 0;
 const selectedId = computed(() => !postOpen.value && Number(route.query.photo) || null);
+const photoDialogPresent = ref(false);
 const { urls: detailImageUrls, failed: failedDetailImages } = useImageDownloads(() =>
   selectedId.value && detail.value?.id === selectedId.value && detail.value.image_url
     ? [{ id: detail.value.image_id, url: detail.value.image_url }] : [],
@@ -189,7 +189,6 @@ function applyAndCloseFilters() {
   drawer.value = false;
 }
 function open(photo: Photo) {
-  lastFocus = document.activeElement as HTMLElement;
   router.push({
     query: {
       ...route.query,
@@ -202,7 +201,6 @@ function close() {
   if (window.history.state?.fromPost) { router.back(); return; }
   const { photo, source, ...query } = route.query;
   router.replace({ query });
-  nextTick(() => lastFocus?.focus());
 }
 async function loadDetail() {
   detailController?.abort();
@@ -255,7 +253,10 @@ watch(
   () => { stopSelecting(); load(); },
   { immediate: true },
 );
-watch(selectedId, loadDetail, {
+watch(selectedId, id => {
+  if (id) photoDialogPresent.value = true;
+  loadDetail();
+}, {
   immediate: true,
 });
 watch(layout, (v) => localStorage.setItem("layout", v));
@@ -391,7 +392,7 @@ onUnmounted(() => {
             }}</strong
             ><span
               >{{ store.publisherName(photo.matched_source) }} ·
-              <SocialTime :value="photo.matched_source.published_at" in-card :disabled="!!selectedId || postOpen || drawer" /></span
+              <SocialTime :value="photo.matched_source.published_at" in-card :disabled="photoDialogPresent || postOpen || drawer" /></span
             ><span v-if="photo.source_count > 1"
               >{{ photo.source_count }} 个来源</span
             ></span
@@ -427,6 +428,7 @@ onUnmounted(() => {
   >
   <n-modal
     :show="!!selectedId"
+    @after-leave="photoDialogPresent = false"
     @update:show="!$event && close()"
     :auto-focus="true"
     ><div

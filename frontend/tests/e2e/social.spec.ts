@@ -58,23 +58,27 @@ for (const width of [390, 1280]) {
     await expect(postDialog).toBeVisible();
     await page.getByRole('link', { name: '发布者 @alice' }).click();
     await expect(page).toHaveURL(/\/?\?publishers=x(?::|%3A)alice$/);
-    const time = page.locator('.photo-card time');
+    const card = page.getByRole('button', { name: '查看 未知人物 的照片' });
+    const time = card.getByRole('time');
     await time.click();
     await expect(page.getByRole('tooltip')).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    const card = page.locator('.photo-card');
-    await page.mouse.move(0, 0);
-    await card.press('Tab');
-    await page.keyboard.press('Shift+Tab');
-    await expect(card).toBeFocused();
-    await expect(page.getByRole('tooltip')).toBeVisible();
-    await card.press('Enter');
-    await expect(photoDialog).toBeVisible();
-    await time.dispatchEvent('pointerenter');
-    await expect(page.getByRole('tooltip')).toHaveCount(0);
-    await photoDialog.getByRole('button', { name: '关闭详情' }).click();
-    await expect(photoDialog).toHaveCount(0);
-    await expect(page.getByRole('tooltip')).toHaveCount(0);
+    await page.getByRole('heading', { name: '照片库' }).hover();
+    const closePhoto = photoDialog.getByRole('button', { name: '关闭详情' });
+    for (const dismiss of [() => closePhoto.click(), () => closePhoto.press('Enter')]) {
+      await card.press('Tab');
+      await page.keyboard.press('Shift+Tab');
+      await expect(card).toBeFocused();
+      await expect(page.getByRole('tooltip')).toBeVisible();
+      await card.press('Enter');
+      await expect(photoDialog).toBeVisible();
+      await time.dispatchEvent('pointerenter');
+      await expect(page.getByRole('tooltip')).toBeHidden();
+      await dismiss();
+      await expect(photoDialog).toBeHidden();
+      await expect(card).toBeFocused();
+      await expect(page.getByRole('tooltip')).toBeHidden();
+    }
     if (width === 390) {
       await time.hover();
       await expect(page.getByRole('tooltip')).toBeVisible();
