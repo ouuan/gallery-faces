@@ -72,9 +72,16 @@ function wheelZoom(event: WheelEvent) {
   const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.value!.clientHeight : 1;
   zoomTo(zoom.value * Math.exp(-event.deltaY * unit * 0.002), event);
 }
-function startDrag(event: PointerEvent) {
+let mouseDown = false, zoomedOnFirstClick = false;
+function clickPhoto(event: MouseEvent) {
+  if (event.detail !== 1) return;
+  zoomedOnFirstClick = mouseDown && zoom.value === 1 && event.target === photoImage.value;
+  if (zoomedOnFirstClick) zoomTo(2, event);
+}
+function pointerDown(event: PointerEvent) {
+  mouseDown = event.pointerType === 'mouse';
   const frame = viewport.value;
-  if (!frame || event.pointerType !== 'mouse' || event.button !== 0 || zoom.value <= 1) return;
+  if (!frame || !mouseDown || event.button !== 0 || zoom.value <= 1) return;
   frame.setPointerCapture(event.pointerId);
   drag.value = { pointer: event.pointerId, x: event.clientX, y: event.clientY, left: frame.scrollLeft, top: frame.scrollTop };
 }
@@ -503,8 +510,9 @@ onUnmounted(() => {
       <div v-else-if="detail" class="detail-body">
         <div ref="viewport" class="detail-image loading-region" :class="{ zoomed: zoom > 1, dragging: drag }"
           :aria-busy="!detailImageUrls.has(detail.image_id) && !failedDetailImages.has(detail.image_id)"
-          @wheel.prevent="wheelZoom" @dblclick="zoomTo(zoom > 1 ? 1 : 2, $event)"
-          @pointerdown="startDrag" @pointermove="pan" @lostpointercapture="drag = null">
+          @wheel.prevent="wheelZoom" @click="clickPhoto"
+          @dblclick="!zoomedOnFirstClick && ($event.target === photoImage || zoom > 1) && zoomTo(zoom > 1 ? 1 : 2, $event)"
+          @pointerdown="pointerDown" @pointermove="pan" @lostpointercapture="drag = null">
           <img
             ref="photoImage"
             :key="detail.image_id"
