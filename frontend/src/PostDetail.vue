@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { X, ExternalLink, UserRound } from '@lucide/vue';
-import { NAlert, NButton, NModal } from 'naive-ui';
+import { NAlert, NButton, NModal, NTooltip } from 'naive-ui';
 import { api, ApiError, platformLabel } from './api';
 import { toQuery, fromQuery, publisherRoute } from './filters';
 import type { components } from './schema';
@@ -19,6 +19,7 @@ function close() {
   else router.replace({ path: '/', query: filters.value });
 }
 const post = ref<components['schemas']['PostDetail'] | null>(null);
+const unavailableTip = ref<number | null>(null);
 const textParts = computed(() => {
   const text = post.value?.post_text ?? '';
   return text.split(/(https?:\/\/[^\s<>]+|(?<![\p{L}\p{M}\p{N}_])#[\p{L}\p{M}\p{N}_]+)/gu).map((label, index) => {
@@ -33,6 +34,7 @@ const latest = useLatestRequest();
 usePageTitle(() => post.value ? `@${post.value.author} 的帖子` : '帖子详情');
 async function load() {
   const signal = latest.start();
+  unavailableTip.value = null;
   error.value = ''; missing.value = false; post.value = null;
   try {
     const result = await api<components['schemas']['PostDetail']>('/posts/' + encodeURIComponent(props.postKey), { signal });
@@ -68,7 +70,7 @@ watch(post, (current, _, cleanup) => {
 
 <template>
   <n-modal :show="true" @update:show="!$event && close()">
-  <section class="post-dialog" role="dialog" aria-modal="true" aria-labelledby="post-dialog-title">
+  <div class="post-dialog" role="dialog" aria-modal="true" aria-labelledby="post-dialog-title">
     <header class="post-toolbar"><h2 id="post-dialog-title">帖子详情</h2>
       <n-button quaternary circle title="关闭帖子详情" aria-label="关闭帖子详情" @click="close"><X :size="20" /></n-button>
     </header>
@@ -89,15 +91,27 @@ watch(post, (current, _, cleanup) => {
       <p v-if="post.coauthors.length" class="coauthors">共同作者：{{ post.coauthors.map(person => '@' + person.username).join('、') }}</p>
       <p v-if="post.post_text" class="post-copy"><template v-for="(part, index) in textParts" :key="index"><a v-if="part.href" :href="part.href" target="_blank" rel="noopener noreferrer">{{ part.label }}</a><template v-else>{{ part.label }}</template></template></p>
       <div v-if="post.images.length" class="post-pictures" :class="{ single: post.images.length === 1, 'triple-tail': post.images.length >= 3 && post.images.length % 2 === 1 }">
-        <router-link v-for="(picture, index) in post.images" :key="picture.id" :to="{ path: '/', query: { ...filters, photo: picture.id }, state: { fromPost: true } }">
+        <template v-for="(picture, index) in post.images" :key="picture.id">
+        <router-link v-if="picture.image_url !== null" class="post-tile" :to="{ path: '/', query: { ...filters, photo: picture.id }, state: { fromPost: true } }">
           <img :src="post.images.length === 1 ? picture.image_url : picture.thumbnail_url" :width="picture.width" :height="picture.height" :loading="index < 4 ? 'eager' : 'lazy'" :alt="`查看照片 ${index + 1}${picture.people.length ? '：' + picture.people.map(person => person.name).join('、') : ''}`" />
         </router-link>
+        <n-tooltip v-else trigger="manual" :show="unavailableTip === picture.id" :animated="false" @clickoutside="unavailableTip = null">
+          <template #trigger>
+            <span class="post-tile unavailable" tabindex="0" role="group" :aria-label="`照片 ${index + 1}`" :aria-describedby="unavailableTip === picture.id ? 'post-unavailable-tip' : undefined"
+              @pointerenter="$event.pointerType === 'mouse' && (unavailableTip = picture.id)" @pointerleave="$event.pointerType === 'mouse' && (unavailableTip = null)"
+              @click="unavailableTip = picture.id" @focus="unavailableTip = picture.id" @blur="unavailableTip = null" @keydown.esc="unavailableTip = null">
+              <button type="button" disabled :aria-label="`照片 ${index + 1}，图片无法查看`"><img :src="picture.thumbnail_url" :width="picture.width" :height="picture.height" :loading="index < 4 ? 'eager' : 'lazy'" alt="" /></button>
+            </span>
+          </template>
+          <span id="post-unavailable-tip" role="tooltip">图片无法查看</span>
+        </n-tooltip>
+        </template>
       </div>
       </div>
     </article>
     <div v-else class="post-loading loading-region" aria-busy="true"><LoadingOverlay show center label="正在加载帖子" /></div>
     </div>
-  </section>
+  </div>
   </n-modal>
 </template>
 
@@ -119,14 +133,16 @@ watch(post, (current, _, cleanup) => {
 .coauthors { color: var(--muted); font-size: 13px; margin-top: 8px; overflow-wrap: anywhere; }
 .post-copy { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 2px; font-size: 16px; line-height: 1.5; }
 .post-pictures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-.post-pictures a { display: block; aspect-ratio: 1; min-height: 0; overflow: hidden; background: var(--bg); }
+.post-tile { display: block; aspect-ratio: 1; min-height: 0; overflow: hidden; background: var(--bg); }
+.post-tile.unavailable { cursor: not-allowed; }
+.unavailable button { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; pointer-events: none; }
 .post-pictures.triple-tail { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-.triple-tail a { grid-column: span 3; }
-.triple-tail a:nth-last-child(-n + 3) { grid-column: span 2; }
-.post-pictures a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.triple-tail .post-tile { grid-column: span 3; }
+.triple-tail .post-tile:nth-last-child(-n + 3) { grid-column: span 2; }
+.post-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .post-pictures img { width: 100%; height: 100%; display: block; object-fit: cover; }
 .post-pictures.single { grid-template-columns: minmax(0, 1fr); }
-.single a { aspect-ratio: auto; }
+.single .post-tile { aspect-ratio: auto; }
 .single img { height: auto; max-height: min(60dvh, 560px); object-fit: contain; }
 .post-loading { min-height: 240px; }
 @media (max-width: 768px) {

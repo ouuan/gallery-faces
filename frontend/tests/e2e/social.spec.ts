@@ -5,6 +5,56 @@ const source = { platform: 'x', author: 'alice', author_name: '发布者', key: 
 const picture = { id: 1, image_id: 1, image_url: '/photo.svg', thumbnail_url: '/photo.svg', download_url: '/photo.svg',
   width: 600, height: 400, people: [], matched_source: source, sources: [source], source_count: 1 };
 
+test.describe('unavailable post thumbnails', () => {
+  test.use({ hasTouch: true });
+  for (const width of [390, 1280]) {
+    test(`disabled picture at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
+      const thumbnail = '/api/v1/posts/x:42/thumbnails/2';
+      const requests: string[] = [];
+      await page.route('**/api/v1/**', route => {
+        const path = decodeURIComponent(new URL(route.request().url()).pathname);
+        requests.push(path);
+        if (path === thumbnail) return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"/>' });
+        if (path === '/api/v1/posts/x:42') return route.fulfill({ json: { ...source, coauthors: [], images: [picture, { ...picture, id: 2, image_url: null, thumbnail_url: thumbnail }, { ...picture, id: 3 }] } });
+        if (path.endsWith('/gallery/1')) return route.fulfill({ json: picture });
+        if (path.endsWith('/gallery')) return route.fulfill({ json: { items: [picture], total: 1, next_cursor: null } });
+        return route.fulfill({ json: path.endsWith('/site') ? { site_title: '图库' } : [] });
+      });
+      await page.goto('/posts/x:42');
+      const dialog = page.getByRole('dialog', { name: '帖子详情' });
+      const tile = dialog.getByRole('group', { name: '照片 2' });
+      const hint = page.getByRole('tooltip', { name: '图片无法查看' });
+      const normal = dialog.getByRole('link', { name: '查看照片 1' });
+      await expect(tile.getByRole('button')).toBeDisabled();
+      await expect(tile.locator('img')).toHaveJSProperty('naturalWidth', 100);
+      expect((await tile.boundingBox())!.width).toBeCloseTo((await normal.boundingBox())!.width, 0);
+      await expect(hint).toBeHidden();
+      if (width === 390) {
+        await tile.tap();
+        await expect(hint).toBeVisible();
+        await dialog.getByRole('heading', { name: '帖子详情' }).tap();
+      } else {
+        await tile.hover();
+        await expect(hint).toBeVisible();
+        await normal.hover();
+        await expect(hint).toBeHidden();
+        await normal.press('Tab');
+        await expect(tile).toBeFocused();
+        await expect(hint).toBeVisible();
+        await page.keyboard.press('Enter');
+        await page.keyboard.press('Tab');
+      }
+      await expect(hint).toBeHidden();
+      await expect(page).toHaveURL(/\/posts\/x:42$/);
+      expect(requests).not.toContain('/api/v1/gallery/2');
+      expect(requests.some(path => path.startsWith('/api/v1/media/'))).toBe(false);
+      await normal.click();
+      await expect(page.getByRole('dialog', { name: '照片详情' })).toBeVisible();
+    });
+  }
+});
+
 for (const width of [390, 1280]) {
   test(`post picture rows at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });

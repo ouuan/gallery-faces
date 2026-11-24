@@ -350,6 +350,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/posts/{key}/thumbnails/{group_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Post Thumbnail */
+        get: operations["post_thumbnail_api_v1_posts__key__thumbnails__group_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/gallery/rss.xml": {
         parameters: {
             query?: never;
@@ -2224,7 +2241,7 @@ export interface components {
                 [key: string]: unknown;
             }[];
             /** Image Url */
-            image_url: string;
+            image_url: string | null;
             /** Thumbnail Url */
             thumbnail_url: string;
         };
@@ -3279,6 +3296,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PostDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_thumbnail_api_v1_posts__key__thumbnails__group_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+                group_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
                 };
             };
             /** @description Validation Error */

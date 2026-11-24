@@ -41,7 +41,30 @@ def find_post(db, key):
                       (platform, value)).fetchone()
 
 
-def hydrate(db, post_ids, media_urls, gallery_labels, people=(), match='any', source='', args=(), include_no_faces=True):
+def picture_rows(db, seeds, conditions=(), args=(), *, thumbs=None):
+    where = ' AND ' + ' AND '.join(conditions) if conditions else ''
+    join = 'LEFT JOIN' if thumbs is not None else 'JOIN'
+    eligible = '(member.hidden=1 OR g.representative IS NOT NULL)' if thumbs is not None else 'member.hidden=0'
+    rows = db.execute(f'''WITH seeds AS (SELECT p.* FROM json_each(?) seed JOIN posts p ON p.id=seed.value),
+        aliases(root,id) AS (SELECT id,id FROM seeds WHERE embed_id IS NULL UNION ALL
+            SELECT s.id,p.id FROM seeds s JOIN posts p ON p.platform=s.platform AND p.embed_id=s.embed_id),
+        pictures AS (SELECT a.root,CASE WHEN member.hidden=1 THEN member.id ELSE g.representative END AS selected_id,
+            min(s.id) position FROM aliases a
+            JOIN posts p ON p.id=a.id JOIN sources s ON s.post_id=p.id JOIN images member ON member.id=s.image_id
+            {join} public_groups g ON g.group_id=member.group_id WHERE {eligible} AND member.detection='done'
+            AND p.author IS NOT NULL AND p.published_at IS NOT NULL AND p.url IS NOT NULL {where}
+            GROUP BY a.root,selected_id)
+        SELECT pictures.root,i.* FROM pictures JOIN images i ON i.id=pictures.selected_id
+        ORDER BY pictures.root,pictures.position''', [seeds, *args])
+    chosen = {}
+    for row in rows:
+        key = row['root'], row['group_id']
+        if not row['hidden'] or (key not in chosen and (thumbs / row['filename']).is_file()):
+            chosen[key] = row
+    return chosen.values()
+
+
+def hydrate(db, post_ids, media_urls, gallery_labels, people=(), match='any', source='', args=(), include_no_faces=True, *, thumbs=None):
     if not post_ids:
         return []
     seeds = json.dumps(post_ids)
@@ -49,32 +72,25 @@ def hydrate(db, post_ids, media_urls, gallery_labels, people=(), match='any', so
     for row in db.execute('SELECT p.* FROM json_each(?) seed JOIN posts p ON p.id=seed.value', (seeds,)):
         posts[row['id']] = {name: row[name] for name in ('id', 'platform', 'url', 'author', 'author_name', 'published_at', 'post_text')}
         posts[row['id']].update(key=post_key(row), coauthors=json.loads(row['coauthors'] or '[]'), images=[])
-    conditions, bindings = [], [seeds]
+    conditions, bindings = [], list(args)
     if source:
         conditions.append(source)
-        bindings.extend(args)
     if people:
         selected, selected_args = list_queries.matching_groups('public', people, match)
         conditions.append(f'g.group_id IN ({selected})')
         bindings.extend(selected_args)
     elif not include_no_faces:
         conditions.append('g.has_face=1')
-    where = ' AND ' + ' AND '.join(conditions) if conditions else ''
-    rows = db.execute(f'''WITH seeds AS (SELECT p.* FROM json_each(?) seed JOIN posts p ON p.id=seed.value),
-        aliases(root,id) AS (SELECT id,id FROM seeds WHERE embed_id IS NULL UNION ALL
-            SELECT s.id,p.id FROM seeds s JOIN posts p ON p.platform=s.platform AND p.embed_id=s.embed_id),
-        pictures AS (SELECT a.root,g.group_id,g.representative,min(s.id) position FROM aliases a
-            JOIN posts p ON p.id=a.id JOIN sources s ON s.post_id=p.id JOIN images member ON member.id=s.image_id
-            JOIN public_groups g ON g.group_id=member.group_id WHERE member.hidden=0 AND member.detection='done'
-            AND p.author IS NOT NULL AND p.published_at IS NOT NULL AND p.url IS NOT NULL {where}
-            GROUP BY a.root,g.group_id)
-        SELECT pictures.root,i.* FROM pictures JOIN images i ON i.id=pictures.representative
-        ORDER BY pictures.root,pictures.position''', bindings).fetchall()
-    labels = gallery_labels(db, list({row['id'] for row in rows})) if rows else {}
+    rows = picture_rows(db, seeds, conditions, bindings, thumbs=thumbs)
+    labels = gallery_labels(db, list({row['id'] for row in rows if not row['hidden']})) if rows else {}
     for row in rows:
-        urls = media_urls(row)
-        posts[row['root']]['images'].append(dict(id=row['group_id'], width=row['width'], height=row['height'],
-            image_url=urls['image_url'], thumbnail_url=urls['thumbnail_url'], people=labels[row['id']]))
+        post = posts[row['root']]
+        if row['hidden']:
+            urls = dict(image_url=None, thumbnail_url=f"/api/v1/posts/{quote(post['key'], safe=':')}/thumbnails/{row['group_id']}")
+        else:
+            urls = media_urls(row)
+        post['images'].append(dict(id=row['group_id'], width=row['width'], height=row['height'],
+            image_url=urls['image_url'], thumbnail_url=urls['thumbnail_url'], people=labels.get(row['id'], [])))
     return [posts[identifier] for identifier in post_ids]
 
 

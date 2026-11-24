@@ -820,6 +820,50 @@
         }
       }
     },
+    "/api/v1/posts/{key}/thumbnails/{group_id}": {
+      "get": {
+        "summary": "Post Thumbnail",
+        "operationId": "post_thumbnail_api_v1_posts__key__thumbnails__group_id__get",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          },
+          {
+            "name": "group_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Group Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/gallery/rss.xml": {
       "get": {
         "summary": "Gallery Feed",
@@ -6718,7 +6762,14 @@
             "title": "People"
           },
           "image_url": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Image Url"
           },
           "thumbnail_url": {

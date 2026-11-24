@@ -2,6 +2,8 @@
 
 公开图片使用 `/api/v1/media/by-hash/{variant}/{digest}`，variant 为 `image`、`thumbnail` 或 `original`，digest 为对应文件实际字节的 SHA-256（64 位小写十六进制）。图库列表和详情返回 `image_url`、`thumbnail_url`、`download_url`；`image_id` 继续用于反馈和管理。
 
+仍公开的帖子可以显示回收站中保留的缩略图。这些图片在帖子详情中的 `image_url` 为 `null`；其 `thumbnail_url` 仅返回该帖的缩略图，使用 `no-store`，不要加入 CDN 缓存规则。整帖不可见后，缩略图链接也返回 404。
+
 ## 源站策略
 
 ### 本地磁盘缓存（默认不清理）

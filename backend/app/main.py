@@ -886,7 +886,7 @@ class PostPicture(BaseModel):
     width: int
     height: int
     people: list[dict]
-    image_url: str
+    image_url: str | None
     thumbnail_url: str
 
 
@@ -925,7 +925,22 @@ def post_detail(key: str):
         row = social.find_post(db, key)
         if not row:
             fail('帖子不存在或已不可见', 404)
-        return social.hydrate(db, [row['id']], media_urls, gallery_labels)[0]
+        return social.hydrate(db, [row['id']], media_urls, gallery_labels, thumbs=DATA / 'thumbs')[0]
+
+
+@app.get('/api/v1/posts/{key}/thumbnails/{group_id}', response_class=FileResponse,
+         responses={200: {'content': {'image/jpeg': {}}}})
+def post_thumbnail(key: str, group_id: int):
+    thumbs = DATA / 'thumbs'
+    with connect() as db:
+        db.execute('BEGIN')
+        post = social.find_post(db, key)
+        if post:
+            rows = social.picture_rows(db, json.dumps([post['id']]), ['member.group_id=?'], [group_id], thumbs=thumbs)
+            for row in rows:
+                if row['hidden']:
+                    return FileResponse(thumbs / row['filename'], media_type='image/jpeg', headers={'Cache-Control': 'no-store'})
+    fail('图片不存在', 404)
 
 
 class RSSResponse(Response):

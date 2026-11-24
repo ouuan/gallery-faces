@@ -37,6 +37,38 @@ def test_feed_matching_images_and_complete_post(client):
     assert client.get('/api/v1/posts/x:1').status_code == 404
 
 
+def test_post_retains_only_eligible_trash_thumbnails(client):
+    with db.connect(True) as conn:
+        for _ in range(7):
+            image(conn)
+        conn.execute("UPDATE posts SET url='https://x.com/alice/status/1/photo/2' WHERE id=2")
+        conn.executemany('INSERT INTO sources(image_id,post_id,media_key) VALUES(?,1,?)',
+                         [(identifier, str(identifier)) for identifier in (3, 4, 5, 6)])
+        conn.execute("UPDATE images SET hidden=1,filename=printf('%d.jpg',id) WHERE id IN (2,4,5,6)")
+        conn.execute("UPDATE images SET detection='pending' WHERE id=6")
+        conn.execute('UPDATE images SET group_id=3 WHERE id=5')
+    for name in ('2.jpg', '5.jpg', '6.jpg'):
+        (db.DATA / 'thumbs' / name).write_bytes(name.encode())
+    client.cookies.clear()
+    detail = '/api/v1/posts/x:1'
+    pictures = client.get(detail).json()['images']
+    assert [picture['id'] for picture in pictures] == [1, 2, 3]
+    assert pictures[0]['image_url'] and pictures[2]['image_url']
+    assert pictures[1]['image_url'] is None and pictures[1]['people'] == []
+    url = pictures[1]['thumbnail_url']
+    response = client.get(url)
+    assert response.content == b'2.jpg' and response.headers['cache-control'] == 'no-store'
+    for path in ('/api/v1/posts/x:7/thumbnails/2', '/api/v1/media/2?thumbnail=true', '/api/v1/media/2',
+                 '/api/v1/gallery/2', *(f'{detail}/thumbnails/{group}' for group in (3, 4, 6))):
+        assert client.get(path).status_code == 404
+    feed = XML.fromstring(client.get('/api/v1/gallery/rss.xml').content)
+    entry = next(item for item in feed.findall('.//item') if item.findtext('link').endswith('/posts/x:1'))
+    assert entry.findtext('description').count('<img ') == 2
+    with db.connect(True) as conn:
+        conn.execute('UPDATE images SET hidden=1 WHERE id IN (1,3)')
+    assert client.get(detail).status_code == client.get(url).status_code == 404
+
+
 def test_feed_latest_twenty_after_dedup_and_fallback_identity(client):
     with db.connect(True) as conn:
         for day in range(1, 24):
