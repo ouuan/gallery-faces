@@ -294,7 +294,6 @@ onUnmounted(() => {
   <div v-if="checking" class="initial-loading" aria-busy="true"><LoadingOverlay show center label="正在检查登录状态…" /></div>
   <main v-else-if="!authenticated" class="login">
     <h1>管理员登录</h1>
-      <Monitors v-if="section === 'monitors'" />
     <p class="muted">登录后可导入照片、整理人物和审核识别结果</p>
     <n-alert v-if="error" type="error">{{ error }}</n-alert>
     <form @submit.prevent="login">
