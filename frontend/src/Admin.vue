@@ -4,7 +4,8 @@ import MediaCacheStatus from "./MediaCacheStatus.vue";
 import LocalDateTime from "./LocalDateTime.vue";
 import LoadingOverlay from "./LoadingOverlay.vue";
 import ListPagination from "./ListPagination.vue";
-import TaskTable, { taskKindLabels, taskStatusLabels, type TaskRecord } from "./TaskTable.vue";
+import TaskTable, { taskStatusLabels, type TaskRecord } from "./TaskTable.vue";
+import { taskKindLabels, taskTypeOptions, tierLabels } from './task-types';
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useLatestRequest } from "./use-latest-request";
 import { useRouter, useRoute } from "vue-router";
@@ -14,6 +15,7 @@ import {
   NCheckboxGroup,
   NInput,
   NSelect,
+  NTreeSelect,
   NAlert,
   NInputNumber,
   NSlider,
@@ -75,14 +77,18 @@ const vThresholdLabels = {
 const section = computed(() => String(route.params.section || "import"));
 const taskKinds = ref<string[]>(route.query.kind ? [String(route.query.kind)] : []);
 const taskStatuses = ref<string[]>([]);
-const taskKindOptions = Object.entries(taskKindLabels).map(([value, label]) => ({ value, label }));
+const taskTiers = ref<string[]>([]);
+const taskTierOptions = Object.entries(tierLabels).map(([value, label]) => ({ value, label }));
+const hasImported = ref(false);
 const taskStatusOptions = Object.entries(taskStatusLabels).map(([value, label]) => ({ value, label }));
-const hasTaskFilters = computed(() => taskKinds.value.length > 0 || taskStatuses.value.length > 0);
+const hasTaskFilters = computed(() => taskKinds.value.length || taskStatuses.value.length || taskTiers.value.length || hasImported.value);
 function clearTaskFilters() {
   taskKinds.value = [];
   taskStatuses.value = [];
+  taskTiers.value = [];
+  hasImported.value = false;
 }
-watch([taskKinds, taskStatuses], () => {
+watch([taskKinds, taskStatuses, taskTiers, hasImported], () => {
   tasksError.value = "";
   void loadTasks(1);
 });
@@ -91,16 +97,20 @@ const taskPageCount = computed(() =>
   Math.max(1, Math.ceil(taskTotal.value / taskPageSize)),
 );
 let taskRequest = 0;
+let taskPending = false;
 const taskRead = useLatestRequest();
 let requestedTaskPage = 1;
 async function loadTasks(page = taskPage.value, background = false) {
-  if (background && tasksLoading.value) return;
+  if (background && taskPending) return;
   const signal = taskRead.start();
   const request = ++taskRequest;
   requestedTaskPage = page;
-  tasksLoading.value = true;
+  taskPending = true;
+  tasksLoading.value = !background;
   const query = new URLSearchParams({ page: String(page), page_size: String(taskPageSize) });
-  taskKinds.value.forEach((kind) => query.append("kind", kind));
+  taskKinds.value.forEach(key => query.append(key in taskKindLabels ? 'kind' : 'subtype', key));
+  taskTiers.value.forEach(tier => query.append('tier', tier));
+  if (hasImported.value) query.set('has_imported', 'true');
   taskStatuses.value.forEach((status) => query.append("status", status));
   try {
     const data = await api<{
@@ -116,7 +126,7 @@ async function loadTasks(page = taskPage.value, background = false) {
   } catch (e) {
     if (request === taskRequest) tasksError.value = (e as Error).message;
   } finally {
-    if (request === taskRequest) tasksLoading.value = false;
+    if (request === taskRequest) taskPending = tasksLoading.value = false;
   }
 }
 const nav = [
@@ -223,7 +233,7 @@ async function deleteCookie(platform: string) {
 watch(section, () => {
   taskRequest++;
   taskRead.cancel();
-  tasksLoading.value = false;
+  taskPending = tasksLoading.value = false;
   if (authenticated.value) void refresh().catch(e => error.value = e.message);
 });
 function onVisibility() {
@@ -354,17 +364,23 @@ onUnmounted(() => {
                 : "已加入队列"
           }}</strong>
         </div>
-        <h2>任务记录</h2>
+        <div class="task-heading"><h2>任务记录</h2><span>{{ taskTotal }} 条</span>
+          <button v-if="hasTaskFilters" type="button" class="text-button" @click="clearTaskFilters">清空筛选</button>
+        </div>
         <div class="task-filters">
           <label class="field-label">任务类型
-            <n-select v-model:value="taskKinds" role="group" aria-label="任务类型" multiple clearable filterable
-              :input-props="{ 'aria-label': '任务类型' }" placeholder="全部类型" :options="taskKindOptions" />
+            <n-tree-select v-model:value="taskKinds" role="group" aria-label="任务类型" multiple checkable cascade
+              filterable clearable check-strategy="parent" :max-tag-count="1" :options="taskTypeOptions" placeholder="全部类型" />
           </label>
           <label class="field-label">任务状态
-            <n-select v-model:value="taskStatuses" role="group" aria-label="任务状态" multiple clearable filterable
+            <n-select v-model:value="taskStatuses" role="group" aria-label="任务状态" multiple clearable filterable :max-tag-count="1"
               :input-props="{ 'aria-label': '任务状态' }" placeholder="全部状态" :options="taskStatusOptions" />
           </label>
-          <n-button v-if="hasTaskFilters" @click="clearTaskFilters">清空筛选</n-button>
+          <label class="field-label">调度档
+            <n-select v-model:value="taskTiers" role="group" aria-label="调度档" multiple clearable filterable :max-tag-count="1"
+              :input-props="{ 'aria-label': '调度档' }" placeholder="全部档位" :options="taskTierOptions" />
+          </label>
+          <n-checkbox v-model:checked="hasImported">有新入库</n-checkbox>
         </div>
         <div class="loading-region" :aria-busy="tasksLoading">
         <LoadingOverlay :show="tasksLoading" label="正在加载任务记录…" />
@@ -539,11 +555,20 @@ onUnmounted(() => {
   gap: 4px 20px;
 }
 .task-filters {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr)) auto;
   align-items: flex-end;
   gap: 12px;
-  margin-bottom: 20px;
 }
+.task-heading { display: flex; align-items: center; flex-wrap: wrap; min-height: 44px; gap: 8px; margin: 24px 0 12px; }
+.task-heading h2 { margin: 0; }
+.task-heading > span { color: var(--muted); font-variant-numeric: tabular-nums; }
+.task-heading > button { margin-inline-start: auto; }
+.task-filters > .n-checkbox { min-height: 44px; align-items: center; justify-self: start; }
+.task-filters :deep(.n-base-selection-tags) { flex-wrap: nowrap; }
+.task-filters :deep(.n-base-selection) { min-height: 44px; }
+.task-filters :deep(.n-tree-select .n-base-selection) { --n-height: 44px !important; }
+.task-filters :deep(.n-base-selection-tag-wrapper:first-child), .task-filters :deep(.n-tag__content) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .task-filters .field-label {
   flex: 1;
   min-width: 0;
@@ -556,7 +581,6 @@ onUnmounted(() => {
     gap: 8px;
     margin-bottom: 12px;
   }
-  .task-filters > button { grid-column: 1 / -1; justify-self: end; }
 }
 .task-pagination {
   display: flex;

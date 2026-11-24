@@ -37,7 +37,7 @@ from .security import download_url, cookie_bytes, save_cookie
 from .importer import validate_url, safe_directory
 from .vision import MODEL_VERSION, Vision, candidates, models_ready, validate_embedding
 from .db import schedule_detection, ACTIVE_REFERENCE
-from .download_round import ROUND_SECONDS
+from .task_queue import NEXT_RANK, Subtype, Tier
 from .trash import require_active, require_active_face
 from . import duplicate_review
 from .representatives import complete_source_sql, representative_sql, require_representative, require_representative_face
@@ -1869,9 +1869,10 @@ def image_action(body: ImageAction, _: None = Depends(admin)):
         except ValueError as error:
             fail(str(error))
     with connect(True) as db:
-        for image_id in set(body.ids):
+        ids = set(body.ids)
+        for image_id in ids:
             require_representative(db, image_id)
-            schedule_detection(db, image_id, "highres")
+            schedule_detection(db, image_id, 'highres', 'single' if len(ids) == 1 else 'bulk')
     return {"ok": True}
 
 
@@ -1953,15 +1954,20 @@ def import_create(body: ImportInput, _: None = Depends(admin)):
             results.append(
                 {"value": body.directory, "status": "queued", "task_id": task}
             )
-        seen = set()
+        targets = []
         for url in body.urls:
             url = url.strip()
             if not url:
                 continue
             try:
-                _, url = download_url(url)
+                targets.append((url, download_url(url)[1]))
             except ValueError:
-                results.append({"value": url, "status": "invalid"})
+                targets.append((url, None))
+        bulk = body.directory is not None or len({url for _, url in targets if url}) > 1
+        seen = set()
+        for submitted, url in targets:
+            if url is None:
+                results.append({'value': submitted, 'status': 'invalid'})
                 continue
             if url in seen:
                 results.append({"value": url, "status": "duplicate"})
@@ -1977,8 +1983,9 @@ def import_create(body: ImportInput, _: None = Depends(admin)):
                 )
                 continue
             task = db.execute(
-                "INSERT INTO tasks(kind,payload) VALUES('download',?)",
-                (json.dumps({"url": url, "start": start, "end": end, "hashtags": body.hashtags}, ensure_ascii=False),),
+                "INSERT INTO tasks(kind,payload,tier) VALUES('download',?,?)",
+                (json.dumps({"url": url, "start": start, "end": end, "hashtags": body.hashtags}, ensure_ascii=False),
+                 'bulk' if bulk else None),
             ).lastrowid
             results.append({"value": url, "status": "queued", "task_id": task})
     return results
@@ -1990,14 +1997,27 @@ def tasks(
     page_size: int = Query(20, ge=1, le=100),
     kind: list[Literal["download", "import", "detect", "rematch", "restore", "monitor", "avatar"]] = Query(default=[]),
     status: list[Literal["queued", "running", "done", "failed", "cancelled"]] = Query(default=[]),
+    subtype: list[Subtype] = Query(default=[]),
+    tier: list[Tier] = Query(default=[]),
+    has_imported: bool | None = None,
     _: None = Depends(admin),
 ):
     conditions = []
     params = []
-    for column, values in (("kind", kind), ("status", status)):
+    types = []
+    for column, values in (("kind", kind), ("subtype", subtype), ("status", status), ("tier", tier)):
         if values:
-            conditions.append(f"{column} IN ({','.join('?' for _ in values)})")
+            clause = f"{column} IN ({','.join('?' for _ in values)})"
+            if column in ('kind', 'subtype'):
+                types.append(clause)
+            else:
+                conditions.append(clause)
             params.extend(values)
+    if types:
+        conditions.insert(0, '(' + ' OR '.join(types) + ')')
+    if has_imported is not None:
+        conditions.append("(kind IN ('download','monitor','import') AND coalesce(json_extract(result,'$.imported'),0)>0) = ?")
+        params.append(has_imported)
     where = " WHERE " + " AND ".join(conditions) if conditions else ""
     with connect() as db:
         db.execute("BEGIN")
@@ -2049,8 +2069,8 @@ def task_action(
             ):
                 fail("该图片已有同类活动任务", 409)
             db.execute(
-                "UPDATE tasks SET status='queued',started_at=NULL,round_started_at=NULL,runtime_seconds=NULL,finished_at=NULL,stage='等待重试',error=NULL,cancel_requested=0,stalled_rounds=0,done=CASE WHEN kind='download' THEN done ELSE 0 END,total=0,speed=0,queue_rank_at=unixepoch()+CASE WHEN rounds>0 THEN ? ELSE 0 END WHERE id=?",
-                (ROUND_SECONDS, task_id),
+                f"UPDATE tasks SET status='queued',started_at=NULL,round_started_at=NULL,runtime_seconds=NULL,finished_at=NULL,stage='等待重试',error=NULL,cancel_requested=0,stalled_rounds=0,done=CASE WHEN kind='download' THEN done ELSE 0 END,total=0,speed=0,queue_rank_at={NEXT_RANK} WHERE id=?",
+                (task_id,),
             )
         else:
             fail("只能重试失败或已取消的任务")

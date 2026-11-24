@@ -23,7 +23,7 @@ def instant(value):
 def active(db, mid):
     return db.execute("SELECT * FROM tasks WHERE kind='monitor' AND json_extract(payload,'$.monitor_id')=? AND status IN ('queued','running')", (mid,)).fetchone()
 
-def enqueue(db, mid, start=None, end=None, retry=None):
+def enqueue(db, mid, start=None, end=None, retry=None, trigger='monitor_now'):
     row = db.execute('SELECT * FROM monitors WHERE id=?', (mid,)).fetchone()
     if not row:
         raise HTTPException(404, '监控不存在')
@@ -41,10 +41,10 @@ def enqueue(db, mid, start=None, end=None, retry=None):
         if not start and row['progress_at']:
             overlap = (datetime.fromisoformat(row['progress_at'].replace('Z', '+00:00')) - timedelta(minutes=5)).isoformat().replace('+00:00', 'Z')
             lower = max(lower, overlap)
-        payload = dict(monitor_id=mid, generation=row['generation'], mode='backfill' if start else 'incremental', start=lower, end=end or now(),
+        payload = dict(monitor_id=mid, generation=row['generation'], trigger=trigger, mode='backfill' if start else 'incremental', start=lower, end=end or now(),
                        hashtags=json.loads(row['hashtags']),
                        url=f"https://{'x.com' if row['platform'] == 'x' else 'www.instagram.com'}/{row['username']}/")
-    return db.execute("INSERT INTO tasks(kind,payload) VALUES('monitor',?)", (json.dumps(payload),)).lastrowid
+    return db.execute("INSERT INTO tasks(kind,payload,tier) VALUES('monitor',?,?)", (json.dumps(payload), retry['tier'] if retry else None)).lastrowid
 
 def cancel(db, mid):
     db.execute("UPDATE tasks SET cancel_requested=1,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,stage=CASE WHEN status='queued' THEN '已取消' ELSE stage END,finished_at=CASE WHEN status='queued' THEN ? ELSE finished_at END WHERE kind='monitor' AND json_extract(payload,'$.monitor_id')=? AND status IN ('queued','running')", (now(), mid))
@@ -64,7 +64,7 @@ def finish(db, task):
 def schedule_due():
     with connect(True) as db:
         for row in db.execute('SELECT id FROM monitors WHERE paused=0 AND next_check_at<=?', (now(),)).fetchall():
-            enqueue(db, row['id'])
+            enqueue(db, row['id'], trigger='monitor_scheduled')
 
 class Create(BaseModel):
     hashtags: Hashtags = Field(default_factory=list)
@@ -163,7 +163,7 @@ def create(body: Create) -> Created:
         if db.execute('SELECT 1 FROM monitors WHERE platform=? AND username=? COLLATE NOCASE', (body.platform, username)).fetchone():
             raise HTTPException(409, '该发布者已在监控列表中')
         mid = db.execute('INSERT INTO monitors(platform,username,interval_minutes,start_at,next_check_at,hashtags) VALUES(?,?,?,?,?,?)', (body.platform, username, body.interval_minutes, start, timestamp, json.dumps(body.hashtags))).lastrowid
-        tid = enqueue(db, mid, end=timestamp)
+        tid = enqueue(db, mid, end=timestamp, trigger='monitor_initial')
     return {'id': mid, 'task_id': tid}
 
 def edit(monitor_id: int, body: Edit):
@@ -197,7 +197,7 @@ def resume(monitor_id: int, body: Resume) -> TaskResult:
         if body.mode != 'catch_up':
             db.execute('UPDATE monitors SET start_at=?,progress_at=NULL,generation=generation+1 WHERE id=?', (start, monitor_id))
         db.execute('UPDATE monitors SET paused=0,next_check_at=? WHERE id=?', (timestamp, monitor_id))
-        tid = enqueue(db, monitor_id, end=timestamp)
+        tid = enqueue(db, monitor_id, end=timestamp, trigger='monitor_initial')
     return {'task_id': tid}
 
 def batch(body: Batch) -> list[BatchResult]:

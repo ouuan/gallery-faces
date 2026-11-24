@@ -20,9 +20,10 @@ def enqueue(client, name='alice'):
     return client.post('/api/v1/admin/import', json={'urls': [f'https://x.com/{name}']}).json()[0]['task_id']
 
 
-def test_bounded_head_start(client, monkeypatch):
+def test_round_rejoins_between_waiting_and_new_arrivals(client, monkeypatch):
     first = enqueue(client)
     task = worker.claim(('download',))
+    before = enqueue(client, 'bob')
     def pause(task):
         raise YieldRound()
     monkeypatch.setattr(worker, 'import_task', pause)
@@ -30,12 +31,9 @@ def test_bounded_head_start(client, monkeypatch):
     with db.connect() as conn:
         row = conn.execute('SELECT * FROM tasks WHERE id=?', (first,)).fetchone()
         assert row['rounds'] == 1 and row['status'] == 'queued' and not row['finished_at']
-        rank = row['queue_rank_at']
-    before, equal, after = [enqueue(client, name) for name in ('bob', 'carol', 'dave')]
-    with db.connect(True) as conn:
-        conn.executemany('UPDATE tasks SET queue_rank_at=? WHERE id=?', [(rank-1, before), (rank, equal), (rank+1, after)])
+    after = enqueue(client, 'carol')
     worker.recover_tasks()
-    assert [worker.claim(('download',))['id'] for _ in range(4)] == [before, equal, first, after]
+    assert [worker.claim(('download',))['id'] for _ in range(3)] == [before, first, after]
 
 
 @pytest.mark.parametrize('at', ['partial', 'ready', 'uncommitted', 'committed', 'cursor'])

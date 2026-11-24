@@ -4231,6 +4231,9 @@ export interface operations {
                 page_size?: number;
                 kind?: ("download" | "import" | "detect" | "rematch" | "restore" | "monitor" | "avatar")[];
                 status?: ("queued" | "running" | "done" | "failed" | "cancelled")[];
+                subtype?: ("post" | "account" | "list" | "monitor_scheduled" | "monitor_now" | "monitor_initial" | "monitor_backfill" | "monitor" | "auto" | "highres" | "unknown" | "all_faces" | "import" | "restore" | "avatar")[];
+                tier?: ("avatar" | "single" | "scheduled" | "bulk" | "maintenance")[];
+                has_imported?: boolean | null;
             };
             header?: never;
             path?: never;

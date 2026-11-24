@@ -1346,7 +1346,7 @@ def test_claim_prioritizes_manual_redetection_then_ordinary_rematches(client, ki
         first_detect = db.schedule_detection(conn, first_image)
         blocked = conn.execute("INSERT INTO tasks(kind,image_id) VALUES('rematch',?)", (first_image,)).lastrowid
         second_detect = db.schedule_detection(conn, image(conn))
-        ready = [conn.execute("INSERT INTO tasks(kind,image_id) VALUES('rematch',?)", (image(conn),)).lastrowid for _ in range(2)]
+        ready = [conn.execute("INSERT INTO tasks(kind,image_id,tier) VALUES('rematch',?,'bulk')", (image(conn),)).lastrowid for _ in range(2)]
         target = image(conn)
         manual = db.schedule_detection(conn, target)
         assert db.schedule_detection(conn, target, 'highres') == manual

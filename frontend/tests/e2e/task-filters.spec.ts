@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test("task filters combine multiple values and survive polling, actions, errors and import", async ({ page }) => {
   const tasks = Array.from({ length: 85 }, (_, i) => ({
-    id: 85 - i, kind: i % 2 ? "download" : "import", payload: "{}",
+    id: 85 - i, kind: i % 2 ? "download" : "import", subtype: i % 2 ? 'account' : 'import', tier: 'bulk', imported: i % 4, payload: "{}",
     status: i % 3 ? "failed" : "queued", stage: "等待处理", done: 0, total: 1, speed: 0,
   }));
   const queries: URLSearchParams[] = [];
@@ -20,7 +20,8 @@ test("task filters combine multiple values and survive polling, actions, errors 
         failNext = false;
         return route.fulfill({ status: 503, json: { detail: "测试网络错误" } });
       }
-      const filtered = tasks.filter(t => (!q.has("kind") || q.getAll("kind").includes(t.kind))
+      const filtered = tasks.filter(t => ((!q.has("kind") && !q.has('subtype')) || q.getAll("kind").includes(t.kind) || q.getAll('subtype').includes(t.subtype))
+        && (!q.has('tier') || q.getAll('tier').includes(t.tier)) && (!q.has('has_imported') || t.imported > 0)
         && (!q.has("status") || q.getAll("status").includes(t.status)));
       const current = Math.min(Number(q.get("page")), Math.max(1, Math.ceil(filtered.length / 20)));
       const data = { items: filtered.slice((current - 1) * 20, current * 20), total: filtered.length, page: current, page_size: 20 };
@@ -44,7 +45,8 @@ test("task filters combine multiple values and survive polling, actions, errors 
   const currentPage = pagination.locator('[aria-current="page"]');
   const select = async (name: string, label: string) => {
     await page.getByRole("group", { name, exact: true }).click();
-    await page.locator(".n-base-select-option").filter({ hasText: label }).click();
+    if (name === '任务类型') await page.locator('.n-tree-node').filter({ has: page.getByText(label, { exact: true }) }).getByRole('checkbox').click();
+    else await page.locator(".n-base-select-option").filter({ hasText: label }).click();
     await page.keyboard.press("Escape");
   };
   await expect(rows).toHaveCount(20);
@@ -59,7 +61,7 @@ test("task filters combine multiple values and survive polling, actions, errors 
   const count = queries.length;
   await page.clock.fastForward(3000);
   await expect.poll(() => queries.length).toBeGreaterThan(count);
-  expect(queries.at(-1)!.getAll("kind")).toEqual(["import", "download"]);
+  expect(queries.at(-1)!.getAll("kind").sort()).toEqual(["download", "import"]);
   const cancelledId = await rows.first().innerText();
   await rows.first().getByRole("button", { name: "取消" }).click();
   await expect(rows.first()).not.toHaveText(cancelledId);
@@ -94,7 +96,7 @@ test("task filters combine multiple values and survive polling, actions, errors 
   delayNext = true;
   await select("任务类型", "人脸检测");
   await expect.poll(() => !!release).toBe(true);
-  await page.locator(".task-filters").getByRole("button", { name: "清空筛选" }).click();
+  await page.locator(".task-heading").getByRole("button", { name: "清空筛选" }).click();
   await expect(pagination).toContainText("共 85 条");
   release!();
   await page.clock.runFor(100);
@@ -107,10 +109,49 @@ test("task filters combine multiple values and survive polling, actions, errors 
   expect(queries.at(-1)!.has("kind")).toBe(false);
   await page.getByRole("group", { name: "任务类型", exact: true }).locator('[tabindex="0"]').focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("textbox", { name: "任务类型", exact: true })).toBeFocused();
-  await page.keyboard.insertText("人脸检测");
+  await expect(page.getByRole('group', { name: '任务类型' }).getByRole('textbox')).toBeFocused();
+  await page.keyboard.insertText("高分辨率重检");
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await page.keyboard.press("Escape");
   await expect(page.getByText("没有符合筛选条件的任务")).toBeVisible();
+});
+
+for (const width of [390, 1280]) test(`subtypes, imported and collapsed tiers at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  const queries: URLSearchParams[] = [];
+  await page.route('**/api/v1/**', route => {
+    const url = new URL(route.request().url());
+    if (!url.pathname.endsWith('/tasks')) return route.fulfill({ json: [] });
+    queries.push(url.searchParams);
+    return route.fulfill({ json: { items: [], total: 0, page: 1 } });
+  });
+  await page.goto('/admin/import');
+  const type = page.getByRole('group', { name: '任务类型' });
+  await type.click();
+  await type.getByRole('textbox').fill('账号／媒体页下载');
+  await page.locator('.n-tree-node').filter({ hasText: '账号／媒体页下载' }).getByRole('checkbox').click();
+  await page.keyboard.press('Escape');
+  await page.getByRole('checkbox', { name: '有新入库' }).check();
+  const tiers = page.getByRole('group', { name: '调度档' });
+  await tiers.click();
+  await page.locator('.n-base-select-option').getByText('定时监控', { exact: true }).click();
+  await page.locator('.n-base-select-option').getByText('批量处理', { exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(tiers).toContainText('定时监控');
+  await expect(tiers).toContainText('+1');
+  const last = queries.at(-1)!;
+  expect(last.getAll('tier')).toEqual(['scheduled', 'bulk']);
+  expect(last.get('has_imported')).toBe('true');
+  expect(last.get('subtype')).toBe('account');
+  const trigger = tiers.locator('[tabindex="0"]').first();
+  await trigger.focus();
+  const before = queries.length;
+  await expect.poll(() => queries.length).toBeGreaterThan(before);
+  await expect(trigger).toBeFocused();
+  await page.addStyleTag({ content: '.task-filters, .task-filters .field-label, .task-filters .n-tag {font-size: 150%}' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.locator('.task-heading button').click();
+  await expect(tiers).toContainText('全部档位');
+  await expect(page.getByRole('checkbox', { name: '有新入库' })).not.toBeChecked();
 });

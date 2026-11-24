@@ -24,6 +24,7 @@ from .vision import (
 )
 from .importer import EXTENSIONS, import_file, safe_directory
 from .download_round import KINDS as DOWNLOAD_KINDS, ROUND_SECONDS, EMPTY_RESULT, STALL_LIMIT, RoundProgress, YieldRound, cleanup_ready, item_error_summary
+from .task_queue import COMPUTE, NEXT_RANK, priority
 
 
 def rematch(task):
@@ -163,11 +164,14 @@ def detect(task):
         )
         db.execute(
             f"""
-            INSERT OR IGNORE INTO tasks(kind,image_id,target_version)
-            SELECT 'rematch', ?, ?
-            WHERE EXISTS(SELECT 1 FROM faces WHERE image_id=? AND {scope})
+            INSERT INTO tasks(kind,image_id,target_version,tier)
+            SELECT 'rematch', image_id, ?, tier FROM tasks WHERE id=?
+            AND EXISTS(SELECT 1 FROM faces WHERE image_id=? AND {scope})
+            ON CONFLICT(image_id) WHERE kind='rematch' AND status IN ('queued','running')
+            DO UPDATE SET target_version=excluded.target_version,
+                tier=CASE WHEN {priority('excluded.tier')} < {priority('tasks.tier')} THEN excluded.tier ELSE tasks.tier END
             """,
-            (row["id"], version, row["id"]),
+            (version, task['id'], row["id"]),
         )
         if mode == "highres":
             # Detection and matching are serialized per image. Upgrade any queued
@@ -292,7 +296,6 @@ def download_media(task, payload, attempt, restore_id=None):
 
 def _import_task(task, attempt=None):
     payload = json.loads(task["payload"])
-    counts = {"imported": 0, "skipped_existing": 0, "skipped_trashed": 0}
     if task['kind'] in DOWNLOAD_KINDS:
         download_media(task, payload, attempt)
         return
@@ -307,8 +310,8 @@ def _import_task(task, attempt=None):
     errors = []
     with connect(True) as db:
         db.execute(
-            "UPDATE tasks SET stage='导入图片',total=?,done=0 WHERE id=?",
-            (len(paths), task["id"]),
+            "UPDATE tasks SET stage='导入图片',total=?,done=0,result=json_patch(?,result) WHERE id=?",
+            (len(paths), json.dumps(EMPTY_RESULT), task["id"]),
         )
     for index, path in enumerate(paths):
         if cancelled(task["id"]):
@@ -327,7 +330,7 @@ def _import_task(task, attempt=None):
             if not sidecar.resolve().is_relative_to(directory.resolve()):
                 raise ValueError("Sidecar 不在导入目录中")
             raw = json.loads(sidecar.read_text())
-            import_file(path, raw, payload.get("start"), payload.get("end"), counts=counts)
+            import_file(path, raw, payload.get("start"), payload.get("end"), task_id=task['id'])
         except Exception as error:
             errors.append(f"{path.name}: {type(error).__name__}")
         with connect(True) as db:
@@ -340,8 +343,6 @@ def _import_task(task, attempt=None):
                     task["id"],
                 ),
             )
-    with connect(True) as db:
-        db.execute("UPDATE tasks SET result=? WHERE id=?", (json.dumps(counts), task["id"]))
     if errors:
         raise ValueError(
             f"{len(errors)} 张图片导入失败；成功项目已保留。" + "\n".join(errors)
@@ -421,26 +422,26 @@ def restore_task(task):
 def claim(kinds=("detect", "rematch", "import", "download", "restore", "monitor", "avatar")):
     with connect(True) as db:
         placeholders = ",".join("?" for _ in kinds)
-        ordering = 't.id' if set(kinds) <= {'detect', 'rematch'} else 't.queue_rank_at,t.rounds,t.id'
-        if 'rematch' in kinds and 'detect' in kinds:
-            ordering = "(t.kind='rematch') DESC," + ordering
-        if 'detect' in kinds or 'rematch' in kinds:
-            ordering = """CASE WHEN (t.kind='detect' AND json_extract(t.payload,'$.mode')='highres')
-                OR (t.kind='rematch' AND json_extract(t.payload,'$.refresh_all')=1)
-                THEN 0 ELSE 1 END,""" + ordering
-        if 'avatar' in kinds:
-            ordering = "(t.kind='avatar') DESC," + ordering
-        task = db.execute(
-            f"""
-            SELECT t.* FROM tasks t WHERE t.status='queued' AND t.kind IN ({placeholders})
-            AND (t.kind NOT IN ('detect','rematch') OR EXISTS(SELECT 1 FROM images i WHERE i.id=t.image_id AND i.hidden=0))
+        compute = {'detect', 'rematch'}
+        if set(kinds) <= compute:
+            scope, tie_break = COMPUTE, "(t.kind='rematch') DESC,t.id"
+        elif compute.isdisjoint(kinds):
+            scope, tie_break = f'NOT ({COMPUTE})', 't.queue_rank_at,t.id'
+        else:
+            scope, tie_break = '1', "(t.kind='rematch') DESC,CASE WHEN t.kind NOT IN ('detect','rematch') THEN t.queue_rank_at END,t.id"
+        eligible = """(t.kind NOT IN ('detect','rematch') OR EXISTS(SELECT 1 FROM images i WHERE i.id=t.image_id AND i.hidden=0))
             AND NOT EXISTS (SELECT 1 FROM tasks prior WHERE prior.image_id=t.image_id
                 AND prior.status IN ('queued','running') AND prior.id<t.id)
-            AND NOT EXISTS (SELECT 1 FROM tasks running WHERE running.image_id=t.image_id AND running.status='running')
-            ORDER BY {ordering} LIMIT 1
-        """,
-            kinds,
-        ).fetchone()
+            AND NOT EXISTS (SELECT 1 FROM tasks running WHERE running.image_id=t.image_id AND running.status='running')"""
+        task = db.execute(f"""SELECT t.* FROM tasks t WHERE t.status='queued' AND {scope}
+            AND t.kind IN ({placeholders}) AND {eligible} ORDER BY {priority('t.tier')},{tie_break} LIMIT 1""", kinds).fetchone()
+        if task and 'rematch' in kinds and task['tier'] != 'avatar':
+            prerequisite = db.execute(f"""SELECT t.* FROM tasks d CROSS JOIN tasks t ON t.image_id=d.image_id
+                WHERE d.kind='detect' AND d.tier='single' AND d.subtype='highres' AND d.status='queued'
+                AND t.kind='rematch' AND t.tier='maintenance' AND t.status='queued' AND t.id<d.id
+                AND {eligible} ORDER BY t.id LIMIT 1""").fetchone()
+            if prerequisite and (task['tier'] != 'single' or task['kind'] != 'rematch' or prerequisite['id'] < task['id']):
+                task = prerequisite
         if not task:
             return None
         task = dict(task)
@@ -472,9 +473,8 @@ def step():
 
 
 def requeue_round(db, task_id):
-    return db.execute("""UPDATE tasks SET status='queued',finished_at=NULL,stage='等待下一轮',speed=0,
-        queue_rank_at=unixepoch()+? WHERE id=? AND status='running' AND cancel_requested=0""",
-                      (ROUND_SECONDS, task_id)).rowcount
+    return db.execute(f"""UPDATE tasks SET status='queued',finished_at=NULL,stage='等待下一轮',speed=0,
+        queue_rank_at={NEXT_RANK} WHERE id=? AND status='running' AND cancel_requested=0""", (task_id,)).rowcount
 
 
 def execute_download(task):

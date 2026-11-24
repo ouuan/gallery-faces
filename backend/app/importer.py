@@ -79,12 +79,17 @@ def record_location(db, image_id, path):
         db.execute("INSERT OR IGNORE INTO import_locations VALUES(?,?)", (image_id, str(resolved.relative_to(IMPORT))))
 
 
-def import_file(path, raw, start=None, end=None, *, counts=None):
+def import_file(path, raw, start=None, end=None, *, counts=None, task_id=None):
     meta = metadata(raw, path.name)
     if not in_date_range(meta, start, end):
         return None
     with connect(True) as db:
         image_id, outcome = import_media(db, path, meta)
+        if task_id is not None and db.execute('INSERT OR IGNORE INTO directory_items VALUES(?,?,?)',
+                                              (task_id, str(path), image_id)).rowcount:
+            field = '$.' + outcome
+            db.execute('UPDATE tasks SET result=json_set(result,?,coalesce(json_extract(result,?),0)+1) WHERE id=?',
+                       (field, field, task_id))
     if counts is not None:
         counts[outcome] += 1
     if outcome != 'skipped_trashed':
@@ -92,7 +97,7 @@ def import_file(path, raw, start=None, end=None, *, counts=None):
     return image_id
 
 
-def import_media(db, path, meta):
+def import_media(db, path, meta, *, tier='bulk'):
     known = source_image(db, meta)
     if known and known['hidden']:
         image = known
@@ -116,7 +121,7 @@ def import_media(db, path, meta):
             (digest, filename, width, height, phash(target), group, path.stat().st_size),
         ).lastrowid
         from .db import schedule_detection
-        schedule_detection(db, image_id)
+        schedule_detection(db, image_id, tier=tier)
         db.execute('INSERT INTO pending_deduplications(image_id) VALUES(?)', (image_id,))
     db.execute(
         'UPDATE images SET image_evicted=0,original_evicted=0,cache_retry_at=0,original_failures=0,original_lost=0,image_used=unixepoch(),original_used=unixepoch(),image_sha256=?,thumbnail_sha256=?,original_filename=?,file_size=? WHERE id=?',

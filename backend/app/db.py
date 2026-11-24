@@ -159,11 +159,8 @@ def init():
         if 'queue_rank_at' not in task_columns:
             db.execute('ALTER TABLE tasks ADD COLUMN queue_rank_at INTEGER')
             db.execute('UPDATE tasks SET queue_rank_at=unixepoch(created_at)')
-        db.execute('''CREATE TRIGGER IF NOT EXISTS task_queue_rank AFTER INSERT ON tasks
-            WHEN NEW.queue_rank_at IS NULL BEGIN UPDATE tasks SET queue_rank_at=unixepoch() WHERE id=NEW.id; END''')
-        db.execute("CREATE INDEX IF NOT EXISTS task_queue ON tasks(queue_rank_at,rounds,id) WHERE status='queued'")
-        db.execute("CREATE INDEX IF NOT EXISTS task_io_queue ON tasks((kind='avatar') DESC,queue_rank_at,rounds,id) WHERE status='queued'")
-        db.execute("CREATE INDEX IF NOT EXISTS task_compute_queue ON tasks((kind='rematch') DESC,id) WHERE status='queued'")
+        from .task_queue import migrate
+        migrate(db, task_columns)
         db.execute('CREATE TABLE IF NOT EXISTS download_cursors(task_id INTEGER PRIMARY KEY REFERENCES tasks ON DELETE CASCADE, cursor TEXT NOT NULL)')
         db.execute('''CREATE TABLE IF NOT EXISTS download_items(task_id INTEGER REFERENCES tasks ON DELETE CASCADE,
             platform TEXT, post_key TEXT, media TEXT, image_id INTEGER REFERENCES images,
@@ -365,16 +362,21 @@ def schedule_rematch(db):
         DO UPDATE SET target_version=excluded.target_version''', (version,))
 
 
-def schedule_detection(db, image_id, mode="auto"):
+def schedule_detection(db, image_id, mode="auto", tier=None):
     import json
+    from .task_queue import TIERS
+    tier = tier or ('single' if mode == 'highres' else 'bulk')
     active = db.execute("SELECT * FROM tasks WHERE kind='detect' AND image_id=? AND status IN ('queued','running') ORDER BY id", (image_id,)).fetchall()
     for task in active:
         if json.loads(task['payload']).get('mode', 'auto') == 'highres' or mode == 'auto':
+            if TIERS.index(tier) < TIERS.index(task['tier']):
+                db.execute('UPDATE tasks SET tier=? WHERE id=?', (tier, task['id']))
             return task['id']
     for task in active:
         if task['status'] == 'queued':
             payload = json.loads(task['payload'])
             payload['mode'] = mode
-            db.execute('UPDATE tasks SET payload=? WHERE id=?', (json.dumps(payload), task['id']))
+            merged = min((tier, task['tier']), key=TIERS.index)
+            db.execute('UPDATE tasks SET payload=?,tier=? WHERE id=?', (json.dumps(payload), merged, task['id']))
             return task['id']
-    return db.execute("INSERT INTO tasks(kind,image_id,payload) VALUES('detect',?,?)", (image_id, json.dumps({'mode': mode}))).lastrowid
+    return db.execute("INSERT INTO tasks(kind,image_id,payload,tier) VALUES('detect',?,?,?)", (image_id, json.dumps({'mode': mode}), tier)).lastrowid

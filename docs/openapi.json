@@ -2662,6 +2662,72 @@
               "default": [],
               "title": "Status"
             }
+          },
+          {
+            "name": "subtype",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "post",
+                  "account",
+                  "list",
+                  "monitor_scheduled",
+                  "monitor_now",
+                  "monitor_initial",
+                  "monitor_backfill",
+                  "monitor",
+                  "auto",
+                  "highres",
+                  "unknown",
+                  "all_faces",
+                  "import",
+                  "restore",
+                  "avatar"
+                ],
+                "type": "string"
+              },
+              "default": [],
+              "title": "Subtype"
+            }
+          },
+          {
+            "name": "tier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "avatar",
+                  "single",
+                  "scheduled",
+                  "bulk",
+                  "maintenance"
+                ],
+                "type": "string"
+              },
+              "default": [],
+              "title": "Tier"
+            }
+          },
+          {
+            "name": "has_imported",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Has Imported"
+            }
           }
         ],
         "responses": {

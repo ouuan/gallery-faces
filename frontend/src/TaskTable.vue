@@ -1,13 +1,10 @@
 <script lang="ts">
-export const taskKindLabels: Record<string, string> = {
-  avatar: "发布者头像",
-  monitor: "发布者监控", download: "链接下载", import: "目录导入", detect: "人脸检测", rematch: "人物匹配", restore: "图片恢复",
-};
+import { taskSubtypeLabels, tierLabels } from './task-types';
 export const taskStatusLabels: Record<string, string> = {
   queued: "排队中", running: "执行中", done: "已完成", failed: "失败", cancelled: "已取消",
 };
 export interface TaskRecord {
-  id: number; kind: string; status: string; stage: string; image_id?: number;
+  id: number; kind: string; subtype: string; tier: string; status: string; stage: string; image_id?: number;
   payload: { url?: string; directory?: string; start?: string; end?: string; hashtags?: string[]; mode?: string; refresh_all?: boolean };
   result: { imported?: number; skipped_existing?: number; skipped_trashed?: number };
   done: number; total: number; speed: number; rounds?: number; cancel_requested?: number;
@@ -28,11 +25,7 @@ defineEmits<{ action: [id: number, action: 'cancel' | 'retry'] }>();
 const expanded = ref<number | null>(null);
 const finishLabels: Record<string, string> = { done: '完成时间', failed: '失败时间', cancelled: '取消时间' };
 function title(task: TaskRecord) {
-  if (task.kind === 'monitor' && task.payload.mode === 'backfill') return '历史补采';
-  if (task.kind === 'monitor' && task.payload.mode === 'incremental') return '增量检查';
-  if (task.kind === 'detect' && task.payload.mode === 'highres') return '高分辨率人脸检测';
-  if (task.kind === 'rematch') return task.payload.refresh_all ? '重新匹配全部人脸' : '匹配未知人脸';
-  return taskKindLabels[task.kind] || task.kind;
+  return taskSubtypeLabels[task.subtype] || taskSubtypeLabels[task.kind] || task.kind;
 }
 function target(task: TaskRecord) {
   return task.image_id ? `图片 #${task.image_id}` : task.payload.url || task.payload.directory;
@@ -99,6 +92,7 @@ function duration(seconds: number) {
       </tr>
       <tr v-if="expanded === task.id" :id="`task-detail-${task.id}`" class="detail-row"><td colspan="5">
         <div class="detail">
+          <span v-if="task.tier">调度档：{{ tierLabels[task.tier] }}</span>
           <span v-if="task.payload.url || task.payload.directory">{{ task.payload.url ? '链接' : '目录' }}：{{ task.payload.url || task.payload.directory }}</span>
           <span v-if="task.payload.hashtags?.length">标签：{{ formatHashtags(task.payload.hashtags) }}</span>
           <span v-if="task.payload.start || task.payload.end">{{ task.kind === 'import' ? '导入范围' : '下载范围' }}：<template v-if="task.payload.start && !task.payload.end">自 </template><time v-if="task.payload.start" :datetime="task.payload.start">{{ dateLabel(task.payload.start) }}</time><template v-else>截至 </template><template v-if="task.payload.start && task.payload.end"> 至 </template><template v-if="task.payload.end"><time :datetime="task.payload.end">{{ dateLabel(task.payload.end) }}</time>（不含）</template><template v-else> 起</template></span>

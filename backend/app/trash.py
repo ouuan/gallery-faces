@@ -107,8 +107,8 @@ def enqueue_restore(ids, directory=None):
                 continue
             active = db.execute("SELECT id FROM tasks WHERE image_id=? AND kind='restore' AND status IN ('queued','running')", (row["id"],)).fetchone()
             task_id = active[0] if active else db.execute(
-                "INSERT INTO tasks(kind,image_id,payload) VALUES('restore',?,?)",
-                (row["id"], json.dumps({"directory": directory})),
+                "INSERT INTO tasks(kind,image_id,payload,tier) VALUES('restore',?,?,?)",
+                (row["id"], json.dumps({"directory": directory}), 'single' if len(rows) == 1 else 'bulk'),
             ).lastrowid
             tasks.append({"image_id": row["id"], "task_id": task_id})
         return {"ok": True, "tasks": tasks}
@@ -137,7 +137,7 @@ def restore_file(task, path):
         db.execute("DELETE FROM pending_file_deletions WHERE sha256=?", (row["sha256"],))
         record_location(db, row["id"], path)
         if row["detection"] != "done":
-            storage.schedule_detection(db, row["id"])
+            storage.schedule_detection(db, row["id"], tier=current['tier'])
         if references_changed:
             storage.schedule_rematch(db)
         # Commit completion with activation: a late cancellation cannot report a

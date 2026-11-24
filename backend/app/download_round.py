@@ -77,7 +77,7 @@ class DownloadRound:
         self.saw_item = False
 
     def owner(self, db):
-        row = db.execute("SELECT payload FROM tasks WHERE id=? AND rounds=? AND status='running' AND cancel_requested=0",
+        row = db.execute("SELECT payload,tier FROM tasks WHERE id=? AND rounds=? AND status='running' AND cancel_requested=0",
                          (self.task_id, self.number)).fetchone()
         if not row:
             raise ValueError('下载轮次已结束')
@@ -147,7 +147,7 @@ class DownloadRound:
         from .importer import import_media, finish_deduplication
         from PIL import Image
         with storage.connect(True) as db:
-            self.owner(db)
+            owner = self.owner(db)
             row = db.execute('SELECT * FROM download_ready WHERE task_id=?', (self.task_id,)).fetchone()
             if not row:
                 return
@@ -155,7 +155,7 @@ class DownloadRound:
             meta = json.loads(row['meta'])
             db.execute('SAVEPOINT import_item')
             try:
-                image_id, outcome = import_media(db, path, meta)
+                image_id, outcome = import_media(db, path, meta, tier=owner['tier'])
             except (ValueError, OSError, SyntaxError, EOFError, Image.DecompressionBombError) as exc:
                 if isinstance(exc, OSError) and exc.errno is not None:
                     raise
