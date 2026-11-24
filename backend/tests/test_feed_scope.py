@@ -15,7 +15,7 @@ from app.downloader import install_policy
 from app.feed_scope import ImportScope, effective_scope, feeds
 from app.metadata import metadata
 from test_monitors import create, get_task, run
-from test_workflows import client
+from test_workflows import client, image
 
 
 @pytest.mark.parametrize('bounds', [('start',), ('end',), ('start', 'end')])
@@ -29,7 +29,9 @@ def test_reposts_reject_dates_before_any_task(client, bounds):
 
 
 @pytest.mark.parametrize('url,options,expected', [
-    ('https://x.com/a', {}, ['media']),
+    ('https://x.com/a', {}, ['media', 'tweets']),
+    ('https://x.com/a', {'quoted': True}, ['media', 'tweets']),
+    ('https://x.com/a', {'retweets': True}, ['media', 'tweets', 'reposts']),
     ('https://x.com/a', {'retweets': True, 'quoted': True}, ['media', 'tweets', 'reposts']),
     ('https://x.com/a/media', {'retweets': True}, [None]),
     ('https://x.com/i/lists/123', {'retweets': True}, [None]),
@@ -67,6 +69,53 @@ def test_effective_scope_dedup_and_checkpoint(client):
     active.checkpoint('expired')
     load().checkpoint(None)
     assert load().feed_index == 2 and load().cursor is None
+
+
+@pytest.mark.parametrize('options,saved,expected', [
+    ({}, 'old-media-cursor', [0, 'old-media-cursor']),
+    ({'quoted': True}, '[0,"media-page"]', [0, 'media-page']),
+    ({'quoted': True}, '[1,"quotes-page"]', [1, None]),
+    ({'retweets': True}, '[1,"reposts-page"]', [1, None]),
+])
+def test_upgrade_x_account_cursor(client, options, saved, expected):
+    identifier = client.post('/api/v1/admin/import', json={'urls': ['https://x.com/alice'], 'scope': options}).json()[0]['task_id']
+    task = worker.claim(('download',))
+    with db.connect(True) as conn:
+        conn.execute('UPDATE schema_version SET version=14')
+        conn.execute('INSERT INTO download_cursors VALUES(?,?)', (identifier, saved))
+    db.init()
+    active = DownloadRound(identifier, task['rounds'])
+    assert [active.feed_index, active.cursor] == expected
+
+
+def test_x_account_worker_counts_union_of_media_and_timeline(client, monkeypatch):
+    with db.connect(True) as conn:
+        identifiers = [str(image(conn, faces=False)) for _ in range(2)]
+    identifier = client.post('/api/v1/admin/import', json={'urls': ['https://x.com/alice']}).json()[0]['task_id']
+    script = '''
+import sys
+from datetime import datetime
+from gallery_dl.extractor.twitter import TwitterAPI, TwitterExtractor
+from app.downloader import main
+shared, timeline_only = sys.argv.pop(1), sys.argv.pop(1)
+TwitterExtractor.login = lambda self: None
+TwitterAPI.user_by_screen_name = lambda self, name: {'protected': False}
+def posts(*identifiers):
+    return ({'id_str': identifier, 'user': {'protected': False}} for identifier in identifiers)
+TwitterAPI.user_media_photos = lambda self, name: posts(shared)
+TwitterAPI.user_original_timeline = lambda self, name: posts(shared, timeline_only)
+TwitterExtractor._transform_tweet = lambda self, tweet: {'tweet_id': tweet['id_str'], 'author': {'name': 'alice'}, 'date': datetime(2026, 1, 1)}
+TwitterExtractor._extract_files = lambda self, data, tweet: [{'url': 'https://pbs.twimg.com/' + data['id_str'] + '.png'}]
+raise SystemExit(main())
+'''
+    popen = subprocess.Popen
+    monkeypatch.setattr(worker.subprocess, 'Popen', lambda command, **kwargs: popen(
+        [sys.executable, '-c', script, *identifiers, *command[3:]], **kwargs))
+    for done, status in [(1, 'queued'), (2, 'done')]:
+        worker.execute(worker.claim(('download',)))
+        row = get_task(identifier)
+        assert (row['done'], row['status']) == (done, status), row['error']
+        assert json.loads(row['result'])['skipped_existing'] == done
 
 
 def test_instagram_worker_runs_each_selected_feed_once(client, monkeypatch, tmp_path):

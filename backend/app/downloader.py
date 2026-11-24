@@ -208,8 +208,6 @@ def install_library_filter(report_path=None, restore_id=None, hashtags=(), cache
                 raise ValueError('下载被安全策略拒绝')
             if not in_date_range(meta, active.payload.get('start'), active.payload.get('end')):
                 return
-            if active.payload.get('scope') and self.extractor.subcategory == 'tweets' and not raw.get('quote_id'):
-                return
             if raw.get('source_date') is not None:
                 meta['date'] = metadata({**raw, 'category': self.extractor.category, 'date': raw['source_date']}, '')['date']
             if active.skip(meta):

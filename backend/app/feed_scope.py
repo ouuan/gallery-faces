@@ -34,6 +34,6 @@ def feeds(payload):
     if not scope or urlsplit(payload['url']).path.strip('/').startswith('i/lists/'):
         return [None]
     if 'retweets' in scope:
-        return ['media', *(['tweets'] if scope['quoted'] else ()), *(['reposts'] if scope['retweets'] else ())]
+        return ['media', 'tweets', *(['reposts'] if scope['retweets'] else ())]
     return [*(['stories'] if scope['stories'] else ()), 'posts', *(['tagged'] if scope['tagged'] else ()),
             *(['reposts'] if scope.get('reposts') else ())]

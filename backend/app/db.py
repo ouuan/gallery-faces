@@ -256,6 +256,15 @@ def init():
         if db.execute('SELECT version FROM schema_version').fetchone()[0] < 14:
             group_index.install(db)
             db.execute('UPDATE schema_version SET version=14')
+        if db.execute('SELECT version FROM schema_version').fetchone()[0] < 15:
+            db.execute('''UPDATE download_cursors AS checkpoint SET cursor=CASE
+                WHEN NOT json_extract(task.payload,'$.scope.quoted') AND NOT json_extract(task.payload,'$.scope.retweets')
+                    THEN json_array(0,checkpoint.cursor)
+                WHEN json_extract(checkpoint.cursor,'$[0]') > 0 THEN json_array(1,NULL)
+                ELSE checkpoint.cursor END
+                FROM tasks AS task WHERE task.id=checkpoint.task_id AND json_type(task.payload,'$.scope.retweets') IS NOT NULL
+                AND json_extract(task.payload,'$.url') NOT LIKE '%/i/lists/%' ''')
+            db.execute('UPDATE schema_version SET version=15')
         for column in ("image_sha256", "thumbnail_sha256"):
             db.execute(f"CREATE INDEX IF NOT EXISTS image_{column} ON images({column})")
     with startup_phase('interrupted restore cleanup scan'), connect(True) as db:
