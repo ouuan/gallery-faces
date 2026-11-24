@@ -38,6 +38,7 @@ def test_create_deduplicate_and_concurrent_enqueue(client):
 def test_success_overlap_backfill_and_failure(client, monkeypatch):
     monkeypatch.setattr(monitors, 'now', lambda: '2026-01-02T00:00:00Z')
     item = create(client, start='2026-01-01T00:00:00Z')
+    assert get_task(item['task_id'])['tier'] == 'bulk'
     run(monkeypatch)
     row = monitors.listing()[0]
     assert row['progress_at'] == '2026-01-02T00:00:00Z'
@@ -62,7 +63,7 @@ def test_pause_resume_cancel_race_and_delete(client, monkeypatch):
     assert monitors.listing()[0]['progress_at'] is None
     for mode in ['catch_up','new','start']:
         response = monitors.resume(item['id'], monitors.Resume(mode=mode, start='2024-01-01T00:00:00Z'))
-        assert response['task_id']
+        assert get_task(response['task_id'])['tier'] == 'bulk'
         monitors.edit(item['id'], monitors.Edit(paused=True))
     result = monitors.batch(monitors.Batch(ids=[item['id']], action='update'))[0]
     run(monkeypatch)
@@ -85,9 +86,11 @@ def test_partial_batch_retry_and_recovery(client, monkeypatch):
     worker.recover_tasks()
     assert get_task(task['id'])['status'] == 'queued'
     assert monitors.listing()[1]['progress_at'] is None
+    run(monkeypatch, failure=True)
+    assert get_task(a['task_id'])['status'] == 'failed'
+    assert get_task(result[1]['task_id'])['status'] == 'queued'
     run(monkeypatch)
     assert get_task(result[1]['task_id'])['status'] == 'done'
-    run(monkeypatch, failure=True)
     response = client.post(f"/api/v1/admin/tasks/{task['id']}/retry",json={})
     assert response.status_code == 200
     assert json.loads(get_task(response.json()['task_id'])['payload']) == json.loads(task['payload'])

@@ -38,7 +38,7 @@ def instant(value):
 def active(db, mid):
     return db.execute("SELECT * FROM tasks WHERE kind='monitor' AND json_extract(payload,'$.monitor_id')=? AND status IN ('queued','running')", (mid,)).fetchone()
 
-def enqueue(db, mid, start=None, end=None, retry=None, trigger='monitor_now'):
+def enqueue(db, mid, start=None, end=None, retry=None, trigger='monitor_now', tier=None):
     row = db.execute('SELECT * FROM monitors WHERE id=?', (mid,)).fetchone()
     if not row:
         raise HTTPException(404, '监控不存在')
@@ -60,7 +60,7 @@ def enqueue(db, mid, start=None, end=None, retry=None, trigger='monitor_now'):
                        hashtags=json.loads(row['hashtags']),
                        scope=saved_scope(row),
                        url=f"https://{'x.com' if row['platform'] == 'x' else 'www.instagram.com'}/{row['username']}/")
-    return db.execute("INSERT INTO tasks(kind,payload,tier) VALUES('monitor',?,?)", (json.dumps(payload), retry['tier'] if retry else None)).lastrowid
+    return db.execute("INSERT INTO tasks(kind,payload,tier) VALUES('monitor',?,?)", (json.dumps(payload), retry['tier'] if retry else tier)).lastrowid
 
 def cancel(db, mid):
     db.execute("UPDATE tasks SET cancel_requested=1,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,stage=CASE WHEN status='queued' THEN '已取消' ELSE stage END,finished_at=CASE WHEN status='queued' THEN ? ELSE finished_at END WHERE kind='monitor' AND json_extract(payload,'$.monitor_id')=? AND status IN ('queued','running')", (now(), mid))
@@ -184,7 +184,7 @@ def create(body: Create) -> Created:
         if db.execute('SELECT 1 FROM monitors WHERE platform=? AND username=? COLLATE NOCASE', (body.platform, username)).fetchone():
             raise HTTPException(409, '该发布者已在监控列表中')
         mid = db.execute('INSERT INTO monitors(platform,username,interval_minutes,start_at,next_check_at,hashtags,scope) VALUES(?,?,?,?,?,?,?)', (body.platform, username, body.interval_minutes, start, timestamp, json.dumps(body.hashtags), json.dumps(monitor_scope(body.platform, body.scope)))).lastrowid
-        tid = enqueue(db, mid, end=timestamp, trigger='monitor_initial')
+        tid = enqueue(db, mid, end=timestamp, trigger='monitor_initial', tier='scheduled' if start == timestamp else 'bulk')
     return {'id': mid, 'task_id': tid}
 
 def edit(monitor_id: int, body: Edit):

@@ -14,6 +14,10 @@ def priority(column):
 
 
 def migrate(db, columns):
+    inferred = """CASE subtype WHEN 'avatar' THEN 'avatar' WHEN 'post' THEN 'single'
+        WHEN 'restore' THEN 'single' WHEN 'highres' THEN 'single' WHEN 'all_faces' THEN 'single'
+        WHEN 'unknown' THEN 'maintenance' WHEN 'monitor_scheduled' THEN 'scheduled'
+        WHEN 'monitor_now' THEN 'scheduled' ELSE 'bulk' END"""
     if 'tier' not in columns:
         db.execute('''ALTER TABLE tasks ADD COLUMN subtype TEXT GENERATED ALWAYS AS (CASE kind
             WHEN 'download' THEN CASE
@@ -29,16 +33,16 @@ def migrate(db, columns):
             WHEN 'rematch' THEN CASE WHEN json_extract(payload,'$.refresh_all') THEN 'all_faces' ELSE 'unknown' END
             ELSE kind END) VIRTUAL''')
         db.execute('ALTER TABLE tasks ADD COLUMN tier TEXT')
-        inferred = """CASE subtype WHEN 'avatar' THEN 'avatar' WHEN 'post' THEN 'single'
-            WHEN 'restore' THEN 'single' WHEN 'highres' THEN 'single' WHEN 'all_faces' THEN 'single'
-            WHEN 'unknown' THEN 'maintenance' WHEN 'monitor_scheduled' THEN 'scheduled' ELSE 'bulk' END"""
         db.execute(f'UPDATE tasks SET tier={inferred}')
-        db.execute(f'''CREATE TRIGGER task_default_tier AFTER INSERT ON tasks WHEN NEW.tier IS NULL BEGIN
-            UPDATE tasks SET tier={inferred} WHERE id=NEW.id; END''')
         db.execute("UPDATE tasks SET queue_rank_at=queue_rank_at-300 WHERE status='queued' AND rounds>0")
         db.execute('DROP TRIGGER IF EXISTS task_queue_rank')
         for index in ('task_queue', 'task_compute_queue', 'task_io_queue'):
             db.execute(f'DROP INDEX IF EXISTS {index}')
+    elif db.execute("SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='task_default_tier'").fetchone():
+        db.execute('DROP TRIGGER task_default_tier')
+        db.execute("UPDATE tasks SET tier='scheduled' WHERE subtype='monitor_now' AND tier='bulk' AND status IN ('queued','running')")
+    db.execute(f'''CREATE TRIGGER IF NOT EXISTS task_infer_tier AFTER INSERT ON tasks WHEN NEW.tier IS NULL BEGIN
+        UPDATE tasks SET tier={inferred} WHERE id=NEW.id; END''')
     db.execute("CREATE INDEX IF NOT EXISTS task_queue_tail ON tasks(queue_rank_at) WHERE status='queued'")
     db.execute(f'''CREATE TRIGGER IF NOT EXISTS task_queue_rank AFTER INSERT ON tasks
         WHEN NEW.queue_rank_at IS NULL AND NEW.status='queued' BEGIN

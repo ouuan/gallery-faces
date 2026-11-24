@@ -23,6 +23,33 @@ def test_backfill_recognizable_types_and_leave_legacy_monitor_unattributed():
             ('monitor', 'bulk'), ('monitor_backfill', 'bulk'), ('post', 'single'), ('highres', 'single'), ('account', 'bulk')]
 
 
+def test_upgrade_active_manual_updates(client):
+    with db.connect(True) as conn:
+        conn.execute('DROP TRIGGER task_infer_tier')
+        conn.execute("""CREATE TRIGGER task_default_tier AFTER INSERT ON tasks WHEN NEW.tier IS NULL BEGIN
+            UPDATE tasks SET tier='bulk' WHERE id=NEW.id; END""")
+        payload = json.dumps({'mode': 'incremental', 'trigger': 'monitor_now'})
+        conn.executemany("INSERT INTO tasks(kind,payload,status) VALUES('monitor',?,?)",
+                         [(payload, status) for status in ('queued', 'running', 'done')])
+    db.init()
+    with db.connect(True) as conn:
+        conn.execute("INSERT INTO tasks(kind,payload) VALUES('monitor',?)", (payload,))
+        assert [row['tier'] for row in conn.execute("SELECT tier FROM tasks WHERE subtype='monitor_now' ORDER BY id")] == [
+            'scheduled', 'scheduled', 'bulk', 'scheduled']
+
+
+def test_manual_incremental_update_precedes_backfill(client):
+    manual = create(client)
+    history = create(client, username='bob')
+    for monitor in (manual, history):
+        monitors.edit(monitor['id'], monitors.Edit(paused=True))
+    backfill = monitors.batch(monitors.Batch(ids=[history['id']], action='backfill', start='2020-01-01T00:00:00Z'))[0]
+    update = monitors.batch(monitors.Batch(ids=[manual['id']], action='update'))[0]
+    for expected, subtype, tier in [(update, 'monitor_now', 'scheduled'), (backfill, 'monitor_backfill', 'bulk')]:
+        task = worker.claim(('monitor',))
+        assert (task['id'], task['subtype'], task['tier']) == (expected['task_id'], subtype, tier)
+
+
 def test_io_origin_rotation_and_derived_work(client, tmp_path, monkeypatch):
     api = '/api/v1/admin'
     def submit(*urls):
@@ -33,7 +60,7 @@ def test_io_origin_rotation_and_derived_work(client, tmp_path, monkeypatch):
         ('post', 'bulk'), ('account', 'bulk'), ('list', 'bulk')]
     monitor = create(client)
     initial = get_task(monitor['task_id'])
-    assert (initial['subtype'], initial['tier']) == ('monitor_initial', 'bulk')
+    assert (initial['subtype'], initial['tier']) == ('monitor_initial', 'scheduled')
     monitors.schedule_due()
     assert get_task(initial['id']) == initial
     with db.connect(True) as conn:
