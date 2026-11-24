@@ -28,17 +28,17 @@ for (const width of [390, 1280]) {
       return route.fulfill({ json: /\/(session|site|settings)$/.test(path) ? {} : [] });
     });
     await page.goto('/admin/import');
-    const table = page.locator('.task-table');
+    const table = page.getByRole('table', { name: '任务记录' });
     await expect(table).toBeVisible();
     await page.clock.runFor(500);
     const before = await rect(table);
     hold = true;
     await page.clock.fastForward(3000);
     await expect.poll(() => !!held).toBe(true);
-    await expect(page.getByText('正在加载任务记录…')).toBeVisible();
+    await expect(page.getByText('正在加载任务记录…')).toBeHidden();
     await stable(table, before);
-    await held!.fulfill({ json: tasks });
-    await expect(page.getByText('正在加载任务记录…')).toHaveCount(0);
+    await held!.fulfill({ json: { ...tasks, items: [{ ...tasks.items[0], done: 2, total: 2 }] } });
+    await expect(table.getByText('2 / 2 张', { exact: true })).toBeVisible();
     await stable(table, before);
   });
 
