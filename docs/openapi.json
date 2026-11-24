@@ -4702,6 +4702,20 @@
       },
       "Create": {
         "properties": {
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/XScope"
+              },
+              {
+                "$ref": "#/components/schemas/InstagramScope"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
           "hashtags": {
             "items": {
               "type": "string"
@@ -4736,6 +4750,7 @@
             "default": ""
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "platform",
@@ -5030,6 +5045,20 @@
       },
       "Edit": {
         "properties": {
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/XScope"
+              },
+              {
+                "$ref": "#/components/schemas/InstagramScope"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
           "hashtags": {
             "anyOf": [
               {
@@ -5069,6 +5098,7 @@
             "title": "Paused"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "Edit"
       },
@@ -5779,6 +5809,9 @@
       },
       "ImportInput": {
         "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/ImportScope"
+          },
           "urls": {
             "items": {
               "type": "string"
@@ -5869,6 +5902,55 @@
           "status"
         ],
         "title": "ImportJob"
+      },
+      "ImportScope": {
+        "properties": {
+          "stories": {
+            "type": "boolean",
+            "title": "Stories",
+            "default": true
+          },
+          "tagged": {
+            "type": "boolean",
+            "title": "Tagged",
+            "default": true
+          },
+          "retweets": {
+            "type": "boolean",
+            "title": "Retweets",
+            "default": false
+          },
+          "quoted": {
+            "type": "boolean",
+            "title": "Quoted",
+            "default": false
+          },
+          "reposts": {
+            "type": "boolean",
+            "title": "Reposts",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ImportScope"
+      },
+      "InstagramScope": {
+        "properties": {
+          "stories": {
+            "type": "boolean",
+            "title": "Stories",
+            "default": true
+          },
+          "tagged": {
+            "type": "boolean",
+            "title": "Tagged",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "InstagramScope"
       },
       "Inventory": {
         "properties": {
@@ -6074,6 +6156,17 @@
       },
       "Monitor": {
         "properties": {
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/XScope"
+              },
+              {
+                "$ref": "#/components/schemas/InstagramScope"
+              }
+            ],
+            "title": "Scope"
+          },
           "hashtags": {
             "items": {
               "type": "string"
@@ -6193,6 +6286,7 @@
         },
         "type": "object",
         "required": [
+          "scope",
           "hashtags",
           "id",
           "platform",
@@ -7587,6 +7681,23 @@
           "last_cleanup"
         ],
         "title": "Volume"
+      },
+      "XScope": {
+        "properties": {
+          "retweets": {
+            "type": "boolean",
+            "title": "Retweets",
+            "default": false
+          },
+          "quoted": {
+            "type": "boolean",
+            "title": "Quoted",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "XScope"
       }
     }
   }

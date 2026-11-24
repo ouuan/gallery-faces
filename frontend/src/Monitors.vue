@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted } from "vue";
 import { NButton, NInput, NInputNumber, NSelect, NCheckbox, NModal, NCard, NAlert } from "naive-ui";
+import { Trash2 } from "@lucide/vue";
 import { api, send, dateLabel, platformLabel } from "./api";
-import PublisherSelect from "./PublisherSelect.vue";
+import FeedSourceFields from './FeedSourceFields.vue';
+import FeedFormActions from './FeedFormActions.vue';
+import FeedScopeFields from './FeedScopeFields.vue';
+import { defaultScope, feedPlatforms, monitorScope, supportsAccountScope } from './feed-scope';
 import { usePublisherSelection, uniqueAccounts, type PublisherAccount } from "./publisher-selection";
 import LocalDateTime from "./LocalDateTime.vue";
-import HashtagField, { splitHashtags, formatHashtags } from "./HashtagField.vue";
+import HashtagField, { formatHashtags } from "./HashtagField.vue";
 import type { components } from "./schema";
 type Monitor = components["schemas"]["Monitor"];
 const items = ref<Monitor[]>([]), selected = ref<number[]>([]), error = ref(""), busy = ref(false), loading = ref(false);
@@ -25,11 +29,12 @@ const batchInterval = ref<number | null>(60);
 const validInterval = computed(() => batchInterval.value !== null && Number.isInteger(batchInterval.value) && batchInterval.value >= 5);
 const intervals = ref<Record<number, number | null>>({});
 const { selected: publishers, accounts: publisherAccounts } = usePublisherSelection();
-const platforms = ref<string[]>(["x", "instagram"]);
+const platforms = ref([...feedPlatforms]);
+const scope = ref({ ...defaultScope }), editScope = ref({ ...defaultScope }), editPlatform = ref('x');
 const listUrls = ref("");
 const manualAccounts = ref<PublisherAccount[]>([{ platform: "x", username: "" }]);
 const interval = ref(60), start = ref(""), history = ref(false);
-const hashtags = ref(""), editHashtags = ref("");
+const hashtags = ref<string[]>([]), editHashtags = ref<string[]>([]);
 const accounts = computed(() => uniqueAccounts([...publisherAccounts.value.filter(account => platforms.value.includes(account.platform)), ...manualAccounts.value, ...listUrls.value.split("\n").map(username => ({ platform: "x", username: normalizeList(username) }))]));
 function normalizeList(value: string) {
   try {
@@ -51,11 +56,12 @@ function monitorLabel(account: PublisherAccount) {
 const createResults = ref<{ account: PublisherAccount; error?: string }[]>([]);
 const completedAccounts = ref<PublisherAccount[]>([]), batchDefaultStart = ref("");
 const pendingAccounts = computed(() => accounts.value.filter(account => !completedAccounts.value.some(done => done.platform === account.platform && done.username === account.username)));
-type Dialog = "delete" | "backfill" | "resume" | "interval" | "hashtags";
+const targetPlatforms = computed(() => new Set(pendingAccounts.value.filter(account => supportsAccountScope(account.platform, account.username)).map(account => account.platform)));
+type Dialog = "delete" | "backfill" | "resume" | "interval" | "hashtags" | "scope";
 const dialog = ref<Dialog | null>(null), targets = ref<number[]>([]), since = ref(""), mode = ref("catch_up");
 const results = ref<{ id: number; status: string; task_id?: number; error?: string }[]>([]);
 const all = computed(() => items.value.length > 0 && selected.value.length === items.value.length);
-const dialogTitle = computed(() => dialog.value === "hashtags" ? "修改话题标签" : dialog.value === "interval" ? "修改 " + targets.value.length + " 项监控的间隔" : dialog.value === "delete" ? "删除 " + targets.value.length + " 项监控" : dialog.value === "resume" ? "恢复监控" : "补齐 " + targets.value.length + " 位发布者");
+const dialogTitle = computed(() => dialog.value === 'scope' ? '修改抓取范围' : dialog.value === "hashtags" ? "修改话题标签" : dialog.value === "interval" ? "修改 " + targets.value.length + " 项监控的间隔" : dialog.value === "delete" ? "删除 " + targets.value.length + " 项监控" : dialog.value === "resume" ? "恢复监控" : "补齐 " + targets.value.length + " 位发布者");
 const validSince = computed(() => !!since.value && Date.parse(since.value) < Date.now());
 let timer: ReturnType<typeof setInterval> | undefined;
 async function load() {
@@ -74,33 +80,49 @@ async function perform(action: () => Promise<unknown>) {
   catch (e) { error.value = (e as Error).message; }
   finally { busy.value = false; }
 }
+function clearCreateBatch() {
+  publishers.value = [];
+  manualAccounts.value = [{ platform: "x", username: "" }];
+  listUrls.value = "";
+  hashtags.value = [];
+  start.value = "";
+  history.value = false;
+  completedAccounts.value = [];
+  batchDefaultStart.value = "";
+}
+function resetCreate() {
+  if (busy.value) return;
+  clearCreateBatch();
+  platforms.value = [...feedPlatforms];
+  scope.value = { ...defaultScope };
+  interval.value = 60;
+  createResults.value = [];
+}
 async function create() {
   if (busy.value || invalidList.value || !pendingAccounts.value.length || !interval.value || (history.value && !start.value)) return;
   const batchAccounts = [...pendingAccounts.value];
   batchDefaultStart.value ||= new Date().toISOString();
   const batchStart = history.value ? start.value : batchDefaultStart.value;
   const batchInterval = interval.value;
-  const batchHashtags = splitHashtags(hashtags.value);
+  const batchHashtags = hashtags.value;
   await perform(async () => {
     createResults.value = completedAccounts.value.map(account => ({ account }));
     for (const account of batchAccounts) {
       try {
-        await send("/admin/monitors", { ...account, interval_minutes: batchInterval, start: batchStart, hashtags: batchHashtags });
+        await send("/admin/monitors", { ...account, interval_minutes: batchInterval, start: batchStart, hashtags: batchHashtags, scope: monitorScope(account.platform, scope.value) });
         createResults.value.push({ account });
         completedAccounts.value.push(account);
       } catch (e) { createResults.value.push({ account, error: (e as Error).message }); }
     }
-    if (createResults.value.every(result => !result.error)) {
-      publishers.value = []; manualAccounts.value = [{ platform: "x", username: "" }];
-      start.value = ""; history.value = false; listUrls.value = ""; hashtags.value = "";
-      completedAccounts.value = []; batchDefaultStart.value = "";
-    }
+    if (createResults.value.every(result => !result.error)) clearCreateBatch();
   });
 }
 function open(action: Dialog, ids: number[]) {
   const item = items.value.find(item => item.id === ids[0]);
   batchInterval.value = item?.interval_minutes ?? 60;
-  editHashtags.value = formatHashtags(item?.hashtags ?? []);
+  editHashtags.value = [...(item?.hashtags ?? [])];
+  editPlatform.value = item?.platform ?? 'x';
+  editScope.value = { ...defaultScope, ...item?.scope };
   error.value = ""; targets.value = [...ids]; since.value = ""; mode.value = "catch_up"; dialog.value = action;
 }
 async function batch(action: "delete" | "backfill" | "update" | "interval", ids: number[]) {
@@ -122,9 +144,14 @@ async function confirm() {
       await send("/admin/monitors/" + targets.value[0] + "/resume", { mode: mode.value, start: since.value });
       dialog.value = null;
     });
+  } else if (dialog.value === 'scope') {
+    await perform(async () => {
+      await send('/admin/monitors/' + targets.value[0], { scope: monitorScope(editPlatform.value, editScope.value) }, 'PATCH');
+      dialog.value = null;
+    });
   } else if (dialog.value === "hashtags") {
     await perform(async () => {
-      await send("/admin/monitors/" + targets.value[0], { hashtags: splitHashtags(editHashtags.value) }, "PATCH");
+      await send("/admin/monitors/" + targets.value[0], { hashtags: editHashtags.value }, "PATCH");
       dialog.value = null;
     });
   } else if (dialog.value) await batch(dialog.value, targets.value);
@@ -150,40 +177,31 @@ onUnmounted(() => { clearInterval(timer); });
         <router-link to="/admin/import?kind=monitor">查看监控任务</router-link>
       </div>
     </div>
-    <form v-show="createExpanded" id="monitor-create" ref="createForm" class="monitor-create" @submit.prevent="create">
+    <form v-show="createExpanded" id="monitor-create" ref="createForm" class="feed-form monitor-create" @submit.prevent="create" @reset.prevent="resetCreate">
       <h2>添加发布者</h2>
-      <div class="monitor-account-fields">
-        <label class="field-label">发布者
-          <PublisherSelect v-model="publishers" :disabled="busy" />
-        </label>
-        <div class="field-label" id="monitor-platforms-label">添加平台</div>
-        <div class="monitor-toolbar" role="group" aria-labelledby="monitor-platforms-label">
-          <n-checkbox v-for="platform in ['x', 'instagram']" :key="platform" :checked="platforms.includes(platform)" :disabled="busy" @update:checked="platforms = $event ? [...platforms, platform] : platforms.filter(value => value !== platform)">{{ platformLabel(platform) }}</n-checkbox>
-        </div>
+      <FeedSourceFields v-model:publishers="publishers" v-model:platforms="platforms" v-model:scope="scope" :disabled="busy" :target-platforms="targetPlatforms">
         <p class="hint">平台选择统一应用于所有所选人物，默认添加全部平台；手动账号和 List 单独添加</p>
         <p v-if="publishers.length && !publisherAccounts.some(account => platforms.includes(account.platform))" class="hint" role="status">所选人物在这些平台没有关联账号，请调整平台或人物选择</p>
         <div class="section-heading"><h3>手动账号</h3><n-button :disabled="busy" @click="manualAccounts.push({ platform: 'x', username: '' })">添加账号</n-button></div>
         <div v-for="(account, i) in manualAccounts" :key="i" class="monitor-manual-account">
           <label class="field-label">平台<n-select v-model:value="account.platform" :aria-label="`账号 ${i + 1} 平台`" :disabled="busy" :options="[{ label: 'X', value: 'x' }, { label: 'Instagram', value: 'instagram' }]" /></label>
           <label class="field-label">用户名<n-input v-model:value="account.username" :aria-label="`账号 ${i + 1} 用户名`" :disabled="busy" placeholder="用户名，不含 @" /></label>
-          <n-button :disabled="busy" :aria-label="`移除账号 ${i + 1}`" @click="manualAccounts.splice(i, 1)">移除</n-button>
+          <n-button quaternary :disabled="busy" :aria-label="`移除账号 ${i + 1}`" title="移除账号" @click="manualAccounts.splice(i, 1)"><template #icon><Trash2 /></template></n-button>
         </div>
         <label class="field-label">Twitter List
           <n-input v-model:value="listUrls" :status="invalidList ? 'error' : undefined" aria-label="Twitter List 链接" type="textarea" :disabled="busy" :autosize="{ minRows: 2, maxRows: 5 }" placeholder="https://x.com/i/lists/123456789，每行一个链接" />
         </label>
         <p v-if="invalidList" class="error-text" role="alert">请输入有效的 x.com/i/lists/数字 或 twitter.com/i/lists/数字 HTTPS 链接，每行一个</p>
-      </div>
-      <div class="monitor-create-settings">
-        <HashtagField v-model="hashtags" :disabled="busy" />
-        <label class="field-label">检查间隔（分钟）<n-input-number v-model:value="interval" :disabled="busy" :min="5" :precision="0" /></label>
+      </FeedSourceFields>
+      <HashtagField v-model="hashtags" :disabled="busy" />
+      <label class="field-label">检查间隔（分钟）<n-input-number v-model:value="interval" :disabled="busy" :min="5" :precision="0" /></label>
+      <div class="monitor-history">
         <n-checkbox v-model:checked="history" :disabled="busy">指定起始时间，补拉历史</n-checkbox>
         <label v-if="history" class="field-label">起始时间<LocalDateTime aria-label="起始时间" v-model="start" :disabled="busy" /></label>
-        <p v-if="!history" class="hint">默认只收新增，以保存时刻为起点。</p>
+        <p v-else class="hint">默认只收新增，以保存时刻为起点。</p>
       </div>
-      <div class="monitor-create-footer">
-        <n-button type="primary" attr-type="submit" :loading="busy" :disabled="busy || invalidList || !pendingAccounts.length || !interval || (history && !start)">添加监控</n-button>
-        <p v-if="accounts.length" class="hint">共 {{ accounts.length }} 项监控，统一使用以上间隔和起始时间</p>
-      </div>
+      <FeedFormActions :busy="busy" :disabled="invalidList || !pendingAccounts.length || !interval || (history && !start)">添加监控</FeedFormActions>
+      <p v-if="accounts.length" class="hint">共 {{ accounts.length }} 项监控，统一使用以上间隔和起始时间</p>
       <div v-if="createResults.length" class="monitor-create-results" role="status">
         <p v-for="result in createResults" :key="result.account.platform + ':' + result.account.username" :class="{ 'error-text': result.error }">{{ monitorLabel(result.account) }}：{{ result.error || '已添加监控' }}</p>
       </div>
@@ -232,6 +250,7 @@ onUnmounted(() => { clearInterval(timer); });
             <n-button :disabled="busy" @click="batch('update', [item.id])">立刻更新</n-button>
             <n-button :disabled="busy" @click="open('backfill', [item.id])">补齐</n-button>
             <n-button :disabled="busy" @click="open('hashtags', [item.id])">修改标签</n-button>
+            <n-button :disabled="busy" @click="open('scope', [item.id])">修改抓取范围</n-button>
             <n-button :disabled="busy" @click="open('delete', [item.id])">删除</n-button>
           </div>
         </div>
@@ -241,6 +260,7 @@ onUnmounted(() => { clearInterval(timer); });
       <n-card class="monitor-dialog" role="dialog" aria-modal="true" :title="dialogTitle" :aria-label="dialogTitle">
         <n-alert v-if="error" type="error">{{ error }}</n-alert>
         <p v-if="dialog === 'delete'">将删除监控配置并取消未完成任务，已导入照片会保留。</p>
+        <FeedScopeFields v-else-if="dialog === 'scope'" v-model="editScope" :platform="editPlatform" :disabled="busy" />
         <template v-else-if="dialog === 'hashtags'">
           <HashtagField v-model="editHashtags" :disabled="busy" />
           <p class="hint">仅影响新建任务。要按新标签检查历史帖子，请使用「补齐」。</p>
@@ -260,7 +280,7 @@ onUnmounted(() => { clearInterval(timer); });
         </template>
         <div class="monitor-toolbar">
           <n-button :disabled="busy" @click="dialog = null">取消</n-button>
-          <n-button type="primary" :loading="busy" :disabled="busy || (dialog === 'interval' && !validInterval) || ((dialog === 'backfill' || (dialog === 'resume' && mode === 'start')) && !validSince)" @click="confirm">确认{{ dialog === 'interval' || dialog === 'hashtags' ? '修改' : dialog === 'delete' ? '删除' : dialog === 'resume' ? '恢复' : '补齐' }}</n-button>
+          <n-button type="primary" :loading="busy" :disabled="busy || (dialog === 'interval' && !validInterval) || ((dialog === 'backfill' || (dialog === 'resume' && mode === 'start')) && !validSince)" @click="confirm">确认{{ dialog === 'interval' || dialog === 'hashtags' || dialog === 'scope' ? '修改' : dialog === 'delete' ? '删除' : dialog === 'resume' ? '恢复' : '补齐' }}</n-button>
         </div>
       </n-card>
     </n-modal>
@@ -268,18 +288,18 @@ onUnmounted(() => { clearInterval(timer); });
 </template>
 <style scoped>
 .monitor-manager { container: monitors / inline-size; display: grid; gap: 24px; min-width: 0; overflow-wrap: anywhere; }
-.monitor-manager :where(p, h2, h3, .field-label, .section-heading) { margin: 0; }
-.monitor-manager :where(.field-label, .monitor-summary, .monitor-controls, .monitor-account-fields, .monitor-create-settings) { min-width: 0; }
+.monitor-list :where(p, .field-label), .monitor-manager > .hint { margin: 0; }
+.monitor-manager :where(.field-label, .monitor-summary, .monitor-controls) { min-width: 0; }
 .monitor-header, .monitor-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .monitor-header { justify-content: space-between; }
 .monitor-header a { display: inline-flex; align-items: center; min-height: 44px; }
-.monitor-create { display: grid; gap: 24px; padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
-.monitor-create h2 { font-size: 19px; }
-.monitor-account-fields, .monitor-create-settings { display: grid; align-content: start; gap: 12px; }
-.monitor-account-fields .section-heading { margin-top: 4px; }
+.monitor-create h2 { font-size: 19px; margin-block: 16px; }
+.monitor-create .section-heading { margin: 16px 0 8px; }
+.monitor-history { margin-bottom: 16px; }
 .monitor-manual-account { display: grid; grid-template-columns: 144px minmax(0, 1fr) auto; align-items: end; gap: 12px; }
-.monitor-create-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
-.monitor-create-results { display: grid; gap: 8px; }
+.monitor-manual-account .field-label { margin: 0; }
+.monitor-manual-account + .monitor-manual-account { margin-top: 8px; }
+.monitor-create-results { display: grid; gap: 8px; margin-top: 16px; }
 .monitor-list { list-style: none; margin: 0; padding: 0; min-width: 0; }
 .monitor-list li { display: grid; gap: 16px 24px; padding: 16px 0; border-top: 1px solid var(--line); }
 .monitor-summary, .monitor-controls { display: grid; align-content: start; gap: 12px; }
@@ -294,15 +314,11 @@ onUnmounted(() => { clearInterval(timer); });
 .monitor-dialog { width: min(540px, calc(100vw - 32px)); max-height: 90dvh; overflow: auto; overflow-wrap: anywhere; }
 .monitor-dialog .monitor-toolbar { margin-top: 24px; justify-content: flex-end; }
 @container monitors (min-width: 800px) {
-  .monitor-create { grid-template-columns: minmax(0, 1fr) 280px; }
-  .monitor-create > :is(h2, .monitor-create-footer, .monitor-create-results) { grid-column: 1 / -1; }
   .monitor-list li { grid-template-columns: minmax(0, 1fr) 284px; }
 }
 @container monitors (max-width: 479px) {
   .monitor-header { align-items: flex-start; }
-  .monitor-create { padding: 16px; }
-  .monitor-manual-account { grid-template-columns: 128px minmax(0, 1fr); }
-  .monitor-manual-account > .n-button { grid-column: 2; justify-self: end; }
+  .monitor-manual-account { grid-template-columns: minmax(0, 6.5rem) minmax(0, 1fr) auto; gap: 8px; }
   .monitor-batch-actions { flex-basis: 100%; }
 }
 </style>

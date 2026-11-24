@@ -84,6 +84,7 @@ test("create monitors from publisher groups and independent manual accounts with
   });
   await page.goto("/admin/monitors");
   const form = page.locator(".monitor-create");
+  await expect(form.getByRole('checkbox', { name: '转发', exact: true })).toHaveCount(0);
   await form.locator(".publisher-cascader .n-base-selection").click();
   await page.locator(".people-cascader-menu .n-cascader-option").filter({ has: page.locator(".n-cascader-option__label", { hasText: /^未分组$/ }) }).locator(".n-checkbox").click();
   await form.getByRole("heading", { name: "添加发布者" }).click();
@@ -196,6 +197,30 @@ test("monitor layout preserves disclosure drafts and handles long content", asyn
       await page.screenshot({ path: `/tmp/gallery-faces/monitor-layout/after-expanded-${width}-${theme}.png`, fullPage: true });
     }
   }
+  const selection = page.getByRole('checkbox', { name: '全选当前列表' });
+  await selection.check();
+  await form.getByRole('checkbox', { name: 'X', exact: true }).uncheck();
+  await form.getByRole('checkbox', { name: '引用', exact: true }).check();
+  await form.getByRole('button', { name: '添加账号', exact: true }).click();
+  await form.getByLabel('Twitter List 链接').fill('invalid');
+  await form.getByRole('button', { name: '添加标签' }).click();
+  await form.getByRole('textbox', { name: '话题标签' }).fill('#摄影');
+  await form.getByRole('textbox', { name: '话题标签' }).press('Enter');
+  const interval = form.getByLabel('检查间隔（分钟）');
+  await interval.fill('120');
+  const history = form.getByRole('checkbox', { name: '指定起始时间，补拉历史' });
+  await history.check();
+  await form.getByRole('button', { name: '重置', exact: true }).click();
+  await expect(form.getByLabel('账号 1 用户名')).toHaveValue('');
+  await expect(form.getByLabel('账号 2 用户名')).toHaveCount(0);
+  await expect(form.getByLabel('Twitter List 链接')).toHaveValue('');
+  await expect(form.locator('.hashtag-field .n-tag')).toHaveCount(0);
+  await expect(interval).toHaveValue('60');
+  await expect(history).not.toBeChecked();
+  await expect(form.getByRole('checkbox', { name: 'X', exact: true })).toBeChecked();
+  await expect(form.getByRole('checkbox', { name: '引用', exact: true })).not.toBeChecked();
+  await expect(form.getByRole('button', { name: '添加监控', exact: true })).toBeDisabled();
+  await expect(selection).toBeChecked();
   await page.getByRole("button", { name: "收起添加" }).click();
   empty = true;
   await page.getByRole("button", { name: "刷新", exact: true }).click();
@@ -215,6 +240,10 @@ test("shared platform filter and canonical List batch", async ({ page }) => {
       return route.fulfill({ json: { id: calls.length, task_id: calls.length } });
     }
     if (path.endsWith("/monitors")) return route.fulfill({ json: calls.map((call, i) => ({ ...call, id: i + 1, paused: 0 })) });
+    if (path.endsWith('/monitors/1') && route.request().method() === 'PATCH') {
+      Object.assign(calls[0], route.request().postDataJSON());
+      return route.fulfill({ json: { ok: true } });
+    }
     if (path.endsWith("/people")) return route.fulfill({ json: [1, 2].map(id => ({ id, name: `人物${id}`, groups: [], accounts: [{ platform: "x", username: `user${id}` }, { platform: "instagram", username: `user${id}` }] })) });
     if (path.endsWith("/session")) return route.fulfill({ json: { admin: true } });
     if (path.endsWith("/site")) return route.fulfill({ json: { site_title: "Gallery Faces" } });
@@ -236,11 +265,18 @@ test("shared platform filter and canonical List batch", async ({ page }) => {
   const submit = form.getByRole("button", { name: "添加监控", exact: true });
   await expect(submit).toBeDisabled();
   await expect(form).toContainText("所选人物在这些平台没有关联账号");
+  const quotes = form.getByRole('checkbox', { name: '引用', exact: true });
+  await expect(quotes).toBeDisabled();
+  await form.getByLabel('Twitter List 链接').fill('https://x.com/i/lists/123');
+  await expect(quotes).toBeEnabled();
+  await expect(form.getByRole('checkbox', { name: '快拍', exact: true })).toBeDisabled();
   await x.check();
   await form.getByLabel("Twitter List 链接").fill("https://x.com/i/lists/abc");
   await expect(submit).toBeDisabled();
   await form.getByLabel("Twitter List 链接").fill("https://twitter.com/i/lists/123?s=20\nhttps://x.com/i/lists/123/");
-  await form.getByLabel("话题标签").fill("摄影 Live");
+  await form.getByRole('button', { name: '添加标签' }).click();
+  await form.getByRole('textbox', { name: '话题标签' }).fill('摄影 Live');
+  await form.getByRole('textbox', { name: '话题标签' }).press('Tab');
   await expect(form).toContainText("共 3 项监控");
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
@@ -262,10 +298,19 @@ test("shared platform filter and canonical List batch", async ({ page }) => {
   expect(calls.map(call => call.hashtags)).toEqual(Array(3).fill(["摄影", "Live"]));
   await page.getByRole("button", { name: "修改标签" }).first().click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByLabel("话题标签")).toHaveValue("#摄影 #Live");
-  await dialog.getByLabel("话题标签").fill("");
+  await expect(dialog.locator('.n-tag__content')).toHaveText(['摄影', 'Live']);
+  await dialog.locator('.n-tag').filter({ hasText: '摄影' }).getByRole('button').click();
+  await dialog.locator('.n-tag').filter({ hasText: 'Live' }).getByRole('button').click();
   const saved = page.waitForRequest(request => request.method() === "PATCH");
   await dialog.getByRole("button", { name: "确认修改" }).click();
   expect((await saved).postDataJSON()).toEqual({ hashtags: [] });
+  const edit = page.getByRole('button', { name: '修改抓取范围' }).first();
+  await edit.click();
+  await expect(dialog.getByRole('checkbox', { name: '引用' })).not.toBeChecked();
+  await dialog.getByRole('checkbox', { name: '引用' }).check();
+  await dialog.getByRole('button', { name: '确认修改' }).click();
+  await edit.click();
+  await expect(dialog.getByRole('checkbox', { name: '引用' })).toBeChecked();
+  await dialog.getByRole('button', { name: '取消' }).click();
   await expect(page.getByRole("link", { name: "Twitter List 123", exact: true })).toHaveAttribute("href", "https://x.com/i/lists/123/");
 });

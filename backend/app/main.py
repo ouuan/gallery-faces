@@ -34,6 +34,7 @@ from .review_format import fits
 from .group_index import REVIEW_FLAGS
 from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, cleanup_deleted_files, startup_phase
 from .security import download_url, cookie_bytes, save_cookie
+from .feed_scope import ImportScope, effective_scope
 from .importer import validate_url, safe_directory
 from .vision import MODEL_VERSION, Vision, candidates, models_ready, validate_embedding
 from .db import schedule_detection, ACTIVE_REFERENCE
@@ -1926,6 +1927,7 @@ def directories(_: None = Depends(admin)):
 
 
 class ImportInput(BaseModel):
+    scope: ImportScope = Field(default_factory=ImportScope)
     urls: list[str] = []
     hashtags: Hashtags = Field(default_factory=list)
     directory: str | None = None
@@ -1936,6 +1938,8 @@ class ImportInput(BaseModel):
 @app.post("/api/v1/admin/import")
 def import_create(body: ImportInput, _: None = Depends(admin)):
     results = []
+    if body.scope.reposts and (body.start or body.end):
+        fail('包含 Instagram 转发时，不能按日期筛选')
     with connect(True) as db:
         start, end = date_bounds(body.start, body.end)
         if body.directory is not None:
@@ -1973,9 +1977,10 @@ def import_create(body: ImportInput, _: None = Depends(admin)):
                 results.append({"value": url, "status": "duplicate"})
                 continue
             seen.add(url)
+            scope = effective_scope(url, body.scope.model_dump())
             active = db.execute(
-                "SELECT id FROM tasks WHERE kind='download' AND json_extract(payload,'$.url')=? AND json_extract(payload,'$.start') IS ? AND json_extract(payload,'$.end') IS ? AND coalesce(json_extract(payload,'$.hashtags'),'[]')=json(?) AND status IN ('queued','running')",
-                (url, start, end, json.dumps(body.hashtags, ensure_ascii=False)),
+                "SELECT id FROM tasks WHERE kind='download' AND json_extract(payload,'$.url')=? AND json_extract(payload,'$.start') IS ? AND json_extract(payload,'$.end') IS ? AND coalesce(json_extract(payload,'$.hashtags'),'[]')=json(?) AND coalesce(json_extract(payload,'$.scope'),'{}')=json(?) AND status IN ('queued','running')",
+                (url, start, end, json.dumps(body.hashtags, ensure_ascii=False), json.dumps(scope)),
             ).fetchone()
             if active:
                 results.append(
@@ -1984,7 +1989,7 @@ def import_create(body: ImportInput, _: None = Depends(admin)):
                 continue
             task = db.execute(
                 "INSERT INTO tasks(kind,payload,tier) VALUES('download',?,?)",
-                (json.dumps({"url": url, "start": start, "end": end, "hashtags": body.hashtags}, ensure_ascii=False),
+                (json.dumps({"url": url, "start": start, "end": end, "hashtags": body.hashtags, "scope": scope}, ensure_ascii=False),
                  'bulk' if bulk else None),
             ).lastrowid
             results.append({"value": url, "status": "queued", "task_id": task})

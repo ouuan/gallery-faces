@@ -146,13 +146,15 @@ def test_kill_blocked_process_at_deadline(client, monkeypatch):
 
 
 def test_media_timeline_only_resumes_photos(monkeypatch):
-    from gallery_dl.extractor.twitter import TwitterExtractor, TwitterMediaExtractor
-    from gallery_dl.extractor.instagram import InstagramExtractor
+    from gallery_dl.extractor.twitter import TwitterAPI, TwitterExtractor, TwitterMediaExtractor
+    from gallery_dl.extractor.instagram import InstagramAPI, InstagramExtractor
     from app.downloader import install_cursors
     for cls in (TwitterExtractor, InstagramExtractor):
         for name in ('_init_cursor', '_update_cursor'):
             monkeypatch.setattr(cls, name, getattr(cls, name))
     monkeypatch.setattr(TwitterMediaExtractor, 'tweets', TwitterMediaExtractor.tweets)
+    monkeypatch.setattr(InstagramAPI, 'media', InstagramAPI.media)
+    monkeypatch.setattr(TwitterAPI, 'tweet_detail', TwitterAPI.tweet_detail)
     monkeypatch.setattr(TwitterMediaExtractor, 'pattern', TwitterMediaExtractor.pattern)
     active = SimpleNamespace(cursor='photo-page-2', started_from_cursor=False)
     install_cursors(active, lambda: False)
@@ -278,7 +280,7 @@ def timeline(self, name):
         raise ValueError('expired test cursor')
     for identifier in ('123', '124'):
         yield {'id_str': identifier, 'user': {'protected': identifier == '124'}}
-TwitterAPI.user_original_timeline = timeline
+TwitterAPI.user_media_photos = timeline
 TwitterExtractor._transform_tweet = lambda self, tweet: {'tweet_id': tweet['id_str'], 'author': {'name': 'alice'}, 'date': datetime(2026, 1, 1)}
 TwitterExtractor._extract_files = lambda self, data, tweet: [{'url': 'https://pbs.twimg.com/' + data['id_str'] + '.png'}]
 def send(self, req, **kwargs):

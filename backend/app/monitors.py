@@ -2,11 +2,26 @@
 import json
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 from .db import connect
 from .hashtags import Hashtags
 from .security import download_url
+from .feed_scope import XScope, InstagramScope
+
+
+def monitor_scope(platform, options):
+    model = XScope if platform == 'x' else InstagramScope
+    if options is None or not options.model_fields_set:
+        return model().model_dump()
+    if not isinstance(options, model):
+        raise HTTPException(422, '抓取范围与监控平台不匹配')
+    return options.model_dump()
+
+
+def saved_scope(row):
+    defaults = monitor_scope(row['platform'], None)
+    return defaults | json.loads(row['scope'])
 
 def now():
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
@@ -43,6 +58,7 @@ def enqueue(db, mid, start=None, end=None, retry=None, trigger='monitor_now'):
             lower = max(lower, overlap)
         payload = dict(monitor_id=mid, generation=row['generation'], trigger=trigger, mode='backfill' if start else 'incremental', start=lower, end=end or now(),
                        hashtags=json.loads(row['hashtags']),
+                       scope=saved_scope(row),
                        url=f"https://{'x.com' if row['platform'] == 'x' else 'www.instagram.com'}/{row['username']}/")
     return db.execute("INSERT INTO tasks(kind,payload,tier) VALUES('monitor',?,?)", (json.dumps(payload), retry['tier'] if retry else None)).lastrowid
 
@@ -67,6 +83,8 @@ def schedule_due():
             enqueue(db, row['id'], trigger='monitor_scheduled')
 
 class Create(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    scope: XScope | InstagramScope | None = None
     hashtags: Hashtags = Field(default_factory=list)
     platform: Literal['instagram', 'x']
     username: str = Field(min_length=1, max_length=100)
@@ -74,6 +92,8 @@ class Create(BaseModel):
     start: str = ''
 
 class Edit(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    scope: XScope | InstagramScope | None = None
     hashtags: Hashtags | None = None
     interval_minutes: int | None = Field(default=None, ge=5)
     paused: bool | None = None
@@ -106,6 +126,7 @@ class Candidate(BaseModel):
     label: str | None
 
 class Monitor(BaseModel):
+    scope: XScope | InstagramScope
     hashtags: list[str]
     id: int
     platform: str
@@ -125,7 +146,7 @@ class Monitor(BaseModel):
 
 def listing() -> list[Monitor]:
     with connect() as db:
-        return [{**row, 'hashtags': json.loads(row['hashtags'])} for row in db.execute("SELECT m.*,t.status AS last_status,t.result AS last_result,t.error AS last_error,(SELECT id FROM tasks WHERE kind='monitor' AND json_extract(payload,'$.monitor_id')=m.id AND status IN ('queued','running')) AS active_task_id FROM monitors m LEFT JOIN tasks t ON t.id=m.last_task_id ORDER BY m.id DESC")]
+        return [{**row, 'hashtags': json.loads(row['hashtags']), 'scope': saved_scope(row)} for row in db.execute("SELECT m.*,t.status AS last_status,t.result AS last_result,t.error AS last_error,(SELECT id FROM tasks WHERE kind='monitor' AND json_extract(payload,'$.monitor_id')=m.id AND status IN ('queued','running')) AS active_task_id FROM monitors m LEFT JOIN tasks t ON t.id=m.last_task_id ORDER BY m.id DESC")]
 
 def candidates(q: str = '') -> list[Candidate]:
     with connect() as db:
@@ -162,14 +183,17 @@ def create(body: Create) -> Created:
     with connect(True) as db:
         if db.execute('SELECT 1 FROM monitors WHERE platform=? AND username=? COLLATE NOCASE', (body.platform, username)).fetchone():
             raise HTTPException(409, '该发布者已在监控列表中')
-        mid = db.execute('INSERT INTO monitors(platform,username,interval_minutes,start_at,next_check_at,hashtags) VALUES(?,?,?,?,?,?)', (body.platform, username, body.interval_minutes, start, timestamp, json.dumps(body.hashtags))).lastrowid
+        mid = db.execute('INSERT INTO monitors(platform,username,interval_minutes,start_at,next_check_at,hashtags,scope) VALUES(?,?,?,?,?,?,?)', (body.platform, username, body.interval_minutes, start, timestamp, json.dumps(body.hashtags), json.dumps(monitor_scope(body.platform, body.scope)))).lastrowid
         tid = enqueue(db, mid, end=timestamp, trigger='monitor_initial')
     return {'id': mid, 'task_id': tid}
 
 def edit(monitor_id: int, body: Edit):
     with connect(True) as db:
-        if not db.execute('SELECT 1 FROM monitors WHERE id=?', (monitor_id,)).fetchone():
+        row = db.execute('SELECT platform FROM monitors WHERE id=?', (monitor_id,)).fetchone()
+        if not row:
             raise HTTPException(404, '监控不存在')
+        if body.scope is not None:
+            db.execute('UPDATE monitors SET scope=? WHERE id=?', (json.dumps(monitor_scope(row['platform'], body.scope)), monitor_id))
         if body.paused is False:
             raise HTTPException(400, '请选择恢复方式')
         if body.hashtags is not None:

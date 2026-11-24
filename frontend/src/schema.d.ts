@@ -1477,6 +1477,8 @@ export interface components {
         };
         /** Create */
         Create: {
+            /** Scope */
+            scope?: components["schemas"]["XScope"] | components["schemas"]["InstagramScope"] | null;
             /** Hashtags */
             hashtags?: string[];
             /**
@@ -1599,6 +1601,8 @@ export interface components {
         };
         /** Edit */
         Edit: {
+            /** Scope */
+            scope?: components["schemas"]["XScope"] | components["schemas"]["InstagramScope"] | null;
             /** Hashtags */
             hashtags?: string[] | null;
             /** Interval Minutes */
@@ -1865,6 +1869,7 @@ export interface components {
         };
         /** ImportInput */
         ImportInput: {
+            scope?: components["schemas"]["ImportScope"];
             /**
              * Urls
              * @default []
@@ -1911,6 +1916,47 @@ export interface components {
             duplicates: number;
             /** Error */
             error?: string | null;
+        };
+        /** ImportScope */
+        ImportScope: {
+            /**
+             * Stories
+             * @default true
+             */
+            stories: boolean;
+            /**
+             * Tagged
+             * @default true
+             */
+            tagged: boolean;
+            /**
+             * Retweets
+             * @default false
+             */
+            retweets: boolean;
+            /**
+             * Quoted
+             * @default false
+             */
+            quoted: boolean;
+            /**
+             * Reposts
+             * @default false
+             */
+            reposts: boolean;
+        };
+        /** InstagramScope */
+        InstagramScope: {
+            /**
+             * Stories
+             * @default true
+             */
+            stories: boolean;
+            /**
+             * Tagged
+             * @default true
+             */
+            tagged: boolean;
         };
         /** Inventory */
         Inventory: {
@@ -1983,6 +2029,8 @@ export interface components {
         };
         /** Monitor */
         Monitor: {
+            /** Scope */
+            scope: components["schemas"]["XScope"] | components["schemas"]["InstagramScope"];
             /** Hashtags */
             hashtags: string[];
             /** Id */
@@ -2538,6 +2586,19 @@ export interface components {
             /** Free Bytes */
             free_bytes: number | null;
             last_cleanup: components["schemas"]["Cleanup"] | null;
+        };
+        /** XScope */
+        XScope: {
+            /**
+             * Retweets
+             * @default false
+             */
+            retweets: boolean;
+            /**
+             * Quoted
+             * @default false
+             */
+            quoted: boolean;
         };
     };
     responses: never;

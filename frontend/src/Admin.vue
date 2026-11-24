@@ -12,7 +12,6 @@ import { useRouter, useRoute } from "vue-router";
 import {
   NButton,
   NCheckbox,
-  NCheckboxGroup,
   NInput,
   NSelect,
   NTreeSelect,
@@ -22,13 +21,15 @@ import {
   useMessage,
 } from "naive-ui";
 import { Download, Users, ScanFace, Copy, Settings, LogOut } from "@lucide/vue";
-import { api, send, platformLabel } from "./api";
+import { api, send } from "./api";
 import { useLibrary } from "./store";
 import { usePageTitle } from "./page-title";
-import PublisherSelect from "./PublisherSelect.vue";
+import FeedSourceFields from './FeedSourceFields.vue';
+import FeedFormActions from './FeedFormActions.vue';
+import { defaultScope, feedPlatforms, importScopePlatforms } from './feed-scope';
 import { usePublisherSelection, mergeImportUrls } from "./publisher-selection";
 import Monitors from "./Monitors.vue";
-import HashtagField, { splitHashtags } from "./HashtagField.vue";
+import HashtagField from "./HashtagField.vue";
 import People from "./People.vue";
 import Review from "./Review.vue";
 import DuplicateReview from "./DuplicateReview.vue";
@@ -36,11 +37,19 @@ import DateRangeHint from "./DateRangeHint.vue";
 import CookieGuide from "./CookieGuide.vue";
 const store = useLibrary();
 const { selected: publishers, accounts: publisherAccounts } = usePublisherSelection();
-const platformOptions = ["x", "instagram"];
-const importPlatforms = ref([...platformOptions]);
+const importPlatforms = ref([...feedPlatforms]);
+const scope = ref({ ...defaultScope });
 const importAccounts = computed(() => publisherAccounts.value.filter(account => importPlatforms.value.includes(account.platform)));
 const importUrls = computed(() => mergeImportUrls(importAccounts.value, urls.value));
-const invalidImportRange = computed(() => !!start.value && !!end.value && Date.parse(start.value) >= Date.parse(end.value));
+const targetPlatforms = computed(() => importScopePlatforms(importUrls.value));
+const effectiveScope = computed(() => {
+  const { retweets, quoted, stories, tagged, reposts } = scope.value;
+  return {
+    ...(targetPlatforms.value.has('x') ? { retweets, quoted } : {}),
+    ...(targetPlatforms.value.has('instagram') ? { stories, tagged, reposts } : {}),
+  };
+});
+const invalidImportRange = computed(() => !effectiveScope.value.reposts && !!start.value && !!end.value && Date.parse(start.value) >= Date.parse(end.value));
 const router = useRouter();
 const route = useRoute(),
   message = useMessage(),
@@ -50,7 +59,7 @@ const route = useRoute(),
   error = ref(""),
   busy = ref(false),
   urls = ref(""),
-  hashtags = ref(""),
+  hashtags = ref<string[]>([]),
   directory = ref<string | null>(null),
   directories = ref<string[]>([]),
   tasks = ref<TaskRecord[]>([]),
@@ -172,6 +181,19 @@ async function logout() {
   await send("/logout", {});
   authenticated.value = false;
 }
+function resetImport() {
+  if (busy.value) return;
+  publishers.value = [];
+  importPlatforms.value = [...feedPlatforms];
+  scope.value = { ...defaultScope };
+  urls.value = "";
+  hashtags.value = [];
+  directory.value = null;
+  start.value = "";
+  end.value = "";
+  error.value = "";
+  results.value = [];
+}
 async function submitImport() {
   if (busy.value || invalidImportRange.value || (!importUrls.value.length && directory.value === null)) return;
   busy.value = true;
@@ -179,10 +201,10 @@ async function submitImport() {
   try {
     results.value = await send("/admin/import", {
       urls: importUrls.value,
-      hashtags: importUrls.value.length ? splitHashtags(hashtags.value) : [],
+      hashtags: importUrls.value.length ? hashtags.value : [],
       directory: directory.value,
-      start: start.value,
-      end: end.value,
+      scope: effectiveScope.value,
+      ...(effectiveScope.value.reposts ? {} : { start: start.value, end: end.value }),
     });
     await loadTasks(1);
   } catch (e) {
@@ -312,22 +334,11 @@ onUnmounted(() => {
         ><p class="intro">
           添加帖子或账号链接，或导入已挂载的 gallery-dl 目录
         </p>
-        <form class="import-form" @submit.prevent="submitImport">
-          <label class="field-label">发布者
-            <PublisherSelect v-model="publishers" :disabled="busy" />
-          </label>
-          <div class="field-label" id="import-platforms-label">发布者平台</div>
-          <n-checkbox-group v-model:value="importPlatforms" class="inline-form" aria-labelledby="import-platforms-label" :disabled="busy">
-            <n-checkbox v-for="platform in platformOptions" :key="platform" :value="platform">{{ platformLabel(platform) }}</n-checkbox>
-          </n-checkbox-group>
-          <p v-if="publishers.length && !importAccounts.length" class="hint" role="status">没有匹配的发布者账号，仍可导入手动链接或目录。</p>
-          <label class="field-label"
-            >链接，每行一个<n-input
-              v-model:value="urls"
-              type="textarea"
-              :autosize="{ minRows: 4, maxRows: 8 }"
-              placeholder="https://www.instagram.com/p/…&#10;https://x.com/username/status/…" /></label
-          >
+        <form class="feed-form import-form" @submit.prevent="submitImport" @reset.prevent="resetImport">
+          <FeedSourceFields v-model:publishers="publishers" v-model:platforms="importPlatforms" v-model:scope="scope" :disabled="busy" :target-platforms="targetPlatforms" single-import>
+            <p v-if="publishers.length && !importAccounts.length" class="hint" role="status">没有匹配的发布者账号，仍可导入手动链接或目录。</p>
+            <label class="field-label">链接，每行一个<n-input v-model:value="urls" type="textarea" :autosize="{ minRows: 4, maxRows: 8 }" placeholder="https://www.instagram.com/p/…&#10;https://x.com/username/status/…" /></label>
+          </FeedSourceFields>
           <HashtagField v-model="hashtags" :disabled="busy || !importUrls.length" />
           <label class="field-label"
             >或选择导入目录<n-select
@@ -336,21 +347,16 @@ onUnmounted(() => {
               :options="directories.map((d) => ({ label: d, value: d }))"
               placeholder="挂载目录中的图片与 JSON sidecar"
           /></label>
-          <div class="inline-form">
-            <label class="field-label"
-              >开始时间<LocalDateTime aria-label="开始时间" v-model="start" :disabled="busy" /></label
-            ><label class="field-label"
-              >结束时间（不含）<LocalDateTime aria-label="结束时间（不含）" v-model="end" :disabled="busy" /></label>
+          <div class="import-dates">
+            <div class="inline-form">
+              <label class="field-label">开始时间<LocalDateTime aria-label="开始时间" v-model="start" :disabled="busy || effectiveScope.reposts" /></label>
+              <label class="field-label">结束时间（不含）<LocalDateTime aria-label="结束时间（不含）" v-model="end" :disabled="busy || effectiveScope.reposts" /></label>
+            </div>
+            <p v-if="effectiveScope.reposts" class="hint" role="status">包含 Instagram 转发时，不能按日期筛选</p>
+            <DateRangeHint v-else :start="start" :end="end" />
+            <n-alert v-if="invalidImportRange" type="error">结束时间必须晚于开始时间</n-alert>
           </div>
-          <DateRangeHint :start="start" :end="end" />
-          <n-alert v-if="invalidImportRange" type="error">结束时间必须晚于开始时间</n-alert>
-          <n-button class="stable-loading-button"
-            type="primary"
-            attr-type="submit"
-            :disabled="busy || invalidImportRange || (!importUrls.length && directory === null)"
-            :loading="busy"
-            >创建导入任务</n-button
-          >
+          <FeedFormActions :busy="busy" :disabled="invalidImportRange || (!importUrls.length && directory === null)">创建导入任务</FeedFormActions>
           <p class="hint">
             再次导入同一账号可获取新增照片，已收录和回收站中的媒体会在下载前跳过
           </p>
@@ -548,6 +554,8 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.import-dates { display: grid; gap: 8px; margin-block: 16px; }
+.import-dates :is(.inline-form, .field-label, .hint) { margin: 0; }
 .cookie-heading {
   display: flex;
   align-items: center;

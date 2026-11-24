@@ -48,10 +48,10 @@ def normalize_twitter_text(tweet):
     return result
 
 
-def install_policy(report_path=None):
+def install_policy(report_path=None, feed=None, scope=None):
     from gallery_dl.extractor.common import Extractor
     from gallery_dl.extractor.twitter import TwitterExtractor
-    from gallery_dl.extractor.instagram import InstagramExtractor
+    from gallery_dl.extractor.instagram import InstagramExtractor, InstagramStoriesExtractor
     from .security import public_user, public_post
 
     state = {"denied": False}
@@ -72,31 +72,67 @@ def install_policy(report_path=None):
     def guarded_initialize(self):
         allowed = {"twitter": {"user", "tweets", "media", "tweet", "list"},
                    "instagram": {"user", "posts", "photos", "reels", "post", "reel"}}
+        if feed in {'stories', 'tagged', 'reposts'}:
+            allowed['instagram'].add(feed)
+        if feed == 'reposts':
+            allowed['twitter'].add(feed)
         if self.subcategory not in allowed.get(self.category, set()):
             deny('不支持的下载入口')
         return initialize(self)
     Extractor.initialize = guarded_initialize
 
     transform = TwitterExtractor._transform_tweet
-    def tweet(self, raw):
+    def public_tweet(raw):
         author = raw.get("author") or raw.get("core", {}).get("user_results", {}).get("result") or raw.get("user")
         check(public_user, author, "x")
         check(public_post, raw)
         check(public_post, raw.get("legacy", {}))
-        return transform(self, normalize_twitter_text(raw))
+
+    def tweet(self, raw):
+        public_tweet(raw)
+        legacy = raw.get('legacy', raw)
+        shared_id = legacy.get('quoted_by_id_str')
+        if scope and legacy.get('retweeted_status_id_str'):
+            if core := raw.get('core'):
+                check(public_user, core.get('user_results', {}).get('result'), 'x')
+            original = (legacy.get('retweeted_status_result') or {}).get('result') or {}
+            shared_id = legacy['id_str']
+            raw = original.get('tweet', original)
+            public_tweet(raw)
+        data = transform(self, normalize_twitter_text(raw))
+        if scope and shared_id:
+            data['source_date'] = data['date']
+            data['date'] = self._tweetid_to_datetime(int(shared_id))
+        return data
     TwitterExtractor._transform_tweet = tweet
     items = TwitterExtractor.items
     def twitter_items(self):
         if self.subcategory not in {"tweet", "list"}:
             self.login()
             check(public_user, check(self.api.user_by_screen_name, self.user), "x")
+        if scope and scope.get('quoted'):
+            original_tweets = self.tweets
+            def checked_quotes():
+                parent = None
+                for raw in original_tweets():
+                    legacy = raw.get('legacy', raw)
+                    if parent_id := legacy.get('quoted_by_id_str'):
+                        if not parent or parent.get('legacy', parent).get('id_str') != parent_id:
+                            continue
+                        if not scope.get('retweets') and 'retweeted_status_id_str' in parent.get('legacy', parent):
+                            continue
+                        public_tweet(parent)
+                        if parent.get('pinned'):
+                            raw['pinned'] = True
+                    else:
+                        parent = raw
+                    yield raw
+            self.tweets = checked_quotes
         yield from items(self)
     TwitterExtractor.items = twitter_items
 
     parse = InstagramExtractor._parse_post
-    def post(self, raw):
-        check(public_post, raw)
-        owner = raw.get("user") or {}
+    def public_owner(self, owner):
         uid = owner.get("pk") or owner.get("id")
         if not uid:
             check(public_user, None, "instagram")
@@ -105,13 +141,36 @@ def install_policy(report_path=None):
         if str(profile.get("pk") or profile.get("id")) != str(uid):
             check(public_user, None, "instagram")
         check(public_user, profile, "instagram")
-        return parse(self, raw)
+
+    def post(self, raw):
+        check(public_post, raw)
+        public_owner(self, raw.get('user') or {})
+        data = parse(self, raw)
+        if feed == 'stories':
+            item = raw['items'][0]
+            data.update(post_id=item['pk'], post_shortcode=item.get('code'),
+                        post_url=f"{self.root}/stories/{self.user}/{item['pk']}/")
+        return data
     InstagramExtractor._parse_post = post
+    story_reels = InstagramStoriesExtractor.posts
+    def stories(self):
+        for reel in story_reels(self):
+            for item in sorted(reel['items'], key=lambda item: item['taken_at'], reverse=True):
+                check(public_post, item)
+                for field in ('user', 'owner', 'reshared_story_media_author'):
+                    if owner := item.get(field):
+                        public_owner(self, owner)
+                yield {**reel, 'seen': item['taken_at'], 'taken_at': item['taken_at'], 'items': [item]}
+    if feed == 'stories':
+        InstagramStoriesExtractor.posts = stories
     original_items = InstagramExtractor.items
     def instagram_items(self):
-        if self.subcategory in {"posts", "photos", "reels"}:
+        if self.subcategory in {"posts", "photos", "reels", "tagged", "stories", "reposts"}:
             self.login()
-            check(public_user, check(self.api.user, self.item), "instagram")
+            owner = check(self.api.user, self.user if self.subcategory == 'stories' else self.item)
+            check(public_user, owner, 'instagram')
+            if feed in {'tagged', 'stories', 'reposts'}:
+                public_owner(self, owner)
         yield from original_items(self)
     InstagramExtractor.items = instagram_items
     return state
@@ -147,7 +206,13 @@ def install_library_filter(report_path=None, restore_id=None, hashtags=(), cache
             from .metadata import in_date_range
             if denied():
                 raise ValueError('下载被安全策略拒绝')
-            if not in_date_range(meta, active.payload.get('start'), active.payload.get('end')) or active.skip(meta):
+            if not in_date_range(meta, active.payload.get('start'), active.payload.get('end')):
+                return
+            if active.payload.get('scope') and self.extractor.subcategory == 'tweets' and not raw.get('quote_id'):
+                return
+            if raw.get('source_date') is not None:
+                meta['date'] = metadata({**raw, 'category': self.extractor.category, 'date': raw['source_date']}, '')['date']
+            if active.skip(meta):
                 return
             def completed(pathfmt):
                 if denied():
@@ -188,20 +253,37 @@ def install_library_filter(report_path=None, restore_id=None, hashtags=(), cache
 
 
 def install_cursors(active, denied):
-    from gallery_dl.extractor.instagram import InstagramExtractor
-    from gallery_dl.extractor.twitter import TwitterExtractor, TwitterMediaExtractor
+    from gallery_dl.extractor.instagram import InstagramAPI, InstagramExtractor
+    from gallery_dl.extractor.twitter import TwitterAPI, TwitterExtractor, TwitterMediaExtractor
 
     TwitterMediaExtractor.tweets = lambda extractor: extractor.api.user_media_photos(extractor.user)
 
-    feeds = {'tweets', 'media', 'list', 'posts', 'photos', 'reels'}
+    def isolate_detail(method):
+        def nested(api, *args, **kwargs):
+            extractor = api.extractor
+            previous = getattr(extractor, '_reading_media_detail', False)
+            extractor._reading_media_detail = True
+            try:
+                yield from method(api, *args, **kwargs)
+            finally:
+                extractor._reading_media_detail = previous
+        return nested
+    InstagramAPI.media = isolate_detail(InstagramAPI.media)
+    TwitterAPI.tweet_detail = isolate_detail(TwitterAPI.tweet_detail)
+
+    feeds = {'tweets', 'media', 'list', 'posts', 'photos', 'reels', 'tagged', 'reposts'}
     def wrap(cls):
         initial, update = cls._init_cursor, cls._update_cursor
         def start(extractor):
+            if getattr(extractor, '_reading_media_detail', False):
+                return None
             if extractor.subcategory in feeds and active.cursor:
                 active.started_from_cursor = True
                 return active.cursor
             return initial(extractor)
         def advance(extractor, cursor):
+            if getattr(extractor, '_reading_media_detail', False):
+                return cursor
             if cursor and extractor.subcategory in feeds and not denied():
                 active.checkpoint(cursor)
             return update(extractor, cursor)
@@ -233,29 +315,40 @@ def main():
     from .download_transport import install
     platform, _ = download_url(sys.argv[-1])
     network = install(platform, os.environ.get('GALLERY_FACES_POLICY_REPORT'))
-    state = install_policy(os.environ.get('GALLERY_FACES_POLICY_REPORT'))
     active = directory = None
+    scope = {}
+    feed = None
     def denied():
         return state['denied'] or network['denied']
     if claim := os.environ.get('GALLERY_FACES_ROUND'):
         from pathlib import Path
         from .download_round import DownloadRound
         active = DownloadRound(*map(int, claim.split(':')))
+        scope = active.payload.get('scope') or {}
+        feed = active.feeds[active.feed_index]
         active.resume()
         from .download_part import install as install_parts
         install_parts(active)
         directory = Path(os.environ['GALLERY_FACES_MEDIA_DIR'])
         install_cursors(active, denied)
+    state = install_policy(os.environ.get('GALLERY_FACES_POLICY_REPORT'), feed, scope)
     restore_id = os.environ.get("GALLERY_FACES_RESTORE_IMAGE")
     install_library_filter(os.environ.get("GALLERY_FACES_SKIPPED_REPORT"), int(restore_id) if restore_id else None,
                            json.loads(os.environ.get("GALLERY_FACES_HASHTAGS", "[]")), os.environ.get('GALLERY_FACES_CACHE_POST'),
                            active, directory, denied)
     options = ["cookies-update=false", "netrc=false",
-               "retweets=false", "quoted=false", "cards=false", "twitpic=false",
+               'retweets=' + ('true' if scope.get('retweets') else 'false'),
+               'quoted=' + ('true' if scope.get('quoted') else 'false'), "cards=false", "twitpic=false",
                "articles=false", "videos=false", "audio=false", "previews=false"]
+    if feed:
+        options.append('include=' + feed)
+    if scope.get('retweets') or scope.get('quoted'):
+        options.append('unique=false')
     for option in options:
         sys.argv[1:1] = ["-o", option]
     result = gallery_dl.main()
+    if not result and active and not denied() and active.next_feed():
+        return 75
     if result and active and active.started_from_cursor and not active.advanced and not active.saw_item and not denied():
         active.checkpoint(None)
         return 75

@@ -719,12 +719,30 @@ svg {
   color: var(--muted);
   margin-bottom: 24px;
 }
-.import-form {
+.scope-field {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+.scope-field legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-weight: 550;
+}
+.feed-platforms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+}
+.feed-form {
   max-width: 700px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px 24px 24px;
+}
+.import-form {
   margin-bottom: 32px;
 }
 .inline-form {
@@ -1098,7 +1116,7 @@ td:first-child {
   .admin-content {
     padding: 24px 16px;
   }
-  .import-form {
+  .feed-form {
     padding: 4px 16px 20px;
   }
   .form-dialog {

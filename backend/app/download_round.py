@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 
 from . import db as storage
 from .metadata import save_source, source_image
+from .feed_scope import feeds
 
 
 ROUND_SECONDS = 300
@@ -72,6 +73,10 @@ class DownloadRound:
             self.payload = json.loads(row['payload'])
             saved = db.execute('SELECT cursor FROM download_cursors WHERE task_id=?', (task_id,)).fetchone()
         self.cursor = saved[0] if saved else None
+        self.feeds = feeds(self.payload)
+        self.feed_index = 0
+        if self.cursor and len(self.feeds) > 1:
+            self.feed_index, self.cursor = json.loads(self.cursor)
         self.started_from_cursor = False
         self.advanced = False
         self.saw_item = False
@@ -84,6 +89,8 @@ class DownloadRound:
         return row
 
     def checkpoint(self, cursor):
+        if len(self.feeds) > 1 and (cursor or self.feed_index):
+            cursor = json.dumps([self.feed_index, cursor])
         with storage.connect(True) as db:
             self.owner(db)
             if cursor:
@@ -91,6 +98,13 @@ class DownloadRound:
             else:
                 db.execute('DELETE FROM download_cursors WHERE task_id=?', (self.task_id,))
         self.advanced = True
+
+    def next_feed(self):
+        if self.feed_index + 1 == len(self.feeds):
+            return False
+        self.feed_index += 1
+        self.checkpoint(None)
+        return True
 
     def identity(self, meta):
         if meta['key'].startswith('incomplete:') or not meta['media']:

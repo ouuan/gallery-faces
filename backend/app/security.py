@@ -90,7 +90,7 @@ def public_user(user, platform):
 
 def public_post(post):
     # Only explicit restriction flags block; account privacy must separately be explicit.
-    for key in ('is_paid_content', 'is_exclusive', 'exclusive_tweet', 'super_follows_only', 'is_close_friends', 'is_unpublished', 'super_follow_exclusive', 'trusted_friends_info', 'limited_actions'):
+    for key in ('is_paid_content', 'is_exclusive', 'exclusive_tweet', 'super_follows_only', 'is_close_friends', 'is_unpublished', 'super_follow_exclusive', 'trusted_friends_info', 'limited_actions', 'subscription_media_visibility', 'is_private'):
         if post.get(key):
             raise ValueError('不允许下载受限内容')
     if post.get('audience') not in (None, 'everyone', 'public'):
