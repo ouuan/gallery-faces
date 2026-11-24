@@ -88,7 +88,7 @@ watch(post, (current, _, cleanup) => {
       </header>
       <p v-if="post.coauthors.length" class="coauthors">共同作者：{{ post.coauthors.map(person => '@' + person.username).join('、') }}</p>
       <p v-if="post.post_text" class="post-copy"><template v-for="(part, index) in textParts" :key="index"><a v-if="part.href" :href="part.href" target="_blank" rel="noopener noreferrer">{{ part.label }}</a><template v-else>{{ part.label }}</template></template></p>
-      <div v-if="post.images.length" class="post-pictures" :class="{ single: post.images.length === 1 }">
+      <div v-if="post.images.length" class="post-pictures" :class="{ single: post.images.length === 1, 'triple-tail': post.images.length >= 3 && post.images.length % 2 === 1 }">
         <router-link v-for="(picture, index) in post.images" :key="picture.id" :to="{ path: '/', query: { ...filters, photo: picture.id }, state: { fromPost: true } }">
           <img :src="post.images.length === 1 ? picture.image_url : picture.thumbnail_url" :width="picture.width" :height="picture.height" :loading="index < 4 ? 'eager' : 'lazy'" :alt="`查看照片 ${index + 1}${picture.people.length ? '：' + picture.people.map(person => person.name).join('、') : ''}`" />
         </router-link>
@@ -120,6 +120,9 @@ watch(post, (current, _, cleanup) => {
 .post-copy { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 2px; font-size: 16px; line-height: 1.5; }
 .post-pictures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .post-pictures a { display: block; aspect-ratio: 1; min-height: 0; overflow: hidden; background: var(--bg); }
+.post-pictures.triple-tail { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.triple-tail a { grid-column: span 3; }
+.triple-tail a:nth-last-child(-n + 3) { grid-column: span 2; }
 .post-pictures a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .post-pictures img { width: 100%; height: 100%; display: block; object-fit: cover; }
 .post-pictures.single { grid-template-columns: minmax(0, 1fr); }

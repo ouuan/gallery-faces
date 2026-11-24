@@ -1,12 +1,48 @@
 import { expect, test } from '@playwright/test';
 
+const source = { platform: 'x', author: 'alice', author_name: '发布者', key: 'x:42', id: 42,
+  published_at: '2025-11-01T12:34:56Z', url: 'https://x.com/alice/status/42' };
+const picture = { id: 1, image_id: 1, image_url: '/photo.svg', thumbnail_url: '/photo.svg', download_url: '/photo.svg',
+  width: 600, height: 400, people: [], matched_source: source, sources: [source], source_count: 1 };
+
 for (const width of [390, 1280]) {
+  test(`post picture rows at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.route('**/photo.svg', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"/>' }));
+    await page.route('**/api/v1/**', route => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.includes('/posts/')) {
+        const count = Number(decodeURIComponent(path).split(':').pop());
+        return route.fulfill({ json: { ...source, coauthors: [], images: Array.from({ length: count }, (_, index) => ({ ...picture, id: index + 1 })) } });
+      }
+      if (path.endsWith('/gallery')) return route.fulfill({ json: { items: [], total: 0, next_cursor: null } });
+      return route.fulfill({ json: path.endsWith('/site') ? { site_title: '图库' } : [] });
+    });
+    for (const expectedRows of [[1], [2, 2], [3], [2, 3], [2, 2, 3]]) {
+      const count = expectedRows.reduce((sum, size) => sum + size, 0);
+      await page.goto(`/posts/x:${count}`);
+      const grid = page.locator('.post-pictures');
+      await expect(grid.getByRole('link')).toHaveCount(count);
+      const { rows, gridWidth, gap } = await grid.evaluate(element => {
+        const rows = new Map<number, number[]>();
+        for (const tile of element.querySelectorAll('a')) {
+          const row = rows.get(tile.offsetTop) ?? [];
+          row.push(tile.offsetWidth);
+          rows.set(tile.offsetTop, row);
+        }
+        return { rows: [...rows.values()], gridWidth: element.clientWidth, gap: parseFloat(getComputedStyle(element).columnGap) };
+      });
+      expect(rows.map(row => row.length)).toEqual(expectedRows);
+      for (const row of rows) {
+        const expectedWidth = (gridWidth - gap * (row.length - 1)) / row.length;
+        for (const tileWidth of row) expect(Math.abs(tileWidth - expectedWidth)).toBeLessThan(1);
+      }
+      if (count === 1) await expect(grid.locator('img')).toHaveCSS('object-fit', 'contain');
+    }
+  });
+
   test(`filtered RSS and post navigation at ${width}px`, async ({ page, request }) => {
     await page.setViewportSize({ width, height: 844 });
-    const source = { platform: 'x', author: 'alice', author_name: '发布者', key: 'x:42', id: 42,
-      published_at: '2025-11-01T12:34:56Z', url: 'https://x.com/alice/status/42' };
-    const picture = { id: 1, image_id: 1, image_url: '/photo.svg', thumbnail_url: '/photo.svg', download_url: '/photo.svg',
-      width: 600, height: 400, people: [], matched_source: source, sources: [source], source_count: 1 };
     await page.route('**/photo.svg', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="600" height="400" fill="#ccc"/><text x="250" y="200">布局示例</text></svg>' }));
     let avatarRequests = 0;
     await page.route('**/api/v1/**', route => {
