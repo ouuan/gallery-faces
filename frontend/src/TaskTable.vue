@@ -1,11 +1,12 @@
 <script lang="ts">
 import { taskSubtypeLabels, tierLabels } from './task-types';
+import { describeScope, type FeedScope } from './feed-scope';
 export const taskStatusLabels: Record<string, string> = {
   queued: "排队中", running: "执行中", done: "已完成", failed: "失败", cancelled: "已取消",
 };
 export interface TaskRecord {
   id: number; kind: string; subtype: string; tier: string; status: string; stage: string; image_id?: number;
-  payload: { url?: string; directory?: string; start?: string; end?: string; hashtags?: string[]; mode?: string; refresh_all?: boolean };
+  payload: { url?: string; directory?: string; start?: string; end?: string; hashtags?: string[]; scope?: Partial<FeedScope>; mode?: string; refresh_all?: boolean };
   result: { imported?: number; skipped_existing?: number; skipped_trashed?: number };
   done: number; total: number; speed: number; rounds?: number; cancel_requested?: number;
   created_at?: string; started_at?: string | null; round_started_at?: string | null; finished_at?: string; error?: string;
@@ -14,15 +15,16 @@ export interface TaskRecord {
 </script>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { ChevronRight } from "@lucide/vue";
 import { NButton } from "naive-ui";
 import { dateLabel } from "./api";
 import { formatHashtags } from "./HashtagField.vue";
 
-defineProps<{ tasks: TaskRecord[]; loading: boolean }>();
+const props = defineProps<{ tasks: TaskRecord[]; loading: boolean }>();
 defineEmits<{ action: [id: number, action: 'cancel' | 'retry'] }>();
 const expanded = ref<number | null>(null);
+const expandedScope = computed(() => describeScope(props.tasks.find(task => task.id === expanded.value)?.payload.scope));
 const finishLabels: Record<string, string> = { done: '完成时间', failed: '失败时间', cancelled: '取消时间' };
 function title(task: TaskRecord) {
   return taskSubtypeLabels[task.subtype] || taskSubtypeLabels[task.kind] || task.kind;
@@ -94,6 +96,7 @@ function duration(seconds: number) {
         <div class="detail">
           <span v-if="task.tier">调度档：{{ tierLabels[task.tier] }}</span>
           <span v-if="task.payload.url || task.payload.directory">{{ task.payload.url ? '链接' : '目录' }}：{{ task.payload.url || task.payload.directory }}</span>
+          <span v-if="expandedScope">抓取范围：{{ expandedScope }}</span>
           <span v-if="task.payload.hashtags?.length">标签：{{ formatHashtags(task.payload.hashtags) }}</span>
           <span v-if="task.payload.start || task.payload.end">{{ task.kind === 'import' ? '导入范围' : '下载范围' }}：<template v-if="task.payload.start && !task.payload.end">自 </template><time v-if="task.payload.start" :datetime="task.payload.start">{{ dateLabel(task.payload.start) }}</time><template v-else>截至 </template><template v-if="task.payload.start && task.payload.end"> 至 </template><template v-if="task.payload.end"><time :datetime="task.payload.end">{{ dateLabel(task.payload.end) }}</time>（不含）</template><template v-else> 起</template></span>
           <div class="facts">

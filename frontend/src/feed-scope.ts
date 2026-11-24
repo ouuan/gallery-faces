@@ -1,6 +1,16 @@
 export const feedPlatforms = ['x', 'instagram'];
 export const defaultScope = { retweets: false, quoted: false, stories: true, tagged: true, reposts: false };
 export type FeedScope = typeof defaultScope;
+export const scopeLabels = { retweets: '转推', quoted: '引用', stories: '快拍', tagged: 'tagged', reposts: '转发' } satisfies Record<keyof FeedScope, string>;
+
+export function describeScope(scope?: Partial<FeedScope>) {
+  const included: string[] = [], excluded: string[] = [];
+  for (const key of Object.keys(scopeLabels) as (keyof FeedScope)[]) {
+    if (scope?.[key] === true) included.push(scopeLabels[key]);
+    if (scope?.[key] === false) excluded.push(scopeLabels[key]);
+  }
+  return [included.length ? `包含${included.join('、')}` : '', excluded.length ? `不含${excluded.join('、')}` : ''].filter(Boolean).join('，');
+}
 
 const reservedX = new Set(['i', 'home', 'search', 'explore', 'messages', 'settings', 'notifications', 'compose', 'intent', 'login', 'logout']);
 const reservedInstagram = new Set(['accounts', 'direct', 'stories', 'explore', 'saved', 'share']);
