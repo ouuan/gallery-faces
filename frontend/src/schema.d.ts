@@ -1943,7 +1943,7 @@ export interface components {
             stories: boolean;
             /**
              * Tagged
-             * @default true
+             * @default false
              */
             tagged: boolean;
             /**
@@ -1971,7 +1971,7 @@ export interface components {
             stories: boolean;
             /**
              * Tagged
-             * @default true
+             * @default false
              */
             tagged: boolean;
         };

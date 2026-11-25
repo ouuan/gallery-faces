@@ -5957,7 +5957,7 @@
           "tagged": {
             "type": "boolean",
             "title": "Tagged",
-            "default": true
+            "default": false
           },
           "retweets": {
             "type": "boolean",
@@ -5989,7 +5989,7 @@
           "tagged": {
             "type": "boolean",
             "title": "Tagged",
-            "default": true
+            "default": false
           }
         },
         "additionalProperties": false,

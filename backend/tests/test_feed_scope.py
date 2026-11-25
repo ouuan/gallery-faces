@@ -36,10 +36,10 @@ def test_reposts_reject_dates_before_any_task(client, bounds):
     ('https://x.com/a/media', {'retweets': True}, [None]),
     ('https://x.com/i/lists/123', {'retweets': True}, [None]),
     ('https://instagram.com/p/abc', {'reposts': True}, [None]),
-    ('https://instagram.com/a', {}, ['stories', 'posts', 'tagged']),
+    ('https://instagram.com/a', {}, ['stories', 'posts']),
     ('https://instagram.com/a', {'stories': False, 'tagged': False, 'reposts': True}, ['posts', 'reposts']),
-    ('https://instagram.com/a', {'tagged': False}, ['stories', 'posts']),
-    ('https://instagram.com/a', {'stories': False}, ['posts', 'tagged']),
+    ('https://instagram.com/a', {'tagged': True}, ['stories', 'posts', 'tagged']),
+    ('https://instagram.com/a', {'stories': False}, ['posts']),
 ])
 def test_feed_selection(url, options, expected):
     assert feeds({'url': url, 'scope': effective_scope(url, ImportScope(**options).model_dump())}) == expected
@@ -57,7 +57,7 @@ def test_effective_scope_dedup_and_checkpoint(client):
     def load():
         return DownloadRound(identifier, task['rounds'])
     active = load()
-    assert active.feeds == ['stories', 'posts', 'tagged', 'reposts']
+    assert active.feeds == ['stories', 'posts', 'reposts']
     assert active.next_feed()
     active = load()
     assert active.feed_index == 1 and active.cursor is None
@@ -120,7 +120,7 @@ raise SystemExit(main())
 
 def test_instagram_worker_runs_each_selected_feed_once(client, monkeypatch, tmp_path):
     identifier = client.post('/api/v1/admin/import', json={
-        'urls': ['https://instagram.com/alice'], 'scope': {'reposts': True},
+        'urls': ['https://instagram.com/alice'], 'scope': {'tagged': True, 'reposts': True},
     }).json()[0]['task_id']
     report = tmp_path / 'feeds.txt'
     script = '''
@@ -153,7 +153,7 @@ def test_monitor_scope_validation_snapshot_and_retry(client, monkeypatch):
     item = create(client, platform='instagram')
     endpoint = '/api/v1/admin/monitors'
     current = f"{endpoint}/{item['id']}"
-    defaults = {'stories': True, 'tagged': True}
+    defaults = {'stories': True, 'tagged': False}
     for options in ({'reposts': True}, {'quoted': True}):
         assert client.post(endpoint, json={'platform': 'instagram', 'username': 'new', 'scope': options}).status_code == 422
         assert client.patch(current, json={'scope': options}).status_code == 422

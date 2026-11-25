@@ -12,7 +12,7 @@ class XScope(BaseModel):
 class InstagramScope(BaseModel):
     model_config = ConfigDict(extra='forbid')
     stories: bool = True
-    tagged: bool = True
+    tagged: bool = False
 
 
 class ImportScope(XScope, InstagramScope):

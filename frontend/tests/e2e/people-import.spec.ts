@@ -76,8 +76,8 @@ test("batch imports associated accounts and preserves input on failure", async (
   const instagram = page.getByRole("checkbox", { name: "Instagram" });
   await expect(x).toBeChecked();
   await expect(instagram).toBeChecked();
-  for (const name of ['快拍', 'tagged']) await expect(page.getByRole('checkbox', { name, exact: true })).toBeChecked();
-  for (const name of ['转推', '引用', '转发']) await expect(page.getByRole('checkbox', { name, exact: true })).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: '快拍', exact: true })).toBeChecked();
+  for (const name of ['转推', '引用', 'tagged', '转发']) await expect(page.getByRole('checkbox', { name, exact: true })).not.toBeChecked();
   await expect(links).toHaveValue("");
   await links.fill("https://www.twitter.com/Alice/\nhttps://x.com/bob");
   await page.getByRole('button', { name: '添加标签' }).click();
@@ -125,7 +125,7 @@ test("batch imports associated accounts and preserves input on failure", async (
   await expect(page.getByText("已加入队列", { exact: true })).toBeVisible();
   expect(requests).toHaveLength(3);
   expect(requests.at(-1)).toEqual({
-    scope: { retweets: false, quoted: false, stories: true, tagged: true, reposts: false },
+    scope: { retweets: false, quoted: false, stories: true, tagged: false, reposts: false },
     urls: ["https://x.com/alice", "https://instagram.com/alice", "https://x.com/bob"],
     directory: null,
     hashtags: ["摄影", "Live"],
@@ -157,7 +157,7 @@ test("batch imports associated accounts and preserves input on failure", async (
   await links.fill('https://instagram.com/bob');
   await expect(reposts).toBeEnabled();
   await expect(page.getByLabel('开始时间', { exact: true })).toBeDisabled();
-  await page.getByRole('checkbox', { name: 'tagged', exact: true }).uncheck();
+  await page.getByRole('checkbox', { name: 'tagged', exact: true }).check();
   const importCount = requests.length;
   await page.getByRole('button', { name: '重置', exact: true }).click();
   await expect(links).toHaveValue('');
@@ -167,7 +167,7 @@ test("batch imports associated accounts and preserves input on failure", async (
   await expect(page.getByLabel('结束时间（不含）')).toHaveValue('');
   await expect(x).toBeChecked();
   await expect(instagram).toBeChecked();
-  await expect(page.getByRole('checkbox', { name: 'tagged', exact: true })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'tagged', exact: true })).not.toBeChecked();
   await expect(reposts).not.toBeChecked();
   await expect(reposts).toBeDisabled();
   await expect(submit).toBeDisabled();

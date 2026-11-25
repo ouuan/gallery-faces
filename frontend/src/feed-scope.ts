@@ -1,5 +1,5 @@
 export const feedPlatforms = ['x', 'instagram'];
-export const defaultScope = { retweets: false, quoted: false, stories: true, tagged: true, reposts: false };
+export const defaultScope = { retweets: false, quoted: false, stories: true, tagged: false, reposts: false };
 export type FeedScope = typeof defaultScope;
 export const scopeLabels = { retweets: '转推', quoted: '引用', stories: '快拍', tagged: 'tagged', reposts: '转发' } satisfies Record<keyof FeedScope, string>;
 
