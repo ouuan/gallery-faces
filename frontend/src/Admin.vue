@@ -8,7 +8,7 @@ import TaskTable, { taskStatusLabels, type TaskRecord } from "./TaskTable.vue";
 import { taskKindLabels, taskTypeOptions, tierLabels } from './task-types';
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useLatestRequest } from "./use-latest-request";
-import { useRouter, useRoute } from "vue-router";
+import { useRoute } from "vue-router";
 import {
   NButton,
   NCheckbox,
@@ -20,7 +20,8 @@ import {
   NSlider,
   useMessage,
 } from "naive-ui";
-import { Hourglass, Download, Users, ScanFace, Copy, AtSign, Settings, LogOut } from "@lucide/vue";
+import AdminMenu from './AdminMenu.vue';
+import { adminSections } from './AdminNavigation.vue';
 import { api, send } from "./api";
 import { useLibrary } from "./store";
 import { usePageTitle } from "./page-title";
@@ -51,7 +52,6 @@ const effectiveScope = computed(() => {
   };
 });
 const invalidImportRange = computed(() => !effectiveScope.value.reposts && !!start.value && !!end.value && Date.parse(start.value) >= Date.parse(end.value));
-const router = useRouter();
 const route = useRoute(),
   message = useMessage(),
   authenticated = ref(false),
@@ -139,18 +139,10 @@ async function loadTasks(page = taskPage.value, background = false) {
     if (request === taskRequest) taskPending = tasksLoading.value = false;
   }
 }
-const nav = [
-  { id: "monitors", label: "发布者监控", icon: Hourglass },
-  { id: "import", label: "导入任务", icon: Download },
-  { id: "people", label: "人物与分组", icon: Users },
-  { id: "review", label: "识别审核", icon: ScanFace },
-  { id: "duplicates", label: "重复图片", icon: Copy },
-  { id: "publishers", label: "未关联发布者", icon: AtSign },
-  { id: "settings", label: "设置", icon: Settings },
-];
+const sectionTitle = computed(() => adminSections.find(item => item.id === section.value)?.label || '管理工作台');
 usePageTitle(() => {
   if (!checking.value && !authenticated.value) return "管理员登录";
-  return nav.find((item) => item.id === section.value)?.label || "管理工作台";
+  return sectionTitle.value;
 });
 async function refresh() {
   if (section.value === "import") {
@@ -312,22 +304,9 @@ onUnmounted(() => {
     <router-link to="/">返回照片库</router-link>
   </main>
   <main v-else class="admin-shell" :class="{ 'duplicates-shell': section === 'duplicates' }">
-    <div v-if="section === 'duplicates'" class="duplicates-mobile-nav">
-      <n-select aria-label="管理页面" :value="section" :options="nav.map(item => ({ label: item.label, value: item.id }))" @update:value="router.push('/admin/' + $event)" />
-      <n-button @click="logout">退出登录</n-button>
-    </div>
-    <aside class="admin-nav">
-      <p class="nav-title">管理工作台</p>
-      <router-link
-        v-for="item in nav"
-        :key="item.id"
-        :to="'/admin/' + item.id"
-        :class="{ active: section === item.id }"
-        ><component :is="item.icon" :size="19" />{{ item.label }}</router-link
-      ><button @click="logout"><LogOut :size="19" />退出登录</button>
-    </aside>
+    <AdminMenu :section="section" :title="sectionTitle" @logout="logout" />
     <section class="admin-content">
-      <h1>{{ nav.find((n) => n.id === section)?.label || "管理工作台" }}</h1>
+      <h1>{{ sectionTitle }}</h1>
       <Monitors v-if="section === 'monitors'" />
       <Publishers v-else-if="section === 'publishers'" />
       <n-alert v-if="error" type="error" closable @close="error = ''">{{

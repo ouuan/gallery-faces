@@ -309,7 +309,6 @@ async function decide(action: Action) {
 }
 </style>
 <style>
-@media (max-height: 600px) { .duplicates-shell .admin-content > h1 { display: none; } }
 .duplicate-details-dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; overflow-wrap: anywhere; }
 .duplicate-details-dialog h3 { margin: 16px 0 8px; }
 .duplicate-details-dialog p + p { margin-top: 8px; }

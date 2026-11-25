@@ -100,8 +100,8 @@ for (const width of [390, 1280]) {
     }
     mkdirSync("../.impeccable/review", { recursive: true });
     for (const theme of ["浅色", "深色"]) {
-      await page.locator('[aria-label="主题"]').click();
-      await page.locator(".n-base-select-option").filter({ hasText: new RegExp(`^${theme}$`) }).click();
+      await page.getByRole('button', { name: /^主题：/ }).click();
+      await page.getByRole('menuitemradio', { name: theme }).click();
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({ path: `../.impeccable/review/download-${width}-${theme}.png`, fullPage: true });
     }

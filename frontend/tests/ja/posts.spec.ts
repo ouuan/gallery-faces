@@ -55,8 +55,8 @@ for (const width of [320, 390, 768, 1280, 1440]) {
     await expect(page).toHaveURL(/match=subset/);
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.screenshot({path:`/tmp/gallery-faces/ja-${width}.png`,fullPage:true});
-    await page.getByLabel('テーマ', { exact: true }).click();
-    await page.getByText('ダーク', { exact: true }).click();
+    await page.getByRole('button', { name: /^テーマ：/ }).click();
+    await page.getByRole('menuitemradio', { name: 'ダーク' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect(page.locator('iframe[title="X 投稿"]')).toHaveCSS('color-scheme', 'light');
     await page.screenshot({path:`/tmp/gallery-faces/ja-${width}-dark.png`,fullPage:true});

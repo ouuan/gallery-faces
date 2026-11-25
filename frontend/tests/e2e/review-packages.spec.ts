@@ -356,11 +356,11 @@ test('groups evidence and reflows the review workspace without horizontal overfl
     else expect(preview.y + preview.height).toBeLessThanOrEqual(changes.y);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     if (width === 390) {
-      await page.getByLabel('主题', { exact: true }).click();
-      await page.locator('.n-base-select-option').filter({ hasText: '深色' }).click();
+      await page.getByRole('button', { name: /^主题：/ }).click();
+      await page.getByRole('menuitemradio', { name: '深色' }).click();
       await page.reload();
       await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-      await expect(page.getByLabel('主题', { exact: true })).toContainText('深色');
+      await expect(page.getByRole('button', { name: '主题：深色' })).toBeVisible();
       await expect.poll(() => page.locator('.queue-tools .n-base-selection-label').evaluate(element => {
         const channels = getComputedStyle(element).backgroundColor.match(/\d+(\.\d+)?/g)?.map(Number) ?? [];
         const base = getComputedStyle(document.body).backgroundColor.match(/\d+/g)!.map(Number);

@@ -92,6 +92,7 @@ svg {
   flex-shrink: 0;
 }
 .site-layout {
+  --site-header-height: 64px;
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
@@ -124,7 +125,7 @@ svg {
 .site-header {
   flex-shrink: 0;
   gap: 16px;
-  height: 64px;
+  height: var(--site-header-height);
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
@@ -163,9 +164,8 @@ svg {
   min-height: 44px;
   color: var(--text);
 }
-.theme-select {
-  width: 126px;
-}
+#admin-header-action:empty { display: none; }
+.site-header:has(.admin-trigger) .brand, .site-header:has(.admin-trigger) .nav-link { display: none; }
 .gallery-shell {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
@@ -672,40 +672,6 @@ svg {
   flex: 1;
   min-height: 0;
 }
-.admin-nav {
-  padding: 24px 12px;
-  border-right: 1px solid var(--line);
-  background: var(--panel);
-}
-.nav-title {
-  font-weight: 650;
-  padding: 4px 12px 20px;
-}
-.admin-nav a,
-.admin-nav button {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  width: 100%;
-  min-height: 44px;
-  padding: 12px;
-  border: 0;
-  border-radius: 6px;
-  background: none;
-  color: var(--muted);
-  text-decoration: none;
-  margin: 4px 0;
-  text-align: left;
-}
-.admin-nav .active {
-  background: var(--selection);
-  color: var(--accent);
-  font-weight: 600;
-}
-.admin-nav a:hover,
-.admin-nav button:hover {
-  background: var(--bg);
-}
 .admin-content {
   padding: 28px 36px;
   max-width: 1400px;
@@ -1070,9 +1036,6 @@ td:first-child {
   .header-actions {
     gap: 10px;
   }
-  .theme-select {
-    width: 108px;
-  }
   .nav-link {
     min-width: 44px;
     justify-content: center;
@@ -1137,29 +1100,6 @@ td:first-child {
   }
   .photo-meta strong {
     font-size: 13px;
-  }
-  .admin-shell {
-    display: block;
-  }
-  .admin-nav {
-    display: flex;
-    overflow: auto;
-    padding: 8px;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-  .admin-nav .nav-title {
-    display: none;
-  }
-  .admin-nav a,
-  .admin-nav button {
-    flex-shrink: 0;
-    width: auto;
-    white-space: nowrap;
-    padding: 10px;
-  }
-  .admin-nav svg {
-    display: none;
   }
   .admin-content {
     padding: 24px 16px;
@@ -1236,7 +1176,6 @@ td:first-child {
   object-fit: cover;
 }
 
-.duplicates-mobile-nav { display: none; }
 .duplicates-shell {
   flex: none;
   height: calc(100dvh - 129px);
@@ -1250,21 +1189,14 @@ td:first-child {
   gap: 12px;
 }
 .duplicates-shell .admin-content > h1 { margin: 0; }
-@media (max-width: 640px), (max-height: 600px) {
-  .duplicates-shell {
-    display: flex;
-    flex-direction: column;
-  }
-  .duplicates-shell .admin-nav { display: none; }
-  .duplicates-mobile-nav {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 4px 16px;
-    background: var(--panel);
-  }
-  .duplicates-mobile-nav .n-select { flex: 1; min-width: 0; }
-  .duplicates-shell .admin-content { flex: 1; padding: 8px 16px; gap: 8px; }
+@media (min-width: 721px) and (max-height: 600px) {
+  .admin-shell { grid-template: auto minmax(0, 1fr) / minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+  .admin-shell { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 720px), (max-height: 600px) {
+  .duplicates-shell .admin-content { padding: 8px 16px; gap: 8px; }
   .duplicates-shell .admin-content > h1 { display: none; }
 }
 

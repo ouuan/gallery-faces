@@ -91,8 +91,8 @@ test("masonry preserves sorted reading order through append, resize, layout and 
     await expect(page.locator(".photo-card").nth(1)).toBeFocused();
     await page.evaluate(() => window.scrollTo(0, 0));
     for (const theme of ["浅色", "深色"]) {
-      await page.locator('[aria-label="主题"]').click();
-      await page.locator(".n-base-select-option").filter({ hasText: new RegExp(`^${theme}$`) }).click();
+      await page.getByRole('button', { name: /^主题：/ }).click();
+      await page.getByRole('menuitemradio', { name: theme }).click();
       await expect(page.locator(".n-base-select-option:visible")).toHaveCount(0);
       await checkLayout(page, columns);
       await page.screenshot({ path: `/tmp/gallery-faces/masonry-${width}-${theme}.png` });
