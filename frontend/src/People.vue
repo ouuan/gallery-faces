@@ -488,6 +488,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
             </div>
             <p>选择要作为参考图的人脸</p>
             <n-select
+              :to="false"
               v-model:value="selectedFace"
               :disabled="saving || uploading"
               :options="
@@ -538,6 +539,8 @@ onUnmounted(() => window.removeEventListener("beforeunload", beforeUnload));
         <label class="field-label">日语名称（可选）<n-input v-model:value="groupEdit.name_ja" maxlength="100" placeholder="未填写时使用原名" /></label>
         <label class="field-label"
           >成员<n-select
+            :to="false"
+            :max-tag-count="2"
             v-model:value="groupEdit.person_ids"
             multiple
             filterable

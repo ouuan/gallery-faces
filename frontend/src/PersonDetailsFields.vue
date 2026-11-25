@@ -41,6 +41,8 @@ function addGroup() {
   <label class="field-label"
     >分组
     <n-select
+      :to="false"
+      :max-tag-count="2"
       v-model:value="selection"
       multiple
       filterable
@@ -73,6 +75,7 @@ function addGroup() {
   </div>
   <div v-for="(account, i) in accounts" :key="i" class="inline-form">
     <n-select
+      :to="false"
       v-model:value="account.platform"
       :aria-label="`账号 ${i + 1} 平台`"
       :disabled="disabled"

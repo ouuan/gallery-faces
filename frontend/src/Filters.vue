@@ -13,7 +13,7 @@ import { dailyQuery, feedHref, hasFilters, type Filter } from "./filters";
 import DateRangeHint from "./DateRangeHint.vue";
 import PublisherSelect from "./PublisherSelect.vue";
 import PeopleMultiSelect from "./PeopleMultiSelect.vue";
-const props = defineProps<{ modelValue: Filter; hideNoFaces?: boolean; showDaily?: boolean }>(),
+const props = defineProps<{ modelValue: Filter; hideNoFaces?: boolean; showDaily?: boolean; contained?: boolean }>(),
   emit = defineEmits(["update:modelValue", "clear"]);
 const store = useLibrary();
 const personValues = computed(() =>
@@ -42,6 +42,7 @@ function set(key: keyof Filter, value: any) {
       <people-multi-select
         v-else
         class="people-cascader"
+        :to="contained ? false : undefined"
         :aria-label="t('照片中的人物')"
         :people="store.people"
         :groups="store.groups"
@@ -67,15 +68,15 @@ function set(key: keyof Filter, value: any) {
     </fieldset>
     <fieldset>
       <legend>{{ t("发布者") }}</legend>
-      <PublisherSelect include-other :model-value="modelValue.publishers" @update:model-value="set('publishers', $event)" />
+      <PublisherSelect include-other :to="contained ? false : undefined" :model-value="modelValue.publishers" @update:model-value="set('publishers', $event)" />
       <p class="hint">{{ t("匹配所选人物的关联账号或其他发布者账号") }}</p>
     </fieldset>
     <fieldset>
       <legend>{{ t("发布日期") }}</legend>
       <label class="field-label date-field"
-        >{{ t("从") }}<LocalDateTime :aria-label="t('开始时间')" :model-value="modelValue.start" @update:model-value="set('start', $event)" /></label
+        >{{ t("从") }}<LocalDateTime :contained="contained" :aria-label="t('开始时间')" :model-value="modelValue.start" @update:model-value="set('start', $event)" /></label
       ><label class="field-label date-field"
-        >{{ t("至") }}<LocalDateTime :aria-label="t('结束时间')" :model-value="modelValue.end" @update:model-value="set('end', $event)" /></label>
+        >{{ t("至") }}<LocalDateTime :contained="contained" :aria-label="t('结束时间')" :model-value="modelValue.end" @update:model-value="set('end', $event)" /></label>
       <DateRangeHint :start="modelValue.start" :end="modelValue.end" />
     </fieldset>
     <n-checkbox

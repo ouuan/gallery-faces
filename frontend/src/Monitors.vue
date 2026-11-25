@@ -300,9 +300,9 @@ onUnmounted(() => { clearInterval(timer); });
         </label>
         <template v-else>
           <p v-if="dialog === 'resume'">将按以下方式继续 {{ targets.length }} 项监控。</p>
-          <n-select v-if="dialog === 'resume'" v-model:value="mode" aria-label="恢复方式" :options="[{ value: 'catch_up', label: '补齐暂停期间' }, { value: 'new', label: '不补，只收之后新增' }, { value: 'start', label: '指定起始时间' }]" />
+          <n-select v-if="dialog === 'resume'" :to="false" v-model:value="mode" aria-label="恢复方式" :options="[{ value: 'catch_up', label: '补齐暂停期间' }, { value: 'new', label: '不补，只收之后新增' }, { value: 'start', label: '指定起始时间' }]" />
           <template v-if="dialog === 'backfill' || mode === 'start'">
-            <label class="field-label">起始时间<LocalDateTime aria-label="起始时间" v-model="since" :disabled="busy" /></label>
+            <label class="field-label">起始时间<LocalDateTime contained aria-label="起始时间" v-model="since" :disabled="busy" /></label>
             <p v-if="dialog === 'backfill'" class="hint">补拉该时刻至提交时刻的帖子，跳过已有媒体。一次性补齐不会修改自动监控进度。</p>
             <p v-else class="hint">将以所选时间作为新的采集起点，重新开始自动增量检查，跳过已有媒体。</p>
             <p v-if="since && !validSince" class="error-text">起始时间必须早于当前时间。</p>

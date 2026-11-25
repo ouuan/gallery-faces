@@ -840,6 +840,49 @@ td:first-child {
 .form-dialog > h2 {
   margin-bottom: 20px;
 }
+[role="dialog"] :is(.n-select, .n-cascader, .n-date-picker) {
+  min-width: 0;
+}
+[role="dialog"] :is(.n-cascader, .n-date-picker) {
+  container-type: inline-size;
+}
+[role="dialog"] :is(.n-select, .n-cascader, .n-date-picker) > .v-binder-follower-container {
+  position: static;
+  height: auto;
+}
+[role="dialog"] :is(.n-select, .n-cascader, .n-date-picker) > .v-binder-follower-container > .v-binder-follower-content {
+  position: static;
+  transform: none !important;
+}
+[role="dialog"] .n-date-panel {
+  max-height: 60dvh;
+  overflow: auto;
+}
+[role="dialog"] .n-date-panel .n-time-picker > .v-binder-follower-container {
+  top: 100%;
+}
+[role="dialog"] .n-date-panel .n-time-picker .v-binder-follower-content {
+  right: 0;
+  transform: none !important;
+}
+[role="dialog"] .n-time-picker-panel :is(.n-time-picker-cols, .n-time-picker-col) {
+  height: min(calc(var(--n-item-height) * 6), 32dvh);
+}
+[role="dialog"] .n-base-select-menu :is(.n-scrollbar, .n-virtual-list) {
+  max-height: min(var(--n-height), 45dvh);
+}
+[role="dialog"] .n-cascader-submenu {
+  height: min(var(--n-menu-height), 45dvh);
+  min-width: min(var(--n-column-width), 50cqi);
+  max-width: 50cqi;
+}
+[role="dialog"] .n-dynamic-tags,
+[role="dialog"] .n-input--textarea .n-input-wrapper {
+  max-height: 45dvh;
+}
+[role="dialog"] .n-dynamic-tags {
+  overflow: auto;
+}
 .form-actions {
   display: flex;
   justify-content: flex-end;

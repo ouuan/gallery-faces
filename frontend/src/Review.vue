@@ -664,7 +664,7 @@ onMounted(load);
   </div>
   <n-modal v-model:show="showFilters">
     <div class="form-dialog" role="dialog" aria-modal="true" aria-label="筛选审核照片">
-      <Filters v-model="draftFilter" hide-no-faces @clear="draftFilter = emptyFilter()" />
+      <Filters v-model="draftFilter" hide-no-faces contained @clear="draftFilter = emptyFilter()" />
       <div class="form-actions">
         <n-button @click="showFilters = false">取消</n-button>
         <n-button type="primary" @click="applyFilters">应用筛选</n-button>
@@ -982,7 +982,7 @@ onMounted(load);
             v-model:value="sourceEdit.author_name"
             placeholder="未关联人物时显示" /></label
         ><label class="field-label"
-          >发布时间<LocalDateTime aria-label="发布时间"
+          >发布时间<LocalDateTime contained aria-label="发布时间"
             v-model="sourceEdit.published_at" /></label
         ><label class="field-label"
           >帖子链接<n-input v-model:value="sourceEdit.url" /></label

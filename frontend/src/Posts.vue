@@ -59,7 +59,7 @@ onBeforeUnmount(() => { version++; controller?.abort(); });
       </div>
     </div>
     <n-drawer :show="drawer" placement="left" width="min(340px, 100vw)" @update:show="!$event && closeFilters()">
-      <n-drawer-content :native-scrollbar="false" :body-content-style="{ padding: '24px' }" aria-label="投稿を絞り込む"><Filters v-model="draft" @clear="draft = clearFilters(draft)" /><template #footer><n-button @click="closeFilters">絞り込みを適用</n-button></template></n-drawer-content>
+      <n-drawer-content :native-scrollbar="false" :body-content-style="{ padding: '24px' }" aria-label="投稿を絞り込む"><Filters v-model="draft" contained @clear="draft = clearFilters(draft)" /><template #footer><n-button @click="closeFilters">絞り込みを適用</n-button></template></n-drawer-content>
     </n-drawer>
   </main>
 </template>
