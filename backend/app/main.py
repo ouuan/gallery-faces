@@ -236,7 +236,6 @@ class PersonInput(BaseModel):
     group_ids: list[int] = []
     new_groups: list[str | GroupName] = []
     accounts: list[Account] = []
-    reference_face_ids: list[int] = []
     removed_reference_ids: list[int] = []
     uploaded_references: list[UploadedReference] = []
 
@@ -297,25 +296,6 @@ def write_person(db, body, person_id=None):
             reference_changed = reference_changed or bool(was_active)
     for uploaded in body.uploaded_references:
         write_uploaded_reference(db, person_id, uploaded)
-        reference_changed = True
-    for face_id in set(body.reference_face_ids):
-        face = db.execute(
-            "SELECT * FROM faces WHERE id=? AND person_id=? AND locked=1 AND ignored=0",
-            (face_id, person_id),
-        ).fetchone()
-        if not face or not face["embedding"]:
-            fail("所选人脸已变更或没有有效特征，请刷新后重新选择", 409)
-        require_active_face(db, face_id)
-        require_embedding(face["embedding"], face["model_version"])
-        if db.execute(
-            "SELECT 1 FROM reference_images WHERE person_id=? AND face_id=?",
-            (person_id, face_id),
-        ).fetchone():
-            continue
-        db.execute(
-            "INSERT INTO reference_images(person_id,image_id,face_id,embedding,model_version) VALUES(?,?,?,?,?)",
-            (person_id, face["image_id"], face_id, face["embedding"], face["model_version"]),
-        )
         reference_changed = True
     if reference_changed:
         schedule_rematch(db)
@@ -467,20 +447,6 @@ def group_delete(group_id: int, _: None = Depends(admin)):
 
 class ReferenceInput(BaseModel):
     face_id: int
-
-
-@app.get("/api/v1/admin/people/{person_id}/confirmed-faces")
-def confirmed_faces(person_id: int, _: None = Depends(admin)):
-    with connect() as db:
-        if not db.execute("SELECT 1 FROM people WHERE id=?", (person_id,)).fetchone():
-            fail("人物不存在", 404)
-        return [
-            dict(row)
-            for row in db.execute(
-                "SELECT f.id,f.image_id, (f.embedding IS NOT NULL AND length(f.embedding)>0) AS has_embedding, EXISTS(SELECT 1 FROM reference_images r WHERE r.person_id=f.person_id AND r.face_id=f.id) AS is_reference FROM faces f WHERE EXISTS(SELECT 1 FROM images i WHERE i.id=f.image_id AND i.hidden=0) AND f.person_id=? AND f.locked=1 AND f.ignored=0 ORDER BY f.id DESC",
-                (person_id,),
-            )
-        ]
 
 
 @app.post("/api/v1/admin/people/{person_id}/references")

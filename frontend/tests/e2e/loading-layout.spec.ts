@@ -42,46 +42,26 @@ for (const width of [390, 1280]) {
     await stable(table, before);
   });
 
-  test(`person refresh and saving preserve geometry at ${width}px`, async ({ page }) => {
+  test(`person saving preserves geometry at ${width}px`, async ({ page }) => {
     let held: Route | undefined;
-    let hold = false;
-    const faces = [{ id: 11, image_id: 1, has_embedding: 1, is_reference: 0 }];
     await page.setViewportSize({ width, height: 1000 });
     await page.route('**/api/v1/**', route => {
       const path = new URL(route.request().url()).pathname;
-      if (path.endsWith('/confirmed-faces')) {
-        if (hold) { held = route; return; }
-        return route.fulfill({ json: faces });
-      }
       if (route.request().method() === 'PUT') { held = route; return; }
       if (path.endsWith('/people')) return route.fulfill({ json: [{ id: 1, name: '人物甲', groups: [], accounts: [], reference_count: 0 }] });
-      if (path.endsWith('/crop')) return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"/>' });
       return route.fulfill({ json: /\/(session|site|settings)$/.test(path) ? {} : [] });
     });
     await page.goto('/admin/people');
     await page.getByRole('button', { name: /^未分组 / }).click();
     await page.getByRole('button', { name: '编辑', exact: true }).click();
-    const grid = page.locator('.confirmed-face-grid');
-    await expect(grid).toBeVisible();
-    // Let the dialog's opening transition settle before measuring.
-    await page.waitForTimeout(350);
-    const before = await rect(grid);
-    hold = true;
-    await page.getByRole('button', { name: '刷新人脸' }).click();
-    await expect.poll(() => !!held).toBe(true);
-    await stable(grid, before);
-    await held!.fulfill({ json: faces });
-    await expect(page.getByText('正在加载已确认人脸…')).toHaveCount(0);
-    await stable(grid, before);
+    await expect(page.getByText('暂无参考图', { exact: true })).toBeVisible();
     const save = page.getByRole('button', { name: '保存人物' });
     await save.scrollIntoViewIfNeeded();
     const buttonBefore = await rect(save);
-    held = undefined;
     await save.click();
     await expect.poll(() => !!held).toBe(true);
     await expect(save).toHaveClass(/n-button--loading/);
     await stable(save, buttonBefore);
-    await page.screenshot({ path: `/tmp/gallery-faces/loading-${width}.png` });
     await held!.fulfill({ status: 500, json: { detail: '保存失败' } });
   });
 }

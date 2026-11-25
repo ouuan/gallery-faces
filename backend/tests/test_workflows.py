@@ -915,46 +915,6 @@ def test_person_from_face_groups_accounts_transaction(client):
     assert person['reference_count'] == 1
 
 
-def test_multiple_confirmed_face_references_atomic_and_deduplicated(client):
-    person = client.post('/api/v1/admin/people', json={'name': 'A'}).json()['id']
-    other = client.post('/api/v1/admin/people', json={'name': 'Other'}).json()['id']
-    with db.connect(True) as conn:
-        for _ in range(6):
-            image(conn)
-        faces = [r[0] for r in conn.execute('SELECT id FROM faces ORDER BY id')]
-        conn.execute('UPDATE faces SET person_id=?,locked=1', (person,))
-        conn.execute('UPDATE faces SET person_id=? WHERE id=?', (other, faces[3]))
-        conn.execute('UPDATE faces SET locked=0 WHERE id=?', (faces[4],))
-        conn.execute('UPDATE faces SET embedding=NULL WHERE id=?', (faces[5],))
-    listing = f'/api/v1/admin/people/{person}/confirmed-faces'
-    edit = f'/api/v1/admin/people/{person}'
-    offered = client.get(listing).json()
-    assert {f['id'] for f in offered} == {faces[0], faces[1], faces[2], faces[5]}
-    assert not next(f for f in offered if f['id'] == faces[5])['has_embedding']
-    for invalid in (faces[3], faces[4], faces[5], 999):
-        result = client.put(edit, json={'name': 'Should roll back', 'new_groups': ['Rollback refs'], 'reference_face_ids': [faces[0], invalid]})
-        assert result.status_code == 409
-        assert client.get('/api/v1/groups').json() == []
-        with db.connect() as conn:
-            assert conn.execute('SELECT name FROM people WHERE id=?', (person,)).fetchone()[0] == 'A'
-            assert conn.execute('SELECT count(*) FROM reference_images').fetchone()[0] == 0
-    body = {'name': 'Renamed', 'reference_face_ids': [faces[0], faces[1], faces[0]]}
-    assert client.put(edit, json=body).status_code == 200
-    with db.connect() as conn:
-        version = db.settings(conn)['reference_version']
-        assert conn.execute('SELECT count(*) FROM reference_images').fetchone()[0] == 2
-    assert client.put(edit, json=body).status_code == 200
-    with db.connect() as conn:
-        assert db.settings(conn)['reference_version'] == version
-    assert sum(f['is_reference'] for f in client.get(listing).json()) == 2
-    # A face changed since the picker opened cannot become this person's reference.
-    with db.connect(True) as conn:
-        conn.execute('UPDATE faces SET person_id=? WHERE id=?', (other, faces[2]))
-    assert client.put(edit, json={'name': 'Stale', 'reference_face_ids': [faces[2]]}).status_code == 409
-    client.cookies.clear()
-    assert client.get(listing).status_code == 401
-
-
 def test_publisher_person_matches_all_platforms_and_same_source_date(client):
     person = client.post('/api/v1/admin/people', json={'name': 'Alice', 'accounts': [
         {'platform': 'x', 'username': 'Alice'},
@@ -1288,7 +1248,7 @@ def test_edit_person_references_atomic(client):
         faces = [r[0] for r in conn.execute('SELECT id FROM faces ORDER BY id')]
         conn.execute('UPDATE faces SET person_id=?,locked=1', (person,))
     endpoint = f'/api/v1/admin/people/{person}'
-    client.put(endpoint, json={'name': 'Before', 'reference_face_ids': [faces[0]]})
+    client.post(f'/api/v1/admin/people/{person}/references', json={'face_id': faces[0]})
     reference = client.get(endpoint + '/references').json()[0]['id']
     assert client.put(f'/api/v1/admin/people/{other}', json={
         'name': 'Other', 'removed_reference_ids': [reference],
@@ -1297,7 +1257,7 @@ def test_edit_person_references_atomic(client):
     staged = main.DATA / 'references' / f'{token}.json'
     staged.write_text(json.dumps({'model_version': worker.MODEL_VERSION, 'faces': [{'box': [0, 0, 20, 20], 'embedding': base64.b64encode(np.eye(1, 512, dtype='float32').tobytes()).decode()}]}))
     body = {'name': 'After', 'removed_reference_ids': [reference],
-            'reference_face_ids': [faces[1]], 'uploaded_references': [{'token': token, 'index': 9}]}
+            'uploaded_references': [{'token': token, 'index': 9}]}
     assert client.put(endpoint, json=body).status_code == 400
     assert staged.exists()
     assert [r['id'] for r in client.get(endpoint + '/references').json()] == [reference]
@@ -1306,8 +1266,8 @@ def test_edit_person_references_atomic(client):
     body['uploaded_references'][0]['index'] = 0
     assert client.put(endpoint, json=body).status_code == 200
     refs = client.get(endpoint + '/references').json()
-    assert len(refs) == 2
-    assert {r['face_id'] for r in refs} == {faces[1], None}
+    assert len(refs) == 1
+    assert refs[0]['face_id'] is None
     assert not staged.exists()
 
 

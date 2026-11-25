@@ -328,43 +328,6 @@
         }
       }
     },
-    "/api/v1/admin/people/{person_id}/confirmed-faces": {
-      "get": {
-        "summary": "Confirmed Faces",
-        "operationId": "confirmed_faces_api_v1_admin_people__person_id__confirmed_faces_get",
-        "parameters": [
-          {
-            "name": "person_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Person Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/admin/people/{person_id}/references": {
       "post": {
         "summary": "Reference Add",
@@ -6970,14 +6933,6 @@
             "title": "Accounts",
             "default": []
           },
-          "reference_face_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Reference Face Ids",
-            "default": []
-          },
           "removed_reference_ids": {
             "items": {
               "type": "integer"
@@ -7060,14 +7015,6 @@
             },
             "type": "array",
             "title": "Accounts",
-            "default": []
-          },
-          "reference_face_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Reference Face Ids",
             "default": []
           },
           "removed_reference_ids": {

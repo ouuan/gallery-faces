@@ -162,23 +162,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/people/{person_id}/confirmed-faces": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Confirmed Faces */
-        get: operations["confirmed_faces_api_v1_admin_people__person_id__confirmed_faces_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/admin/people/{person_id}/references": {
         parameters: {
             query?: never;
@@ -2253,11 +2236,6 @@ export interface components {
              */
             accounts: components["schemas"]["Account"][];
             /**
-             * Reference Face Ids
-             * @default []
-             */
-            reference_face_ids: number[];
-            /**
              * Removed Reference Ids
              * @default []
              */
@@ -2296,11 +2274,6 @@ export interface components {
              * @default []
              */
             accounts: components["schemas"]["Account"][];
-            /**
-             * Reference Face Ids
-             * @default []
-             */
-            reference_face_ids: number[];
             /**
              * Removed Reference Ids
              * @default []
@@ -3118,37 +3091,6 @@ export interface operations {
             header?: never;
             path: {
                 group_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    confirmed_faces_api_v1_admin_people__person_id__confirmed_faces_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                person_id: number;
             };
             cookie?: never;
         };

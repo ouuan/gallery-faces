@@ -4,6 +4,10 @@ test("person editor stages all reference changes and preserves drafts on failure
   page,
 }) => {
   const writes: any[] = [];
+  let confirmedFacesRequests = 0;
+  page.on("request", request => {
+    if (new URL(request.url()).pathname.endsWith("/confirmed-faces")) confirmedFacesRequests++;
+  });
   let failSave = true;
   await page.route("**/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -35,14 +39,6 @@ test("person editor stages all reference changes and preserves drafts on failure
       });
     if (path.endsWith("/references"))
       return route.fulfill({ json: [{ id: 5, face_id: 10 }] });
-    if (path.endsWith("/confirmed-faces"))
-      return route.fulfill({
-        json: [
-          { id: 10, image_id: 1, has_embedding: 1, is_reference: 1 },
-          { id: 11, image_id: 2, has_embedding: 1, is_reference: 0 },
-          { id: 12, image_id: 3, has_embedding: 0, is_reference: 0 },
-        ],
-      });
     if (path.endsWith("/people"))
       return route.fulfill({
         json: [
@@ -68,16 +64,14 @@ test("person editor stages all reference changes and preserves drafts on failure
     page.getByRole("button", { name: "参考图", exact: true }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "编辑", exact: true }).click();
+  await expect(page.getByText("选择已确认人脸")).toHaveCount(0);
   await page
     .getByRole("button", { name: "删除参考图 #5", exact: true })
     .click();
-  await page.getByRole("checkbox", { name: "#11" }).check();
-  await expect(page.getByRole("checkbox", { name: "#12" })).toBeDisabled();
   expect(writes).toHaveLength(0);
   await page.addLocatorHandler(page.getByRole("dialog").filter({ hasText: "确认操作" }), async dialog => { await dialog.getByRole("button", { name: "确认", exact: true }).click(); }, { times: 1 });
   await page.getByRole("button", { name: "取消", exact: true }).click();
   await page.getByRole("button", { name: "编辑", exact: true }).click();
-  await expect(page.getByRole("checkbox", { name: "#11" })).not.toBeChecked();
   await page
     .getByRole("button", { name: "删除参考图 #5", exact: true })
     .click();
@@ -85,7 +79,6 @@ test("person editor stages all reference changes and preserves drafts on failure
   await page
     .getByRole("button", { name: "删除参考图 #5", exact: true })
     .click();
-  await page.getByRole("checkbox", { name: "#11" }).check();
   await page.locator('input[type="file"]').setInputFiles({
     name: "face.png",
     mimeType: "image/png",
@@ -107,13 +100,13 @@ test("person editor stages all reference changes and preserves drafts on failure
   }
   await page.getByRole("button", { name: "保存人物" }).click();
   await expect(page.getByText("保存失败，请重试")).toBeVisible();
-  await expect(page.getByRole("checkbox", { name: "#11" })).toBeChecked();
+  await expect(page.getByRole("button", { name: "选择人脸 2", exact: true })).toHaveAttribute("aria-pressed", "true");
   expect(writes[0]).toMatchObject({
-    reference_face_ids: [11],
     removed_reference_ids: [5],
     uploaded_references: [{ token: "a".repeat(32), index: 1 }],
   });
   failSave = false;
   await page.getByRole("button", { name: "保存人物" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(confirmedFacesRequests).toBe(0);
 });
