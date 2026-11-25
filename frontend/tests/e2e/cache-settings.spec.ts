@@ -41,7 +41,9 @@ test('cache monitoring is read-only and refresh preserves settings edits', async
   await expect(panel.getByText('近期使用保护：已关闭（0 小时）')).toBeVisible();
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
-    expect(await panel.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await expect.poll(() => panel.evaluate(el => el.scrollWidth - el.clientWidth), {
+      message: `Cache panel should not overflow horizontally at ${width}px`,
+    }).toBeLessThanOrEqual(0);
     await panel.screenshot({ path: `/tmp/gallery-faces/cache-settings-${width}.png` });
   }
 });
