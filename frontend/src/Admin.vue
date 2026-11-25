@@ -20,7 +20,7 @@ import {
   NSlider,
   useMessage,
 } from "naive-ui";
-import { Radar, Download, Users, ScanFace, Copy, AtSign, Settings, LogOut } from "@lucide/vue";
+import { Hourglass, Download, Users, ScanFace, Copy, AtSign, Settings, LogOut } from "@lucide/vue";
 import { api, send } from "./api";
 import { useLibrary } from "./store";
 import { usePageTitle } from "./page-title";
@@ -140,7 +140,7 @@ async function loadTasks(page = taskPage.value, background = false) {
   }
 }
 const nav = [
-  { id: "monitors", label: "发布者监控", icon: Radar },
+  { id: "monitors", label: "发布者监控", icon: Hourglass },
   { id: "import", label: "导入任务", icon: Download },
   { id: "people", label: "人物与分组", icon: Users },
   { id: "review", label: "识别审核", icon: ScanFace },

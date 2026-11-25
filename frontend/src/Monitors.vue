@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted } from "vue";
-import { NButton, NInput, NInputNumber, NSelect, NCheckbox, NModal, NCard, NAlert } from "naive-ui";
+import { NButton, NInput, NInputNumber, NSelect, NCheckbox, NModal, NCard, NAlert, NTabs, NTab } from "naive-ui";
 import { Trash2 } from "@lucide/vue";
 import { api, send, dateLabel, platformLabel } from "./api";
 import FeedSourceFields from './FeedSourceFields.vue';
@@ -9,10 +9,13 @@ import FeedScopeFields from './FeedScopeFields.vue';
 import { defaultScope, feedPlatforms, monitorScope, supportsAccountScope } from './feed-scope';
 import { usePublisherSelection, uniqueAccounts, type PublisherAccount } from "./publisher-selection";
 import LocalDateTime from "./LocalDateTime.vue";
+import MonitorMoreActions from './MonitorMoreActions.vue';
 import HashtagField, { formatHashtags } from "./HashtagField.vue";
 import type { components } from "./schema";
 type Monitor = components["schemas"]["Monitor"];
 const items = ref<Monitor[]>([]), selected = ref<number[]>([]), error = ref(""), busy = ref(false), loading = ref(false);
+const activePlatform = ref('x');
+const visibleMonitors = computed(() => items.value.filter(item => item.platform === activePlatform.value));
 const createExpanded = ref(false), loaded = ref(false);
 const createForm = ref<HTMLFormElement | null>(null);
 const createToggle = ref<InstanceType<typeof NButton> | null>(null);
@@ -27,7 +30,6 @@ async function toggleCreate() {
 }
 const batchInterval = ref<number | null>(60);
 const validInterval = computed(() => batchInterval.value !== null && Number.isInteger(batchInterval.value) && batchInterval.value >= 5);
-const intervals = ref<Record<number, number | null>>({});
 const { selected: publishers, accounts: publisherAccounts } = usePublisherSelection();
 const platforms = ref([...feedPlatforms]);
 const scope = ref({ ...defaultScope }), editScope = ref({ ...defaultScope }), editPlatform = ref('x');
@@ -48,10 +50,10 @@ function monitorUrl(account: PublisherAccount) {
   const path = account.username.split("/").map(encodeURIComponent).join("/");
   return `https://${account.platform === "x" ? "x.com" : "www.instagram.com"}/${path}/`;
 }
-function monitorLabel(account: PublisherAccount) {
+function monitorLabel(account: PublisherAccount, nickname?: string | null) {
   return account.platform === "x" && account.username.startsWith("i/lists/")
     ? `Twitter List ${account.username.slice(8)}`
-    : `${platformLabel(account.platform)} @${account.username}`;
+    : `${nickname && nickname.toLowerCase() !== account.username.toLowerCase() ? nickname + ' ' : ''}@${account.username}`;
 }
 const createResults = ref<{ account: PublisherAccount; error?: string }[]>([]);
 const completedAccounts = ref<PublisherAccount[]>([]), batchDefaultStart = ref("");
@@ -59,16 +61,24 @@ const pendingAccounts = computed(() => accounts.value.filter(account => !complet
 const targetPlatforms = computed(() => new Set(pendingAccounts.value.filter(account => supportsAccountScope(account.platform, account.username)).map(account => account.platform)));
 type Dialog = "delete" | "backfill" | "resume" | "interval" | "hashtags" | "scope";
 const dialog = ref<Dialog | null>(null), targets = ref<number[]>([]), since = ref(""), mode = ref("catch_up");
-const results = ref<{ id: number; status: string; task_id?: number; error?: string }[]>([]);
-const all = computed(() => items.value.length > 0 && selected.value.length === items.value.length);
-const platformGroups = computed(() => {
-  const checked = new Set(selected.value);
-  return feedPlatforms.map(platform => {
-    const ids = items.value.filter(item => item.platform === platform).map(item => item.id);
-    return { platform, ids, count: ids.filter(id => checked.has(id)).length };
-  }).filter(group => group.ids.length);
+const results = ref<components['schemas']['BatchResult'][]>([]);
+const selectedMonitors = computed(() => {
+  const ids = new Set(selected.value);
+  return visibleMonitors.value.filter(item => ids.has(item.id));
 });
-const samePlatform = computed(() => platformGroups.value.some(group => group.count > 0 && group.count === selected.value.length));
+const pausable = computed(() => selectedMonitors.value.filter(item => !item.paused).map(item => item.id));
+const resumable = computed(() => selectedMonitors.value.filter(item => item.paused && !item.active_task_id).map(item => item.id));
+const all = computed(() => visibleMonitors.value.length > 0 && selected.value.length === visibleMonitors.value.length);
+function switchPlatform(platform: string) {
+  if (busy.value || platform === activePlatform.value) return;
+  activePlatform.value = platform;
+  selected.value = [];
+  results.value = [];
+}
+function focusPlatform(platform: string) {
+  switchPlatform(platform);
+  document.getElementById(`monitor-tab-${activePlatform.value}`)?.focus();
+}
 const updatedLabel = ref('');
 const dialogTitle = computed(() => dialog.value === 'scope' ? '修改抓取范围' : dialog.value === "hashtags" ? "修改话题标签" : dialog.value === "interval" ? "修改 " + targets.value.length + " 项监控的间隔" : dialog.value === "delete" ? "删除 " + targets.value.length + " 项监控" : dialog.value === "resume" ? "恢复监控" : "补齐 " + targets.value.length + " 位发布者");
 const validSince = computed(() => !!since.value && Date.parse(since.value) < Date.now());
@@ -79,7 +89,7 @@ async function load() {
     items.value = await api<Monitor[]>("/admin/monitors");
     if (!loaded.value && !createToggled) createExpanded.value = items.value.length === 0;
     loaded.value = true;
-    selected.value = selected.value.filter(id => items.value.some(item => item.id === id));
+    selected.value = selected.value.filter(id => visibleMonitors.value.some(item => item.id === id));
   } catch (e) { error.value = (e as Error).message; }
   finally { loading.value = false; }
 }
@@ -134,27 +144,17 @@ function open(action: Dialog, ids: number[]) {
   editScope.value = { ...defaultScope, ...item?.scope };
   error.value = ""; targets.value = [...ids]; since.value = ""; mode.value = "catch_up"; dialog.value = action;
 }
-async function batch(action: "delete" | "backfill" | "update" | "interval" | "scope", ids: number[]) {
-  if (busy.value || (action === "interval" && !validInterval.value)) return;
+async function batch(action: components['schemas']['Batch']['action'], ids: number[]) {
+  if (busy.value || !ids.length || (action === "interval" && !validInterval.value)) return;
   const intervalMinutes = batchInterval.value;
   await perform(async () => {
-    results.value = await send("/admin/monitors/batch", { action, ids: [...ids], start: since.value, ...(action === "interval" ? { interval_minutes: intervalMinutes } : {}), ...(action === 'scope' ? { scope: monitorScope(editPlatform.value, editScope.value) } : {}) });
+    results.value = await send("/admin/monitors/batch", { action, ids: [...ids], start: since.value, ...(action === 'resume' ? { mode: mode.value } : {}), ...(action === "interval" ? { interval_minutes: intervalMinutes } : {}), ...(action === 'scope' ? { scope: monitorScope(editPlatform.value, editScope.value) } : {}) });
     updatedLabel.value = action === 'scope' ? '已修改抓取范围' : '已修改检查间隔';
-    if (action === "interval") {
-      for (const result of results.value) {
-        if (result.status === "updated") delete intervals.value[result.id];
-      }
-    }
     dialog.value = null;
   });
 }
 async function confirm() {
-  if (dialog.value === "resume") {
-    await perform(async () => {
-      await send("/admin/monitors/" + targets.value[0] + "/resume", { mode: mode.value, start: since.value });
-      dialog.value = null;
-    });
-  } else if (dialog.value === 'scope' && targets.value.length === 1) {
+  if (dialog.value === 'scope' && targets.value.length === 1) {
     await perform(async () => {
       await send('/admin/monitors/' + targets.value[0], { scope: monitorScope(editPlatform.value, editScope.value) }, 'PATCH');
       dialog.value = null;
@@ -174,9 +174,22 @@ function toggle(ids: number[], checked: boolean) {
   }
   selected.value = [...next];
 }
-function resultLabel(raw: string | null) {
-  const result = JSON.parse(raw || "{}");
-  return "imported" in result ? `新入库 ${result.imported} · 跳过已收录 ${result.skipped_existing} · 跳过回收站 ${result.skipped_trashed}` : "暂无导入结果";
+function resultLabel(item: Monitor) {
+  const result = JSON.parse(item.last_result || "{}");
+  const status = item.last_status && (({ done: '已完成', failed: '失败', cancelled: '已取消' } as Record<string, string>)[item.last_status] || item.last_status);
+  const counts = 'imported' in result ? `新入库 ${result.imported} · 跳过已收录 ${result.skipped_existing} · 跳过回收站 ${result.skipped_trashed}` : '';
+  return [status, counts].filter(Boolean).join(' · ') || (item.last_checked_at ? '暂无导入结果' : '');
+}
+const monitorRows = computed(() => visibleMonitors.value.map(item => ({ ...item, label: monitorLabel(item, item.nickname), outcome: resultLabel(item) })));
+function batchResultLabel(result: components['schemas']['BatchResult']) {
+  switch (result.status) {
+    case 'error': return result.error || '操作失败';
+    case 'updated': return updatedLabel.value;
+    case 'deleted': return '已删除监控，已导入照片保留';
+    case 'paused': return '已暂停';
+    case 'resumed': return `已继续监控 · 任务 #${result.task_id}`;
+    case 'queued': return `任务 #${result.task_id} 已提交或复用`;
+  }
 }
 onMounted(() => { void load(); timer = setInterval(() => { if (!busy.value && !loading.value) void load(); }, 5000); });
 onUnmounted(() => { clearInterval(timer); });
@@ -218,61 +231,57 @@ onUnmounted(() => { clearInterval(timer); });
       <FeedFormActions :busy="busy" :disabled="invalidList || !pendingAccounts.length || !interval || (history && !start)">添加监控</FeedFormActions>
       <p v-if="accounts.length" class="hint">共 {{ accounts.length }} 项监控，统一使用以上间隔和起始时间</p>
       <div v-if="createResults.length" class="monitor-create-results" role="status">
-        <p v-for="result in createResults" :key="result.account.platform + ':' + result.account.username" :class="{ 'error-text': result.error }">{{ monitorLabel(result.account) }}：{{ result.error || '已添加监控' }}</p>
+        <p v-for="result in createResults" :key="result.account.platform + ':' + result.account.username" :class="{ 'error-text': result.error }">{{ platformLabel(result.account.platform) }} {{ monitorLabel(result.account) }}：{{ result.error || '已添加监控' }}</p>
       </div>
     </form>
-    <div class="monitor-toolbar monitor-selection">
-      <div class="monitor-toolbar">
-      <n-checkbox :checked="all" :indeterminate="selected.length > 0 && !all" @update:checked="selected = $event ? items.map(item => item.id) : []">全选当前列表</n-checkbox>
-      <n-checkbox v-for="group in platformGroups" :key="group.platform" :checked="group.count === group.ids.length" :indeterminate="group.count > 0 && group.count < group.ids.length" @update:checked="toggle(group.ids, $event)">全选 {{ platformLabel(group.platform) }}</n-checkbox>
-      <span v-if="selected.length">已选 {{ selected.length }} 项</span>
+    <n-tabs type="line" role="tablist" aria-label="监控平台" tab-class="publisher-platform-tab" :value="activePlatform" @update:value="switchPlatform">
+      <n-tab v-for="platform in feedPlatforms" :key="platform" :name="platform" :id="`monitor-tab-${platform}`" role="tab" :disabled="busy" :aria-selected="activePlatform === platform" aria-controls="monitor-panel" :tabindex="activePlatform === platform ? 0 : -1"
+        @keydown.left.prevent="focusPlatform(platform === 'x' ? 'instagram' : 'x')" @keydown.right.prevent="focusPlatform(platform === 'x' ? 'instagram' : 'x')" @keydown.home.prevent="focusPlatform('x')" @keydown.end.prevent="focusPlatform('instagram')">{{ platformLabel(platform) }}</n-tab>
+    </n-tabs>
+    <section id="monitor-panel" class="monitor-panel" role="tabpanel" :aria-labelledby="`monitor-tab-${activePlatform}`">
+    <div v-if="visibleMonitors.length" class="monitor-selection">
+      <div class="monitor-selection-summary">
+        <n-checkbox :checked="all" :indeterminate="selected.length > 0 && !all" @update:checked="selected = $event ? visibleMonitors.map(item => item.id) : []">全选</n-checkbox>
+        <span v-if="selected.length" class="monitor-selection-count">已选 {{ selected.length }} 项</span>
       </div>
-      <div v-if="selected.length" class="monitor-toolbar monitor-batch-actions">
+      <div v-if="selected.length" class="monitor-actions" role="group" aria-label="批量操作">
+        <n-button v-if="pausable.length" :disabled="busy" @click="batch('pause', pausable)">暂停</n-button>
+        <n-button v-else :disabled="busy || !resumable.length" @click="open('resume', resumable)">继续</n-button>
         <n-button :disabled="busy" @click="batch('update', selected)">立刻更新</n-button>
-        <n-button :disabled="busy" @click="open('interval', selected)">修改间隔</n-button>
-        <n-button :disabled="busy || !samePlatform" @click="open('scope', selected)">修改抓取范围</n-button>
-        <n-button :disabled="busy" @click="open('backfill', selected)">补齐</n-button>
-        <n-button :disabled="busy" @click="open('delete', selected)">删除</n-button>
+        <MonitorMoreActions batch :disabled="busy" @select="open($event, selected)" />
       </div>
     </div>
     <div v-if="results.length" role="status">
       <p v-for="result in results" :key="result.id" :class="{ 'error-text': result.error }">
-        #{{ result.id }}：{{ result.error || (result.status === 'updated' ? updatedLabel : result.status === 'deleted' ? '已删除监控，已导入照片保留' : '任务 #' + result.task_id + ' 已提交或复用') }}
+        #{{ result.id }}：{{ batchResultLabel(result) }}
       </p>
     </div>
-    <p v-if="loaded && !items.length && !loading" class="hint">还没有发布者监控。添加后会立即检查，并按设定间隔收集新增照片。</p>
+    <p v-if="loaded && !visibleMonitors.length" class="hint">还没有 {{ platformLabel(activePlatform) }} 发布者监控。</p>
     <ul class="monitor-list" :aria-busy="loading">
-      <li v-for="item in items" :key="item.id">
+      <li v-for="item in monitorRows" :key="item.id" :class="{ 'is-selected': selected.includes(item.id) }">
+        <n-checkbox :aria-label="'选择 ' + item.username" :checked="selected.includes(item.id)" @update:checked="toggle([item.id], $event)" />
         <div class="monitor-summary">
-          <div class="monitor-identity">
-            <n-checkbox :aria-label="'选择 ' + item.username" :checked="selected.includes(item.id)" @update:checked="toggle([item.id], $event)" />
-            <div class="monitor-identity-text"><strong><a :href="monitorUrl(item)" target="_blank" rel="noopener noreferrer">{{ monitorLabel(item) }}</a></strong>
-            <span>{{ item.paused ? (item.active_task_id ? '已暂停，等待任务结束' : '已暂停') : item.active_task_id ? '检查中' : '监控中' }}</span></div>
-          </div>
-          <div class="monitor-dates hint"><span>上次检查：{{ item.last_checked_at ? dateLabel(item.last_checked_at) : '尚未检查' }}</span><span>下次检查：{{ item.paused ? '已暂停' : dateLabel(item.next_check_at) }}</span></div>
-          <p class="hint">{{ resultLabel(item.last_result) }}<template v-if="item.last_status"> · {{ ({ done: '已完成', failed: '失败', cancelled: '已取消' } as Record<string, string>)[item.last_status] || item.last_status }}</template></p>
-          <p v-if="item.last_error" class="error-text">{{ item.last_error }}</p>
+          <strong><a :href="monitorUrl(item)" target="_blank" rel="noopener noreferrer">{{ item.label }}</a></strong>
+          <p class="hint">{{ item.paused ? (item.active_task_id ? '已暂停，等待任务结束' : '已暂停') : item.active_task_id ? '检查中' : '监控中' }} · 检查间隔 {{ item.interval_minutes }} 分钟</p>
           <p v-if="item.hashtags?.length" class="hint">{{ formatHashtags(item.hashtags) }}</p>
         </div>
-        <div class="monitor-controls">
-          <div class="monitor-fields">
-            <label class="field-label">检查间隔（分钟）
-              <n-input-number  :value="intervals[item.id] ?? item.interval_minutes" @update:value="intervals[item.id] = $event" :min="5" :precision="0" />
-            </label>
-            <n-button :disabled="busy || intervals[item.id] === null" @click="perform(() => send('/admin/monitors/' + item.id, { interval_minutes: intervals[item.id] ?? item.interval_minutes }, 'PATCH'))">保存间隔</n-button>
-          </div>
-          <div class="monitor-toolbar">
-            <n-button v-if="!item.paused" :disabled="busy" @click="perform(() => send('/admin/monitors/' + item.id, { paused: true }, 'PATCH'))">暂停</n-button>
-            <n-button v-else :disabled="busy || !!item.active_task_id" @click="open('resume', [item.id])">恢复</n-button>
-            <n-button :disabled="busy" @click="batch('update', [item.id])">立刻更新</n-button>
-            <n-button :disabled="busy" @click="open('backfill', [item.id])">补齐</n-button>
-            <n-button :disabled="busy" @click="open('hashtags', [item.id])">修改标签</n-button>
-            <n-button :disabled="busy" @click="open('scope', [item.id])">修改抓取范围</n-button>
-            <n-button :disabled="busy" @click="open('delete', [item.id])">删除</n-button>
-          </div>
+        <dl class="monitor-schedule">
+          <dt>下次检查</dt><dd>{{ item.paused ? '已暂停' : dateLabel(item.next_check_at) }}</dd>
+          <dt>上次检查</dt><dd>{{ item.last_checked_at ? dateLabel(item.last_checked_at) : '尚未检查' }}</dd>
+        </dl>
+        <div v-if="item.outcome || item.last_error" class="monitor-outcome">
+          <p v-if="item.outcome" class="hint">{{ item.outcome }}</p>
+          <p v-if="item.last_error" class="error-text">{{ item.last_error }}</p>
+        </div>
+        <div class="monitor-actions" role="group" :aria-label="item.label + ' 操作'">
+          <n-button v-if="!item.paused" :disabled="busy" @click="batch('pause', [item.id])">暂停</n-button>
+          <n-button v-else :disabled="busy || !!item.active_task_id" @click="open('resume', [item.id])">继续</n-button>
+          <n-button :disabled="busy" @click="batch('update', [item.id])">立刻更新</n-button>
+          <MonitorMoreActions :disabled="busy" @select="open($event, [item.id])" />
         </div>
       </li>
     </ul>
+    </section>
     <n-modal :show="!!dialog" :mask-closable="!busy" @update:show="!busy && !$event && (dialog = null)">
       <n-card class="monitor-dialog" role="dialog" aria-modal="true" :title="dialogTitle" :aria-label="dialogTitle">
         <n-alert v-if="error" type="error">{{ error }}</n-alert>
@@ -290,9 +299,10 @@ onUnmounted(() => { clearInterval(timer); });
           <span class="hint">统一应用于所选 {{ targets.length }} 项监控，最少 5 分钟</span>
         </label>
         <template v-else>
+          <p v-if="dialog === 'resume'">将按以下方式继续 {{ targets.length }} 项监控。</p>
           <n-select v-if="dialog === 'resume'" v-model:value="mode" aria-label="恢复方式" :options="[{ value: 'catch_up', label: '补齐暂停期间' }, { value: 'new', label: '不补，只收之后新增' }, { value: 'start', label: '指定起始时间' }]" />
           <template v-if="dialog === 'backfill' || mode === 'start'">
-            <label class="field-label">起始时间<LocalDateTime aria-label="起始时间" v-model="since" /></label>
+            <label class="field-label">起始时间<LocalDateTime aria-label="起始时间" v-model="since" :disabled="busy" /></label>
             <p v-if="dialog === 'backfill'" class="hint">补拉该时刻至提交时刻的帖子，跳过已有媒体。一次性补齐不会修改自动监控进度。</p>
             <p v-else class="hint">将以所选时间作为新的采集起点，重新开始自动增量检查，跳过已有媒体。</p>
             <p v-if="since && !validSince" class="error-text">起始时间必须早于当前时间。</p>
@@ -300,7 +310,7 @@ onUnmounted(() => { clearInterval(timer); });
         </template>
         <div class="monitor-toolbar">
           <n-button :disabled="busy" @click="dialog = null">取消</n-button>
-          <n-button type="primary" :loading="busy" :disabled="busy || (dialog === 'interval' && !validInterval) || ((dialog === 'backfill' || (dialog === 'resume' && mode === 'start')) && !validSince)" @click="confirm">确认{{ dialog === 'interval' || dialog === 'hashtags' || dialog === 'scope' ? '修改' : dialog === 'delete' ? '删除' : dialog === 'resume' ? '恢复' : '补齐' }}</n-button>
+          <n-button :type="dialog === 'delete' ? 'error' : 'primary'" :loading="busy" :disabled="busy || (dialog === 'interval' && !validInterval) || ((dialog === 'backfill' || (dialog === 'resume' && mode === 'start')) && !validSince)" @click="confirm">确认{{ dialog === 'interval' || dialog === 'hashtags' || dialog === 'scope' ? '修改' : dialog === 'delete' ? '删除' : dialog === 'resume' ? '恢复' : '补齐' }}</n-button>
         </div>
       </n-card>
     </n-modal>
@@ -308,8 +318,8 @@ onUnmounted(() => { clearInterval(timer); });
 </template>
 <style scoped>
 .monitor-manager { container: monitors / inline-size; display: grid; gap: 24px; min-width: 0; overflow-wrap: anywhere; }
-.monitor-list :where(p, .field-label), .monitor-manager > .hint { margin: 0; }
-.monitor-manager :where(.field-label, .monitor-summary, .monitor-controls) { min-width: 0; }
+.monitor-list :where(p, dl, dd), .monitor-manager > .hint { margin: 0; }
+.monitor-manager :where(.field-label, .monitor-summary) { min-width: 0; }
 .monitor-header, .monitor-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .monitor-header { justify-content: space-between; }
 .monitor-header a { display: inline-flex; align-items: center; min-height: 44px; }
@@ -321,24 +331,36 @@ onUnmounted(() => { clearInterval(timer); });
 .monitor-manual-account + .monitor-manual-account { margin-top: 8px; }
 .monitor-create-results { display: grid; gap: 8px; margin-top: 16px; }
 .monitor-list { list-style: none; margin: 0; padding: 0; min-width: 0; }
-.monitor-list li { display: grid; gap: 16px 24px; padding: 16px 0; border-top: 1px solid var(--line); }
-.monitor-summary, .monitor-controls { display: grid; align-content: start; gap: 12px; }
-.monitor-identity { display: flex; align-items: flex-start; gap: 8px; }
-.monitor-identity > .n-checkbox { flex-shrink: 0; min-height: 44px; align-items: center; }
-.monitor-identity-text { display: flex; flex-wrap: wrap; align-items: center; min-height: 44px; gap: 4px 12px; min-width: 0; }
-.monitor-identity-text span { color: var(--muted); }
-.monitor-dates { display: flex; flex-wrap: wrap; gap: 4px 16px; font-variant-numeric: tabular-nums; }
-.monitor-fields { display: flex; align-items: end; gap: 12px; }
-.monitor-fields > label { flex: 1; min-width: 0; }
-.monitor-controls .monitor-toolbar { gap: 8px; }
+.monitor-list li { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 12px; padding: 16px 12px; border-top: 1px solid var(--line); }
+.monitor-list li.is-selected { background: color-mix(in srgb, var(--accent) 4%, var(--bg)); }
+.monitor-list li > .n-checkbox { grid-column: 1; grid-row: 1; min-height: 44px; align-items: flex-start; padding-block-start: 4px; }
+.monitor-list li > :not(.n-checkbox) { grid-column: 2; }
+.monitor-summary, .monitor-outcome { display: grid; align-content: start; gap: 4px; }
+.monitor-summary strong { font-size: 1.067rem; }
+.monitor-summary a { word-break: break-all; }
+.monitor-schedule { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; align-content: start; font-size: .933rem; font-variant-numeric: tabular-nums; }
+.monitor-schedule dt { color: var(--muted); }
+.monitor-selection { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 4px 12px; }
+.monitor-selection-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.monitor-selection-summary .n-checkbox { min-height: 44px; align-items: center; }
+.monitor-selection-count { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.monitor-selection .monitor-actions { column-gap: 4px; }
+.monitor-panel { display: grid; gap: 16px; min-width: 0; }
+.monitor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .monitor-dialog { width: min(540px, calc(100vw - 32px)); max-height: 90dvh; overflow: auto; overflow-wrap: anywhere; }
 .monitor-dialog .monitor-toolbar { margin-top: 24px; justify-content: flex-end; }
-@container monitors (min-width: 800px) {
-  .monitor-list li { grid-template-columns: minmax(0, 1fr) 284px; }
+@container monitors (min-width: 40rem) {
+  .monitor-list li { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .monitor-list li > .monitor-actions { grid-column: 3; grid-row: 1; }
+  .monitor-list li > .monitor-outcome { grid-column: 2 / -1; }
+}
+@container monitors (min-width: 52rem) {
+  .monitor-list li { grid-template-columns: auto minmax(0, 1fr) minmax(16rem, .75fr) auto; }
+  .monitor-list li > .monitor-schedule { grid-column: 3; grid-row: 1; }
+  .monitor-list li > .monitor-actions { grid-column: 4; }
 }
 @container monitors (max-width: 479px) {
   .monitor-header { align-items: flex-start; }
   .monitor-manual-account { grid-template-columns: minmax(0, 6.5rem) minmax(0, 1fr) auto; gap: 8px; }
-  .monitor-batch-actions { flex-basis: 100%; }
 }
 </style>
