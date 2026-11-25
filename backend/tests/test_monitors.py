@@ -35,6 +35,20 @@ def test_create_deduplicate_and_concurrent_enqueue(client):
     with db.connect() as conn:
         assert conn.execute("SELECT 1 FROM settings WHERE key='timezone'").fetchone() is None
 
+def test_monitor_nicknames_by_platform(client):
+    create(client)
+    create(client, platform='instagram')
+    create(client, username='unknown')
+    with db.connect(True) as conn:
+        conn.execute("INSERT INTO people(id,name) VALUES (1,'已关联人物')")
+        conn.executemany("INSERT INTO accounts(person_id,platform,username) VALUES (1,?,'ALICE')", [('x',), ('instagram',)])
+        conn.executemany("INSERT INTO posts(platform,post_key,author,author_name) VALUES ('x',?,'Alice',?)",
+                         [('1', '旧昵称'), ('2', ' 新昵称 '), ('3', ' ')])
+    rows = client.get('/api/v1/admin/monitors').json()
+    assert {(row['platform'], row['username']): row['nickname'] for row in rows} == {
+        ('x', 'alice'): '新昵称', ('instagram', 'alice'): '已关联人物', ('x', 'unknown'): None,
+    }
+
 def test_success_overlap_backfill_and_failure(client, monkeypatch):
     monkeypatch.setattr(monitors, 'now', lambda: '2026-01-02T00:00:00Z')
     item = create(client, start='2026-01-01T00:00:00Z')
@@ -126,6 +140,36 @@ def test_validation_candidates_interval_and_source_roundtrip(client):
     assert client.post('/api/v1/admin/monitors/batch',json={'ids':[item['id']],'action':'backfill','start':''}).status_code == 400
     client.post('/api/v1/logout',json={})
     assert client.get('/api/v1/admin/monitors').status_code == 401
+
+
+@pytest.mark.parametrize('mode', ['catch_up', 'new', 'start'])
+def test_batch_pause_resume_respects_task_state(client, monkeypatch, mode):
+    timestamp = '2026-01-02T00:00:00Z'
+    monkeypatch.setattr(monitors, 'now', lambda: timestamp)
+    original_start = '2025-01-01T00:00:00Z'
+    running = create(client, start=original_start)
+    worker.claim()
+    queued = create(client, username='bob', start=original_start)
+    untouched = create(client, username='charlie')
+    path = '/api/v1/admin/monitors/batch'
+    ids = [running['id'], 999, queued['id'], queued['id']]
+    paused = client.post(path, json={'action': 'pause', 'ids': ids}).json()
+    assert [row['status'] for row in paused] == ['paused', 'error', 'paused']
+    assert get_task(running['task_id'])['cancel_requested']
+    assert get_task(queued['task_id'])['status'] == 'cancelled'
+    assert get_task(untouched['task_id'])['status'] == 'queued'
+    body = {'action': 'resume', 'ids': ids, 'mode': mode, 'start': '2024-01-01T00:00:00Z'}
+    if mode == 'start':
+        assert client.post(path, json=body | {'start': ''}).status_code == 400
+        assert all(row['paused'] for row in monitors.listing() if row['id'] in ids)
+    resumed = client.post(path, json=body).json()
+    assert [row['status'] for row in resumed] == ['error', 'error', 'resumed']
+    assert resumed[0]['error'] == '请等待活动任务结束后恢复'
+    payload = json.loads(get_task(resumed[2]['task_id'])['payload'])
+    assert payload['start'] == {'catch_up': original_start, 'new': timestamp, 'start': body['start']}[mode]
+    assert {row['id']: row['paused'] for row in monitors.listing()} == {
+        running['id']: 1, queued['id']: 0, untouched['id']: 0,
+    }
 
 
 def test_batch_interval_preserves_schedule_and_partial_results(client):

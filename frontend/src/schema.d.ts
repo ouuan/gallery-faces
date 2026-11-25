@@ -1397,12 +1397,18 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "delete" | "update" | "backfill" | "interval" | "scope";
+            action: "delete" | "update" | "backfill" | "interval" | "scope" | "pause" | "resume";
             /**
              * Start
              * @default
              */
             start: string;
+            /**
+             * Mode
+             * @default catch_up
+             * @enum {string}
+             */
+            mode: "catch_up" | "new" | "start";
             /** Interval Minutes */
             interval_minutes?: number | null;
             /** Scope */
@@ -1447,7 +1453,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "deleted" | "queued" | "updated" | "error";
+            status: "deleted" | "queued" | "updated" | "paused" | "resumed" | "error";
             /** Task Id */
             task_id?: number | null;
             /** Error */
@@ -2131,6 +2137,8 @@ export interface components {
             platform: string;
             /** Username */
             username: string;
+            /** Nickname */
+            nickname: string | null;
             /** Interval Minutes */
             interval_minutes: number;
             /** Paused */

@@ -4494,7 +4494,9 @@
               "update",
               "backfill",
               "interval",
-              "scope"
+              "scope",
+              "pause",
+              "resume"
             ],
             "title": "Action"
           },
@@ -4502,6 +4504,16 @@
             "type": "string",
             "title": "Start",
             "default": ""
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "catch_up",
+              "new",
+              "start"
+            ],
+            "title": "Mode",
+            "default": "catch_up"
           },
           "interval_minutes": {
             "anyOf": [
@@ -4629,6 +4641,8 @@
               "deleted",
               "queued",
               "updated",
+              "paused",
+              "resumed",
               "error"
             ],
             "title": "Status"
@@ -6535,6 +6549,17 @@
             "type": "string",
             "title": "Username"
           },
+          "nickname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nickname"
+          },
           "interval_minutes": {
             "type": "integer",
             "title": "Interval Minutes"
@@ -6640,6 +6665,7 @@
           "id",
           "platform",
           "username",
+          "nickname",
           "interval_minutes",
           "paused",
           "start_at",

@@ -98,14 +98,17 @@ class Edit(BaseModel):
     interval_minutes: int | None = Field(default=None, ge=5)
     paused: bool | None = None
 
+ResumeMode = Literal['catch_up', 'new', 'start']
+
 class Resume(BaseModel):
-    mode: Literal['catch_up', 'new', 'start'] = 'catch_up'
+    mode: ResumeMode = 'catch_up'
     start: str = ''
 
 class Batch(BaseModel):
     ids: list[int] = Field(min_length=1, max_length=1000)
-    action: Literal['delete', 'update', 'backfill', 'interval', 'scope']
+    action: Literal['delete', 'update', 'backfill', 'interval', 'scope', 'pause', 'resume']
     start: str = ''
+    mode: ResumeMode = 'catch_up'
     interval_minutes: int | None = Field(default=None, ge=5)
     scope: XScope | InstagramScope | None = None
 
@@ -117,7 +120,7 @@ class Created(TaskResult):
 
 class BatchResult(BaseModel):
     id: int
-    status: Literal['deleted', 'queued', 'updated', 'error']
+    status: Literal['deleted', 'queued', 'updated', 'paused', 'resumed', 'error']
     task_id: int | None = None
     error: str | None = None
 
@@ -132,6 +135,7 @@ class Monitor(BaseModel):
     id: int
     platform: str
     username: str
+    nickname: str | None
     interval_minutes: int
     paused: int
     start_at: str
@@ -147,7 +151,15 @@ class Monitor(BaseModel):
 
 def listing() -> list[Monitor]:
     with connect() as db:
-        return [{**row, 'hashtags': json.loads(row['hashtags']), 'scope': saved_scope(row)} for row in db.execute("SELECT m.*,t.status AS last_status,t.result AS last_result,t.error AS last_error,(SELECT id FROM tasks WHERE kind='monitor' AND json_extract(payload,'$.monitor_id')=m.id AND status IN ('queued','running')) AS active_task_id FROM monitors m LEFT JOIN tasks t ON t.id=m.last_task_id ORDER BY m.id DESC")]
+        rows = db.execute('''SELECT m.*, t.status AS last_status, t.result AS last_result, t.error AS last_error,
+            coalesce((SELECT trim(author_name) FROM posts WHERE platform=m.platform AND lower(author)=m.username
+                      AND trim(author_name)<>'' ORDER BY id DESC LIMIT 1),
+                     (SELECT group_concat(person.name,'、') FROM accounts JOIN people person ON person.id=accounts.person_id
+                      WHERE accounts.platform=m.platform AND lower(accounts.username)=m.username)) AS nickname,
+            (SELECT id FROM tasks WHERE kind='monitor' AND json_extract(payload,'$.monitor_id')=m.id
+             AND status IN ('queued','running')) AS active_task_id
+            FROM monitors m LEFT JOIN tasks t ON t.id=m.last_task_id ORDER BY m.id DESC''')
+        return [{**row, 'hashtags': json.loads(row['hashtags']), 'scope': saved_scope(row)} for row in rows]
 
 def candidates(q: str = '') -> list[Candidate]:
     with connect() as db:
@@ -202,27 +214,37 @@ def edit(monitor_id: int, body: Edit):
         if body.interval_minutes is not None:
             db.execute('UPDATE monitors SET interval_minutes=? WHERE id=?', (body.interval_minutes, monitor_id))
         if body.paused:
-            db.execute('UPDATE monitors SET paused=1 WHERE id=?', (monitor_id,))
-            cancel(db, monitor_id)
+            pause(db, monitor_id)
     return {'ok': True}
 
-def resume(monitor_id: int, body: Resume) -> TaskResult:
-    timestamp = now()
+def pause(db, mid):
+    db.execute('UPDATE monitors SET paused=1 WHERE id=?', (mid,))
+    cancel(db, mid)
+
+def resume_start(body, timestamp):
     start = instant(body.start) if body.mode == 'start' else timestamp
     if start > timestamp:
         raise HTTPException(400, '起始时间不能晚于当前时间')
+    return start
+
+def resume_task(db, mid, paused, mode, start, timestamp):
+    if active(db, mid):
+        raise HTTPException(409, '请等待活动任务结束后恢复')
+    if not paused:
+        raise HTTPException(409, '监控已恢复')
+    if mode != 'catch_up':
+        db.execute('UPDATE monitors SET start_at=?,progress_at=NULL,generation=generation+1 WHERE id=?', (start, mid))
+    db.execute('UPDATE monitors SET paused=0,next_check_at=? WHERE id=?', (timestamp, mid))
+    return enqueue(db, mid, end=timestamp, trigger='monitor_initial')
+
+def resume(monitor_id: int, body: Resume) -> TaskResult:
+    timestamp = now()
+    start = resume_start(body, timestamp)
     with connect(True) as db:
-        row = db.execute('SELECT * FROM monitors WHERE id=?', (monitor_id,)).fetchone()
+        row = db.execute('SELECT paused FROM monitors WHERE id=?', (monitor_id,)).fetchone()
         if not row:
             raise HTTPException(404, '监控不存在')
-        if active(db, monitor_id):
-            raise HTTPException(409, '请等待活动任务结束后恢复')
-        if not row['paused']:
-            raise HTTPException(409, '监控已恢复')
-        if body.mode != 'catch_up':
-            db.execute('UPDATE monitors SET start_at=?,progress_at=NULL,generation=generation+1 WHERE id=?', (start, monitor_id))
-        db.execute('UPDATE monitors SET paused=0,next_check_at=? WHERE id=?', (timestamp, monitor_id))
-        tid = enqueue(db, monitor_id, end=timestamp, trigger='monitor_initial')
+        tid = resume_task(db, monitor_id, row['paused'], body.mode, start, timestamp)
     return {'task_id': tid}
 
 def batch_scope(body: Batch):
@@ -250,11 +272,14 @@ def batch(body: Batch) -> list[BatchResult]:
     start = instant(body.start) if body.action == 'backfill' else None
     if start and start >= timestamp:
         raise HTTPException(400, '补齐起始时间必须早于提交时刻')
+    if body.action == 'resume':
+        start = resume_start(body, timestamp)
     results = []
     for mid in dict.fromkeys(body.ids):
         try:
             with connect(True) as db:
-                if not db.execute('SELECT 1 FROM monitors WHERE id=?', (mid,)).fetchone():
+                row = db.execute('SELECT paused FROM monitors WHERE id=?', (mid,)).fetchone()
+                if not row:
                     raise HTTPException(404, '监控不存在')
                 if body.action == 'delete':
                     cancel(db, mid)
@@ -263,9 +288,15 @@ def batch(body: Batch) -> list[BatchResult]:
                 elif body.action == 'interval':
                     db.execute('UPDATE monitors SET interval_minutes=? WHERE id=?', (body.interval_minutes, mid))
                     tid = None
+                elif body.action == 'pause':
+                    if not row['paused']:
+                        pause(db, mid)
+                    tid = None
+                elif body.action == 'resume':
+                    tid = resume_task(db, mid, row['paused'], body.mode, start, timestamp)
                 else:
                     tid = enqueue(db, mid, start=start, end=timestamp)
-            status = {'delete': 'deleted', 'interval': 'updated'}.get(body.action, 'queued')
+            status = {'delete': 'deleted', 'interval': 'updated', 'pause': 'paused', 'resume': 'resumed'}.get(body.action, 'queued')
             results.append(dict(id=mid, status=status, task_id=tid))
         except HTTPException as error:
             results.append(dict(id=mid, status='error', error=error.detail, task_id=None))
