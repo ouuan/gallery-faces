@@ -52,6 +52,7 @@ def test_all_unlinked_publishers_use_nicknames_and_account_fallback(client):
     client.post('/api/v1/logout', json={})
     response = client.get('/api/v1/publisher-candidates')
     assert response.status_code == 200
+    assert [row['username'] for row in response.json()[:2]] == ['UNLINKED', 'fallback']
     candidates = {(row['platform'], row['username'].lower()): row['label'] for row in response.json()}
     assert len(response.json()) == len(candidates) == 104
     assert ('x', 'alice') not in candidates

@@ -25,11 +25,6 @@ const linkedAccounts = computed(() => new Set(
 const publisherOtherGroups = computed(() => {
   if (!props.includeOther) return [];
   const options = new Map<string, { label: string; value: string }>();
-  for (const value of props.modelValue) {
-    const [platform, username] = value.split(":");
-    if (["x", "instagram"].includes(platform) && username)
-      options.set(value.toLowerCase(), { label: `@${username} · ${platformLabel(platform)}`, value });
-  }
   for (const candidate of store.publisherCandidates) {
     const value = `${candidate.platform}:${candidate.username}`;
     if (linkedAccounts.value.has(value.toLowerCase())) continue;
@@ -37,6 +32,11 @@ const publisherOtherGroups = computed(() => {
       value,
       label: `${candidate.label || `@${candidate.username}`} · ${platformLabel(candidate.platform)}`,
     });
+  }
+  for (const value of props.modelValue) {
+    const [platform, username] = value.split(":");
+    if (["x", "instagram"].includes(platform) && username && !options.has(value.toLowerCase()))
+      options.set(value.toLowerCase(), { label: `@${username} · ${platformLabel(platform)}`, value });
   }
   return options.size
     ? [{ label: t("其他"), value: "publisher:other", children: [...options.values()] }]

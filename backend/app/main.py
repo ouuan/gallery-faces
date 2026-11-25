@@ -378,7 +378,8 @@ def publisher_candidates() -> list[PublisherCandidate]:
         rows = db.execute(
             """
             WITH candidates AS (
-                SELECT COALESCE(MAX(p.id) FILTER (WHERE TRIM(p.author_name) <> ''), MAX(p.id)) AS post_id
+                SELECT COUNT(*) AS post_count,
+                       COALESCE(MAX(p.id) FILTER (WHERE TRIM(p.author_name) <> ''), MAX(p.id)) AS post_id
                 FROM posts p
                 WHERE p.platform IN ('x', 'instagram')
                   AND p.author IS NOT NULL
@@ -388,7 +389,7 @@ def publisher_candidates() -> list[PublisherCandidate]:
             SELECT p.platform, p.author AS username, COALESCE(NULLIF(TRIM(p.author_name), ''), p.author) AS label
             FROM candidates JOIN posts p ON p.id=candidates.post_id
             WHERE NOT EXISTS (SELECT 1 FROM accounts a WHERE a.platform=p.platform AND lower(a.username)=lower(p.author))
-            ORDER BY lower(label), lower(username), p.platform
+            ORDER BY candidates.post_count DESC, lower(label), lower(username), p.platform
             """
         ).fetchall()
         return [dict(row) for row in rows]
