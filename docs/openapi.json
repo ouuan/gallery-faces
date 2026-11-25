@@ -3681,6 +3681,59 @@
         }
       }
     },
+    "/api/v1/admin/publishers/{platform}/batch-rule": {
+      "put": {
+        "summary": "Batch Rule",
+        "operationId": "batch_rule_api_v1_admin_publishers__platform__batch_rule_put",
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "x",
+                "instagram"
+              ],
+              "type": "string",
+              "title": "Platform"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchRule"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockRule"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/publishers/{platform}/{username}/rule": {
       "put": {
         "summary": "Update Rule",
@@ -3743,6 +3796,59 @@
         }
       }
     },
+    "/api/v1/admin/publishers/{platform}/batch-purge-preview": {
+      "post": {
+        "summary": "Batch Preview",
+        "operationId": "batch_preview_api_v1_admin_publishers__platform__batch_purge_preview_post",
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "x",
+                "instagram"
+              ],
+              "type": "string",
+              "title": "Platform"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublisherSelection"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurgePreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/publishers/{platform}/{username}/purge-preview": {
       "get": {
         "summary": "Purge Preview",
@@ -3778,6 +3884,59 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PurgePreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/publishers/{platform}/batch-purge": {
+      "post": {
+        "summary": "Batch Purge",
+        "operationId": "batch_purge_api_v1_admin_publishers__platform__batch_purge_post",
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "x",
+                "instagram"
+              ],
+              "type": "string",
+              "title": "Platform"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchPurge"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurgeResult"
                 }
               }
             }
@@ -4629,6 +4788,51 @@
         ],
         "title": "BatchFaceEditResult"
       },
+      "BatchPurge": {
+        "properties": {
+          "usernames": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Usernames"
+          },
+          "scope_token": {
+            "type": "string",
+            "title": "Scope Token"
+          },
+          "blocked": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "all",
+                    "retweets",
+                    "quoted",
+                    "tagged",
+                    "reposts"
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "usernames",
+          "scope_token"
+        ],
+        "title": "BatchPurge"
+      },
       "BatchResult": {
         "properties": {
           "id": {
@@ -4676,6 +4880,40 @@
           "status"
         ],
         "title": "BatchResult"
+      },
+      "BatchRule": {
+        "properties": {
+          "blocked": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "all",
+                "retweets",
+                "quoted",
+                "tagged",
+                "reposts"
+              ]
+            },
+            "type": "array",
+            "title": "Blocked"
+          },
+          "usernames": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Usernames"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "blocked",
+          "usernames"
+        ],
+        "title": "BatchRule"
       },
       "BlockRule": {
         "properties": {
@@ -7312,6 +7550,25 @@
           "page_size"
         ],
         "title": "PublisherPage"
+      },
+      "PublisherSelection": {
+        "properties": {
+          "usernames": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Usernames"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "usernames"
+        ],
+        "title": "PublisherSelection"
       },
       "PurgePreview": {
         "properties": {

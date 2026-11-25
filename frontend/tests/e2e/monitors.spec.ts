@@ -52,7 +52,7 @@ test("monitor selection, partial batch results, resume and responsive themes", a
   for (const width of [1280, 900, 320, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(batch.getByRole('button')).toHaveText(width >= 900 ? expandedActions : ['暂停', '立刻更新', '']);
-    const summary = await page.locator('.monitor-selection-summary').boundingBox();
+    const summary = await page.locator('.selection-total').boundingBox();
     const actions = await batch.boundingBox();
     expect(summary && actions).toBeTruthy();
     if (width === 320) expect(actions!.y).toBeGreaterThanOrEqual(summary!.y + summary!.height);
@@ -142,7 +142,7 @@ test('platform tabs isolate selections and show platform-specific nicknames', as
   });
   await page.setViewportSize({ width: 390, height: 900 });
   await page.goto('/admin/monitors');
-  const toolbar = page.locator('.monitor-selection');
+  const toolbar = page.locator('.list-selection');
   const all = toolbar.getByRole('checkbox', { name: '全选', exact: true });
   const x = page.getByRole('tab', { name: 'X', exact: true });
   const instagram = page.getByRole('tab', { name: 'Instagram', exact: true });

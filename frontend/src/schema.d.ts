@@ -1121,6 +1121,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/publishers/{platform}/batch-rule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Batch Rule */
+        put: operations["batch_rule_api_v1_admin_publishers__platform__batch_rule_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/publishers/{platform}/{username}/rule": {
         parameters: {
             query?: never;
@@ -1138,6 +1155,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/publishers/{platform}/batch-purge-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Batch Preview */
+        post: operations["batch_preview_api_v1_admin_publishers__platform__batch_purge_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/publishers/{platform}/{username}/purge-preview": {
         parameters: {
             query?: never;
@@ -1149,6 +1183,23 @@ export interface paths {
         get: operations["purge_preview_api_v1_admin_publishers__platform___username__purge_preview_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/publishers/{platform}/batch-purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Batch Purge */
+        post: operations["batch_purge_api_v1_admin_publishers__platform__batch_purge_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1445,6 +1496,15 @@ export interface components {
             /** Failures */
             failures: components["schemas"]["FaceEditFailure"][];
         };
+        /** BatchPurge */
+        BatchPurge: {
+            /** Usernames */
+            usernames: string[];
+            /** Scope Token */
+            scope_token: string;
+            /** Blocked */
+            blocked?: ("all" | "retweets" | "quoted" | "tagged" | "reposts")[] | null;
+        };
         /** BatchResult */
         BatchResult: {
             /** Id */
@@ -1458,6 +1518,13 @@ export interface components {
             task_id?: number | null;
             /** Error */
             error?: string | null;
+        };
+        /** BatchRule */
+        BatchRule: {
+            /** Blocked */
+            blocked: ("all" | "retweets" | "quoted" | "tagged" | "reposts")[];
+            /** Usernames */
+            usernames: string[];
         };
         /** BlockRule */
         BlockRule: {
@@ -2391,6 +2458,11 @@ export interface components {
             page: number;
             /** Page Size */
             page_size: number;
+        };
+        /** PublisherSelection */
+        PublisherSelection: {
+            /** Usernames */
+            usernames: string[];
         };
         /** PurgePreview */
         PurgePreview: {
@@ -5149,6 +5221,41 @@ export interface operations {
             };
         };
     };
+    batch_rule_api_v1_admin_publishers__platform__batch_rule_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                platform: "x" | "instagram";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchRule"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockRule"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_rule_api_v1_admin_publishers__platform___username__rule_put: {
         parameters: {
             query?: never;
@@ -5185,6 +5292,41 @@ export interface operations {
             };
         };
     };
+    batch_preview_api_v1_admin_publishers__platform__batch_purge_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                platform: "x" | "instagram";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublisherSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurgePreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     purge_preview_api_v1_admin_publishers__platform___username__purge_preview_get: {
         parameters: {
             query?: never;
@@ -5204,6 +5346,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PurgePreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_purge_api_v1_admin_publishers__platform__batch_purge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                platform: "x" | "instagram";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchPurge"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurgeResult"];
                 };
             };
             /** @description Validation Error */

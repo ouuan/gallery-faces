@@ -3,7 +3,7 @@ import json
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from . import db as storage
 
@@ -20,6 +20,20 @@ class BlockRule(BaseModel):
 
 class PurgeRequest(BlockRule):
     scope_token: str
+
+
+class PublisherSelection(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    usernames: list[str] = Field(min_length=1, max_length=100)
+
+
+class BatchRule(PublisherSelection, BlockRule):
+    pass
+
+
+class BatchPurge(PublisherSelection):
+    scope_token: str
+    blocked: list[Source] | None = None
 
 
 class PurgeResult(BaseModel):
@@ -95,16 +109,20 @@ def save_rule(db, platform, row, blocked):
         db.execute('DELETE FROM publisher_rules WHERE platform=? AND username=?', (platform, row['username']))
 
 
-def scope(db, platform, username):
-    row, blocked, linked = account(db, platform, username)
-    if linked:
-        raise HTTPException(409, '发布者已关联人物，不能删除帖子')
+def scope(db, platform, usernames):
+    rows = []
+    rules = {}
     db.execute('CREATE TEMP TABLE target_posts(id INTEGER PRIMARY KEY,post_key TEXT)')
-    db.execute('INSERT INTO target_posts SELECT id,post_key FROM posts WHERE platform=? AND lower(author)=lower(?)',
-               (platform, username))
+    for username in sorted({name.lower() for name in usernames}):
+        row, blocked, linked = account(db, platform, username)
+        if linked:
+            raise HTTPException(409, f'@{username} 已关联人物，不能删除帖子')
+        if not db.execute('INSERT INTO target_posts SELECT id,post_key FROM posts WHERE platform=? AND lower(author)=?',
+                          (platform, username)).rowcount:
+            raise HTTPException(409, f'@{username} 已没有帖子')
+        rows.append(row)
+        rules[username] = blocked
     posts = db.execute('SELECT count(*) FROM target_posts').fetchone()[0]
-    if not posts:
-        raise HTTPException(409, '该发布者已没有帖子')
     db.execute('CREATE TEMP TABLE target_images(id INTEGER PRIMARY KEY,exclusive INTEGER NOT NULL)')
     db.execute('''INSERT INTO target_images SELECT DISTINCT s.image_id,NOT EXISTS(
         SELECT 1 FROM sources other WHERE other.image_id=s.image_id AND other.post_id NOT IN (SELECT id FROM target_posts))
@@ -114,12 +132,13 @@ def scope(db, platform, username):
         r.id AS reference_id,p.name AS person FROM reference_images r JOIN people p ON p.id=r.person_id
         LEFT JOIN faces f ON f.id=r.face_id WHERE coalesce(r.image_id,f.image_id) IN
         (SELECT id FROM target_images WHERE exclusive) ORDER BY image_id,r.id''')]
-    digest = hashlib.sha256(json.dumps([platform, username.lower(), blocked, references]).encode())
+    digest = hashlib.sha256(json.dumps([platform, rules, references]).encode())
     for query in ('SELECT * FROM target_posts ORDER BY id', 'SELECT * FROM target_images ORDER BY id',
                   'SELECT id,image_id,post_id,media_key FROM sources WHERE post_id IN (SELECT id FROM target_posts) ORDER BY id'):
         for record in db.execute(query):
             digest.update(json.dumps(list(record)).encode())
-    return row, PurgePreview(posts=posts, exclusive=exclusive, shared=shared, blocked=blocked,
+    common = next(iter(rules.values()))
+    return rows, PurgePreview(posts=posts, exclusive=exclusive, shared=shared, blocked=common if all(rule == common for rule in rules.values()) else [],
                              references=references, scope_token=digest.hexdigest())
 
 
@@ -207,31 +226,49 @@ def install(app, admin):
             return PublisherPage(items=[Publisher(**dict(row) | {'blocked': json.loads(row['blocked'] or '[]')}) for row in rows],
                                  posts_count=posts, rules_count=rules, page=page, page_size=page_size)
 
+    def update_rules(platform, usernames, blocked):
+        with storage.connect(True) as db:
+            for username in sorted({name.lower() for name in usernames}):
+                row, previous, linked = account(db, platform, username)
+                if linked and not previous:
+                    raise HTTPException(409, f'@{username} 已关联人物，请刷新列表')
+                save_rule(db, platform, row, blocked)
+        return BlockRule(blocked=blocked)
+
+    @router.put('/{platform}/batch-rule', response_model=BlockRule)
+    def batch_rule(platform: Platform, body: BatchRule):
+        return update_rules(platform, body.usernames, body.blocked)
+
     @router.put('/{platform}/{username}/rule', response_model=BlockRule)
     def update_rule(platform: Platform, username: str, body: BlockRule):
-        with storage.connect(True) as db:
-            row, blocked, linked = account(db, platform, username)
-            if linked and not blocked:
-                raise HTTPException(409, '发布者已关联人物，请刷新列表')
-            save_rule(db, platform, row, body.blocked)
-        return body
+        return update_rules(platform, [username], body.blocked)
+
+    @router.post('/{platform}/batch-purge-preview', response_model=PurgePreview)
+    def batch_preview(platform: Platform, body: PublisherSelection):
+        with storage.connect() as db:
+            db.execute('BEGIN')
+            return scope(db, platform, body.usernames)[1]
 
     @router.get('/{platform}/{username}/purge-preview', response_model=PurgePreview)
     def purge_preview(platform: Platform, username: str):
-        with storage.connect() as db:
-            db.execute('BEGIN')
-            return scope(db, platform, username)[1]
+        return batch_preview(platform, PublisherSelection(usernames=[username]))
 
-    @router.post('/{platform}/{username}/purge', response_model=PurgeResult)
-    def purge_posts(platform: Platform, username: str, body: PurgeRequest):
+    @router.post('/{platform}/batch-purge', response_model=PurgeResult)
+    def batch_purge(platform: Platform, body: BatchPurge):
         with storage.connect(True) as db:
-            row, preview = scope(db, platform, username)
+            rows, preview = scope(db, platform, body.usernames)
             if preview.scope_token != body.scope_token:
                 raise HTTPException(409, '删除范围或规则已变化，请重新预览')
             if preview.references:
                 raise HTTPException(409, '独占图片用作人物参考，请先移除对应参考')
-            save_rule(db, platform, row, body.blocked)
+            if body.blocked is not None:
+                for row in rows:
+                    save_rule(db, platform, row, body.blocked)
             purge(db, platform)
         return {'posts': preview.posts, 'cleanup_pending': storage.cleanup_deleted_files()}
+
+    @router.post('/{platform}/{username}/purge', response_model=PurgeResult)
+    def purge_posts(platform: Platform, username: str, body: PurgeRequest):
+        return batch_purge(platform, BatchPurge(usernames=[username], **body.model_dump()))
 
     app.include_router(router)

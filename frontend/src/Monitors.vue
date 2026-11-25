@@ -8,6 +8,7 @@ import FeedFormActions from './FeedFormActions.vue';
 import FeedScopeFields from './FeedScopeFields.vue';
 import { defaultScope, feedPlatforms, monitorScope, supportsAccountScope } from './feed-scope';
 import { usePublisherSelection, uniqueAccounts, type PublisherAccount } from "./publisher-selection";
+import ListSelectionBar from './ListSelectionBar.vue';
 import LocalDateTime from "./LocalDateTime.vue";
 import MonitorMoreActions from './MonitorMoreActions.vue';
 import HashtagField, { formatHashtags } from "./HashtagField.vue";
@@ -68,7 +69,6 @@ const selectedMonitors = computed(() => {
 });
 const pausable = computed(() => selectedMonitors.value.filter(item => !item.paused).map(item => item.id));
 const resumable = computed(() => selectedMonitors.value.filter(item => item.paused && !item.active_task_id).map(item => item.id));
-const all = computed(() => visibleMonitors.value.length > 0 && selected.value.length === visibleMonitors.value.length);
 function switchPlatform(platform: string) {
   if (busy.value || platform === activePlatform.value) return;
   activePlatform.value = platform;
@@ -239,18 +239,12 @@ onUnmounted(() => { clearInterval(timer); });
         @keydown.left.prevent="focusPlatform(platform === 'x' ? 'instagram' : 'x')" @keydown.right.prevent="focusPlatform(platform === 'x' ? 'instagram' : 'x')" @keydown.home.prevent="focusPlatform('x')" @keydown.end.prevent="focusPlatform('instagram')">{{ platformLabel(platform) }}</n-tab>
     </n-tabs>
     <section id="monitor-panel" class="monitor-panel" role="tabpanel" :aria-labelledby="`monitor-tab-${activePlatform}`">
-    <div v-if="visibleMonitors.length" class="monitor-selection">
-      <div class="monitor-selection-summary">
-        <n-checkbox :checked="all" :indeterminate="selected.length > 0 && !all" @update:checked="selected = $event ? visibleMonitors.map(item => item.id) : []">全选</n-checkbox>
-        <span v-if="selected.length" class="monitor-selection-count">已选 {{ selected.length }} 项</span>
-      </div>
-      <div v-if="selected.length" class="monitor-actions" role="group" aria-label="批量操作">
+    <ListSelectionBar :count="selected.length" :total="visibleMonitors.length" @toggle="selected = $event ? visibleMonitors.map(item => item.id) : []">
         <n-button v-if="pausable.length" :disabled="busy" @click="batch('pause', pausable)">暂停</n-button>
         <n-button v-else :disabled="busy || !resumable.length" @click="open('resume', resumable)">继续</n-button>
         <n-button :disabled="busy" @click="batch('update', selected)">立刻更新</n-button>
         <MonitorMoreActions batch :disabled="busy" @select="open($event, selected)" />
-      </div>
-    </div>
+    </ListSelectionBar>
     <div v-if="results.length" role="status">
       <p v-for="result in results" :key="result.id" :class="{ 'error-text': result.error }">
         #{{ result.id }}：{{ batchResultLabel(result) }}
@@ -340,11 +334,6 @@ onUnmounted(() => { clearInterval(timer); });
 .monitor-summary a { word-break: break-all; }
 .monitor-schedule { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; align-content: start; font-size: .933rem; font-variant-numeric: tabular-nums; }
 .monitor-schedule dt { color: var(--muted); }
-.monitor-selection { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 4px 12px; }
-.monitor-selection-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.monitor-selection-summary .n-checkbox { min-height: 44px; align-items: center; }
-.monitor-selection-count { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.monitor-selection .monitor-actions { column-gap: 4px; }
 .monitor-panel { display: grid; gap: 16px; min-width: 0; }
 .monitor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .monitor-dialog { width: min(540px, calc(100vw - 32px)); max-height: 90dvh; overflow: auto; overflow-wrap: anywhere; }

@@ -7,6 +7,65 @@ async function expectAlignedFilters(page: Page) {
   expect(new Set(bounds.map(({ top }) => Math.round(top))).size).toBe(1);
 }
 
+test('page selection supports combined review, rule replacement and confirmed batch purge', async ({ page }) => {
+  const accounts = ['alice', 'bob'].map(username => ({ username, label: username, linked: false, blocked: [] as string[], posts: 1 }));
+  const usernames = accounts.map(item => item.username);
+  await page.route('**/api/v1/**', async route => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/admin/publishers')) {
+      const hasPosts = url.searchParams.get('view') === 'posts';
+      const matches = accounts.filter(item => item.username.includes(url.searchParams.get('search') || ''));
+      const items = matches.filter(item => hasPosts === !!item.posts);
+      return route.fulfill({ json: { items, posts_count: matches.filter(item => item.posts).length, rules_count: matches.filter(item => !item.posts).length, page: 1, page_size: 30 } });
+    }
+    if (url.pathname.endsWith('/batch-rule')) {
+      expect(route.request().postDataJSON()).toEqual({ usernames, blocked: ['quoted'] });
+      accounts.forEach(item => { item.blocked = ['quoted']; });
+    }
+    if (url.pathname.endsWith('/batch-purge-preview')) {
+      expect(route.request().postDataJSON()).toEqual({ usernames });
+      return route.fulfill({ json: { posts: 2, exclusive: 1, shared: 2, references: [], blocked: ['quoted'], scope_token: 'batch-scope' } });
+    }
+    if (url.pathname.endsWith('/batch-purge')) {
+      expect(route.request().postDataJSON()).toEqual({ usernames, blocked: null, scope_token: 'batch-scope' });
+      accounts.forEach(item => { item.posts = 0; });
+    }
+    return route.fulfill({ json: url.pathname.endsWith('/site') ? { site_title: 'Gallery Faces' } : [] });
+  });
+  await page.goto('/admin/publishers');
+  const all = page.getByRole('checkbox', { name: '全选本页' });
+  const batch = page.getByRole('group', { name: '批量操作' });
+  const dialog = page.getByRole('dialog');
+  await page.getByRole('checkbox', { name: '选择 alice' }).check();
+  await expect(all).toHaveAttribute('aria-checked', 'mixed');
+  await page.getByPlaceholder('搜索昵称或用户名').fill('bob');
+  await expect(all).not.toBeChecked();
+  await expect(batch).toHaveCount(0);
+  await page.getByPlaceholder('搜索昵称或用户名').fill('');
+  await expect(page.getByRole('checkbox', { name: '选择 alice' })).toBeVisible();
+  await all.check();
+  await expect(batch.getByRole('link', { name: '查看审核' })).toHaveAttribute('href', /publishers=x%3Aalice,x%3Abob|publishers=x:alice,x:bob/i);
+  await batch.getByRole('button', { name: '设置屏蔽' }).click();
+  await expect(dialog).toContainText('2 位发布者');
+  await dialog.getByRole('checkbox', { name: '引用' }).check();
+  await dialog.getByRole('button', { name: '保存规则' }).click();
+  await expect(page.getByText('1 个帖子 · 屏蔽：引用')).toHaveCount(2);
+  await expect(batch).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await all.check();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: '/tmp/gallery-faces/publishers-batch-mobile.png' });
+  await batch.getByRole('button', { name: '更多批量操作' }).click();
+  await page.getByRole('menuitem', { name: '彻底删除帖子' }).click();
+  await expect(dialog).toContainText('保留 2 张共享图片');
+  await expect(dialog.getByRole('checkbox', { name: '保留各账号现有规则' })).toBeChecked();
+  await dialog.getByRole('button', { name: '确认彻底删除' }).click();
+  await page.getByRole('button', { name: '查看仅有屏蔽规则的账号' }).click();
+  await all.check();
+  await expect(batch.getByRole('button')).toHaveText(['编辑规则']);
+  await expect(batch.getByRole('link')).toHaveCount(0);
+});
+
 test('publisher views, reference protection and purge with a discovery rule', async ({ page }) => {
   const account = { username: 'alice', label: '发布者甲', posts: 2, blocked: [] as string[], linked: false };
   let ownedReference = true;

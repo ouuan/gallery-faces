@@ -118,6 +118,47 @@ def test_reference_scope_and_task_conflict_roll_back_rule(client):
     assert purge(client, original['scope_token'], ['all']).status_code == 409
 
 
+def test_batch_rule_rolls_back_all_updates(client):
+    with db.connect(True) as conn:
+        image(conn, author='alice')
+        image(conn, author='bob')
+    endpoint = ROOT + '/x/batch-rule'
+    body = {'usernames': ['alice', 'bob'], 'blocked': ['quoted']}
+    assert client.put(endpoint, json=body).status_code == 200
+    assert client.put(endpoint, json=body | {'usernames': ['alice', 'missing'], 'blocked': []}).status_code == 404
+    items = client.get(ROOT, params={'platform': 'x'}).json()['items']
+    assert [item['blocked'] for item in items] == [['quoted'], ['quoted']]
+
+
+def test_batch_purge_checks_combined_scope_and_preserves_individual_rules(client):
+    with db.connect(True) as conn:
+        first = image(conn, author='alice')
+        image(conn, author='bob')
+        shared = image(conn, author='carol')
+        conn.execute('INSERT INTO sources(image_id,post_id,media_key) VALUES(?,2,?)', (first, 'also-bob'))
+        conn.execute('INSERT INTO sources(image_id,post_id,media_key) VALUES(?,1,?)', (shared, 'outside'))
+        conn.execute("INSERT INTO people(id,name) VALUES(1,'参考人物')")
+        conn.execute('INSERT INTO reference_images(person_id,image_id,embedding,model_version) VALUES(1,?,?,?)', (first, b'feature', worker.MODEL_VERSION))
+    assert not preview(client)['references']
+    body = {'usernames': ['bob', 'Alice']}
+    endpoint = ROOT + '/x/batch-purge'
+    before = client.post(endpoint + '-preview', json=body).json()
+    assert (before['posts'], before['exclusive'], before['shared']) == (2, 2, 1)
+    assert before['references'][0]['image_id'] == first
+    assert client.post(endpoint, json=body | {'scope_token': before['scope_token']}).status_code == 409
+    with db.connect(True) as conn:
+        conn.execute('DELETE FROM reference_images')
+    token = client.post(endpoint + '-preview', json=body).json()['scope_token']
+    client.put(ALICE + '/rule', json={'blocked': ['quoted']})
+    assert client.post(endpoint, json=body | {'scope_token': token}).status_code == 409
+    token = client.post(endpoint + '-preview', json=body).json()['scope_token']
+    assert client.post(endpoint, json=body | {'scope_token': token}).status_code == 200
+    with db.connect() as conn:
+        assert [row['id'] for row in conn.execute('SELECT id FROM images')] == [shared]
+        assert [row['author'] for row in conn.execute('SELECT author FROM posts')] == ['carol']
+        assert [tuple(row) for row in conn.execute('SELECT username,blocked FROM publisher_rules')] == [('alice', '["quoted"]')]
+
+
 @pytest.mark.parametrize(('platform', 'blocked', 'hit', 'allowed'), [
     ('x', 'retweets', {'retweet_id': 12}, {'quote_id': 12}),
     ('x', 'quoted', {'quote_id': 12}, {'quoted_id': 12}),
