@@ -4227,7 +4227,8 @@
               "delete",
               "update",
               "backfill",
-              "interval"
+              "interval",
+              "scope"
             ],
             "title": "Action"
           },
@@ -4247,6 +4248,20 @@
               }
             ],
             "title": "Interval Minutes"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/XScope"
+              },
+              {
+                "$ref": "#/components/schemas/InstagramScope"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
           }
         },
         "type": "object",

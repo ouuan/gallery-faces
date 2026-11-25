@@ -157,6 +157,25 @@ def test_batch_interval_rejects_invalid_values(client, value):
     assert monitors.listing()[0]['interval_minutes'] == 60
 
 
+@pytest.mark.parametrize(('platform', 'scope'), [('x', {'quoted': True, 'retweets': True}),
+                                                 ('instagram', {'tagged': True, 'stories': False})])
+def test_batch_scope_only_changes_selected_monitors(client, platform, scope):
+    targets = [create(client, username=name, platform=platform) for name in ['alice', 'bob']]
+    untouched = create(client, platform='instagram' if platform == 'x' else 'x')
+    before = monitors.listing()
+    ids = [target['id'] for target in targets]
+    path = '/api/v1/admin/monitors/batch'
+    for invalid in [{'ids': [*ids, untouched['id']], 'scope': scope}, {'ids': ids},
+                    {'ids': [untouched['id']], 'scope': scope}]:
+        assert client.post(path, json={'action': 'scope', **invalid}).status_code in (400, 422)
+        assert monitors.listing() == before
+    response = client.post(path, json={'action': 'scope', 'scope': scope, 'ids': [*ids, 999, ids[0]]})
+    assert [(row['id'], row['status']) for row in response.json()] == [(ids[0], 'updated'), (ids[1], 'updated'), (999, 'error')]
+    assert monitors.listing() == [row | {'scope': scope} if row['id'] in ids else row for row in before]
+    for target in targets:
+        assert json.loads(get_task(target['task_id'])['payload'])['scope'] != scope
+
+
 @pytest.mark.parametrize('host', ['x.com', 'twitter.com', 'www.twitter.com'])
 def test_list_monitor_canonicalization_and_scheduling(client, monkeypatch, host):
     item = create(client, username=f'https://{host}/i/lists/123456/?s=20')

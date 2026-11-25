@@ -1329,7 +1329,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "delete" | "update" | "backfill" | "interval";
+            action: "delete" | "update" | "backfill" | "interval" | "scope";
             /**
              * Start
              * @default
@@ -1337,6 +1337,8 @@ export interface components {
             start: string;
             /** Interval Minutes */
             interval_minutes?: number | null;
+            /** Scope */
+            scope?: components["schemas"]["XScope"] | components["schemas"]["InstagramScope"] | null;
         };
         /** BatchFaceEdit */
         BatchFaceEdit: {

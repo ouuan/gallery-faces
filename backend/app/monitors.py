@@ -104,9 +104,10 @@ class Resume(BaseModel):
 
 class Batch(BaseModel):
     ids: list[int] = Field(min_length=1, max_length=1000)
-    action: Literal['delete', 'update', 'backfill', 'interval']
+    action: Literal['delete', 'update', 'backfill', 'interval', 'scope']
     start: str = ''
     interval_minutes: int | None = Field(default=None, ge=5)
+    scope: XScope | InstagramScope | None = None
 
 class TaskResult(BaseModel):
     task_id: int
@@ -224,7 +225,25 @@ def resume(monitor_id: int, body: Resume) -> TaskResult:
         tid = enqueue(db, monitor_id, end=timestamp, trigger='monitor_initial')
     return {'task_id': tid}
 
+def batch_scope(body: Batch):
+    if body.scope is None:
+        raise HTTPException(400, '请选择抓取范围')
+    ids = list(dict.fromkeys(body.ids))
+    placeholders = ','.join('?' for _ in ids)
+    with connect(True) as db:
+        rows = db.execute(f'SELECT id,platform FROM monitors WHERE id IN ({placeholders})', ids).fetchall()
+        platforms = {row['platform'] for row in rows}
+        if len(platforms) > 1:
+            raise HTTPException(422, '只能批量修改同一平台的抓取范围')
+        if rows:
+            scope = monitor_scope(rows[0]['platform'], body.scope)
+            db.execute(f'UPDATE monitors SET scope=? WHERE id IN ({placeholders})', [json.dumps(scope), *ids])
+    found = {row['id'] for row in rows}
+    return [dict(id=mid, status='updated') if mid in found else dict(id=mid, status='error', error='监控不存在') for mid in ids]
+
 def batch(body: Batch) -> list[BatchResult]:
+    if body.action == 'scope':
+        return batch_scope(body)
     if body.action == 'interval' and body.interval_minutes is None:
         raise HTTPException(400, '请输入检查间隔（分钟）')
     timestamp = now()

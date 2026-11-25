@@ -61,6 +61,15 @@ type Dialog = "delete" | "backfill" | "resume" | "interval" | "hashtags" | "scop
 const dialog = ref<Dialog | null>(null), targets = ref<number[]>([]), since = ref(""), mode = ref("catch_up");
 const results = ref<{ id: number; status: string; task_id?: number; error?: string }[]>([]);
 const all = computed(() => items.value.length > 0 && selected.value.length === items.value.length);
+const platformGroups = computed(() => {
+  const checked = new Set(selected.value);
+  return feedPlatforms.map(platform => {
+    const ids = items.value.filter(item => item.platform === platform).map(item => item.id);
+    return { platform, ids, count: ids.filter(id => checked.has(id)).length };
+  }).filter(group => group.ids.length);
+});
+const samePlatform = computed(() => platformGroups.value.some(group => group.count > 0 && group.count === selected.value.length));
+const updatedLabel = ref('');
 const dialogTitle = computed(() => dialog.value === 'scope' ? '修改抓取范围' : dialog.value === "hashtags" ? "修改话题标签" : dialog.value === "interval" ? "修改 " + targets.value.length + " 项监控的间隔" : dialog.value === "delete" ? "删除 " + targets.value.length + " 项监控" : dialog.value === "resume" ? "恢复监控" : "补齐 " + targets.value.length + " 位发布者");
 const validSince = computed(() => !!since.value && Date.parse(since.value) < Date.now());
 let timer: ReturnType<typeof setInterval> | undefined;
@@ -125,11 +134,12 @@ function open(action: Dialog, ids: number[]) {
   editScope.value = { ...defaultScope, ...item?.scope };
   error.value = ""; targets.value = [...ids]; since.value = ""; mode.value = "catch_up"; dialog.value = action;
 }
-async function batch(action: "delete" | "backfill" | "update" | "interval", ids: number[]) {
+async function batch(action: "delete" | "backfill" | "update" | "interval" | "scope", ids: number[]) {
   if (busy.value || (action === "interval" && !validInterval.value)) return;
   const intervalMinutes = batchInterval.value;
   await perform(async () => {
-    results.value = await send("/admin/monitors/batch", { action, ids: [...ids], start: since.value, ...(action === "interval" ? { interval_minutes: intervalMinutes } : {}) });
+    results.value = await send("/admin/monitors/batch", { action, ids: [...ids], start: since.value, ...(action === "interval" ? { interval_minutes: intervalMinutes } : {}), ...(action === 'scope' ? { scope: monitorScope(editPlatform.value, editScope.value) } : {}) });
+    updatedLabel.value = action === 'scope' ? '已修改抓取范围' : '已修改检查间隔';
     if (action === "interval") {
       for (const result of results.value) {
         if (result.status === "updated") delete intervals.value[result.id];
@@ -144,7 +154,7 @@ async function confirm() {
       await send("/admin/monitors/" + targets.value[0] + "/resume", { mode: mode.value, start: since.value });
       dialog.value = null;
     });
-  } else if (dialog.value === 'scope') {
+  } else if (dialog.value === 'scope' && targets.value.length === 1) {
     await perform(async () => {
       await send('/admin/monitors/' + targets.value[0], { scope: monitorScope(editPlatform.value, editScope.value) }, 'PATCH');
       dialog.value = null;
@@ -156,8 +166,13 @@ async function confirm() {
     });
   } else if (dialog.value) await batch(dialog.value, targets.value);
 }
-function toggle(id: number, checked: boolean) {
-  selected.value = checked ? [...selected.value, id] : selected.value.filter(value => value !== id);
+function toggle(ids: number[], checked: boolean) {
+  const next = new Set(selected.value);
+  for (const id of ids) {
+    if (checked) next.add(id);
+    else next.delete(id);
+  }
+  selected.value = [...next];
 }
 function resultLabel(raw: string | null) {
   const result = JSON.parse(raw || "{}");
@@ -209,18 +224,20 @@ onUnmounted(() => { clearInterval(timer); });
     <div class="monitor-toolbar monitor-selection">
       <div class="monitor-toolbar">
       <n-checkbox :checked="all" :indeterminate="selected.length > 0 && !all" @update:checked="selected = $event ? items.map(item => item.id) : []">全选当前列表</n-checkbox>
+      <n-checkbox v-for="group in platformGroups" :key="group.platform" :checked="group.count === group.ids.length" :indeterminate="group.count > 0 && group.count < group.ids.length" @update:checked="toggle(group.ids, $event)">全选 {{ platformLabel(group.platform) }}</n-checkbox>
       <span v-if="selected.length">已选 {{ selected.length }} 项</span>
       </div>
       <div v-if="selected.length" class="monitor-toolbar monitor-batch-actions">
         <n-button :disabled="busy" @click="batch('update', selected)">立刻更新</n-button>
         <n-button :disabled="busy" @click="open('interval', selected)">修改间隔</n-button>
+        <n-button :disabled="busy || !samePlatform" @click="open('scope', selected)">修改抓取范围</n-button>
         <n-button :disabled="busy" @click="open('backfill', selected)">补齐</n-button>
         <n-button :disabled="busy" @click="open('delete', selected)">删除</n-button>
       </div>
     </div>
     <div v-if="results.length" role="status">
       <p v-for="result in results" :key="result.id" :class="{ 'error-text': result.error }">
-        #{{ result.id }}：{{ result.error || (result.status === 'updated' ? '已修改检查间隔' : result.status === 'deleted' ? '已删除监控，已导入照片保留' : '任务 #' + result.task_id + ' 已提交或复用') }}
+        #{{ result.id }}：{{ result.error || (result.status === 'updated' ? updatedLabel : result.status === 'deleted' ? '已删除监控，已导入照片保留' : '任务 #' + result.task_id + ' 已提交或复用') }}
       </p>
     </div>
     <p v-if="loaded && !items.length && !loading" class="hint">还没有发布者监控。添加后会立即检查，并按设定间隔收集新增照片。</p>
@@ -228,7 +245,7 @@ onUnmounted(() => { clearInterval(timer); });
       <li v-for="item in items" :key="item.id">
         <div class="monitor-summary">
           <div class="monitor-identity">
-            <n-checkbox :aria-label="'选择 ' + item.username" :checked="selected.includes(item.id)" @update:checked="toggle(item.id, $event)" />
+            <n-checkbox :aria-label="'选择 ' + item.username" :checked="selected.includes(item.id)" @update:checked="toggle([item.id], $event)" />
             <div class="monitor-identity-text"><strong><a :href="monitorUrl(item)" target="_blank" rel="noopener noreferrer">{{ monitorLabel(item) }}</a></strong>
             <span>{{ item.paused ? (item.active_task_id ? '已暂停，等待任务结束' : '已暂停') : item.active_task_id ? '检查中' : '监控中' }}</span></div>
           </div>
@@ -260,7 +277,10 @@ onUnmounted(() => { clearInterval(timer); });
       <n-card class="monitor-dialog" role="dialog" aria-modal="true" :title="dialogTitle" :aria-label="dialogTitle">
         <n-alert v-if="error" type="error">{{ error }}</n-alert>
         <p v-if="dialog === 'delete'">将删除监控配置并取消未完成任务，已导入照片会保留。</p>
-        <FeedScopeFields v-else-if="dialog === 'scope'" v-model="editScope" :platform="editPlatform" :disabled="busy" />
+        <template v-else-if="dialog === 'scope'">
+          <p v-if="targets.length > 1">以下范围将覆盖所选 {{ targets.length }} 项 {{ platformLabel(editPlatform) }} 监控的设置，仅对新建任务生效。</p>
+          <FeedScopeFields v-model="editScope" :platform="editPlatform" :disabled="busy" />
+        </template>
         <template v-else-if="dialog === 'hashtags'">
           <HashtagField v-model="editHashtags" :disabled="busy" />
           <p class="hint">仅影响新建任务。要按新标签检查历史帖子，请使用「补齐」。</p>

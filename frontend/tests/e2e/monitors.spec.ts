@@ -110,6 +110,46 @@ test("create monitors from publisher groups and independent manual accounts with
 });
 
 
+test('platform selection preserves other platforms and enables same-platform scope edits', async ({ page }) => {
+  const items = ['x', 'instagram', 'x'].map((platform, index) => ({ id: index + 1, platform, username: `user${index + 1}`, interval_minutes: 60 }));
+  const calls: any[] = [];
+  await page.route('**/api/v1/**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/monitors/batch')) {
+      calls.push(route.request().postDataJSON());
+      return route.fulfill({ json: [{ id: 1, status: 'updated' }, { id: 3, status: 'error', error: '监控不存在' }] });
+    }
+    if (path.endsWith('/monitors')) return route.fulfill({ json: items });
+    if (path.endsWith('/session')) return route.fulfill({ json: { admin: true } });
+    return route.fulfill({ json: [] });
+  });
+  await page.goto('/admin/monitors');
+  const toolbar = page.locator('.monitor-selection');
+  const x = toolbar.getByRole('checkbox', { name: '全选 X', exact: true });
+  const instagram = toolbar.getByRole('checkbox', { name: '全选 Instagram', exact: true });
+  const edit = toolbar.getByRole('button', { name: '修改抓取范围' });
+  await page.getByRole('checkbox', { name: '选择 user1' }).check();
+  await expect(x).toHaveAttribute('aria-checked', 'mixed');
+  await instagram.check();
+  await expect(edit).toBeVisible();
+  await expect(edit).toBeDisabled();
+  await x.check();
+  await expect(toolbar.getByRole('checkbox', { name: '全选当前列表' })).toBeChecked();
+  await instagram.uncheck();
+  await expect(toolbar).toContainText('已选 2 项');
+  await expect(edit).toBeEnabled();
+  await edit.click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('2 项 X 监控');
+  await dialog.getByRole('checkbox', { name: '引用' }).check();
+  await dialog.getByRole('button', { name: '确认修改' }).click();
+  await expect(page.getByRole('status')).toContainText('#1：已修改抓取范围');
+  await expect(page.getByRole('status')).toContainText('#3：监控不存在');
+  expect(calls).toEqual([expect.objectContaining({ action: 'scope', ids: [1, 3], scope: { retweets: false, quoted: true } })]);
+  await x.uncheck();
+  await expect(edit).toHaveCount(0);
+});
+
 test("batch interval validates input, reports partial failure and refreshes saved values", async ({ page }) => {
   const items = [1, 2, 3].map(id => ({ id, platform: "x", username: `user${id}`, interval_minutes: 60, paused: id === 2 ? 1 : 0, active_task_id: null, next_check_at: "2026-11-19T00:00:00Z" }));
   const calls: any[] = [];
