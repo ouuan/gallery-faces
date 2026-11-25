@@ -766,6 +766,11 @@ svg {
   border-bottom: 1px solid var(--line);
   overflow-wrap: anywhere;
 }
+.publisher-platform-tab {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+}
 .admin-content > h2 {
   margin-top: 32px;
   margin-bottom: 16px;

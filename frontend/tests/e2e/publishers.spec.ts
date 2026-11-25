@@ -59,7 +59,7 @@ test('publisher views, reference protection and purge with a discovery rule', as
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: '/tmp/gallery-faces/publishers-mobile.png' });
   await page.getByRole('button', { name: '更多操作 @alice' }).click();
-  await page.getByText('彻底删除帖子', { exact: true }).filter({ visible: true }).click();
+  await page.getByRole('menuitem', { name: '彻底删除帖子', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('图片 #8 · 人物甲 · 参考 #12');
   await expect(dialog.getByRole('button', { name: '确认彻底删除' })).toBeDisabled();

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { Ellipsis, Search } from '@lucide/vue';
+import { Search } from '@lucide/vue';
 import { NAlert, NButton, NCard, NCheckbox, NDropdown, NInput, NModal, NRadioButton, NRadioGroup, NTab, NTabs, useMessage } from 'naive-ui';
 import { api, ApiError, platformLabel, send } from './api';
 import { scopeLabels } from './feed-scope';
@@ -8,6 +8,7 @@ import { accountUrl } from './publisher-selection';
 import type { components } from './schema';
 import { useLatestRequest } from './use-latest-request';
 import ListPagination from './ListPagination.vue';
+import MoreMenuButton from './MoreMenuButton.vue';
 
 type Publisher = components['schemas']['Publisher'];
 type Page = components['schemas']['PublisherPage'];
@@ -114,11 +115,14 @@ async function submit() {
     dialogError.value = (error as Error).message;
   } finally { busy.value = false; }
 }
-const moreActions = [{ label: '设置屏蔽', key: 'rule' }, { label: '彻底删除帖子', key: 'purge' }];
+const moreActions = [
+  { label: '设置屏蔽', key: 'rule', props: { role: 'menuitem' } },
+  { label: '彻底删除帖子', key: 'purge', props: { role: 'menuitem', style: { color: 'var(--error)' } } },
+];
 </script>
 
 <template>
-  <n-tabs v-model:value="platform" type="line" aria-label="发布者平台"><n-tab name="x">X</n-tab><n-tab name="instagram">Instagram</n-tab></n-tabs>
+  <n-tabs v-model:value="platform" type="line" aria-label="发布者平台" tab-class="publisher-platform-tab"><n-tab name="x">X</n-tab><n-tab name="instagram">Instagram</n-tab></n-tabs>
   <div class="publisher-toolbar">
     <n-input v-model:value="search" clearable placeholder="搜索昵称或用户名" aria-label="搜索昵称或用户名"><template #prefix><Search :size="16" /></template></n-input>
     <n-radio-group v-model:value="view" name="publisher-view" role="radiogroup" aria-label="发布者视图" :theme-overrides="{ buttonHeightMedium: '44px' }">
@@ -146,7 +150,9 @@ const moreActions = [{ label: '设置屏蔽', key: 'rule' }, { label: '彻底删
         <n-button :class="{ 'publisher-direct': !item.linked }" @click="open('rule', item)">设置屏蔽</n-button>
         <template v-if="!item.linked">
           <n-button class="publisher-direct" ghost type="error" :theme-overrides="{ borderError: '1px solid var(--line)' }" @click="open('purge', item)">彻底删除帖子</n-button>
-          <n-dropdown trigger="click" :options="moreActions" @select="key => open(key, item)"><n-button class="publisher-more" :aria-label="`更多操作 @${item.username}`"><Ellipsis :size="18" /></n-button></n-dropdown>
+          <n-dropdown trigger="click" placement="bottom-end" :options="moreActions" :menu-props="() => ({ role: 'menu' })" @select="key => open(key, item)">
+            <MoreMenuButton class="publisher-more" :label="`更多操作 @${item.username}`" />
+          </n-dropdown>
         </template>
       </div>
       <n-button v-else @click="open('rule', item)">编辑规则</n-button>
