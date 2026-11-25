@@ -152,7 +152,7 @@ class Monitor(BaseModel):
 def listing() -> list[Monitor]:
     with connect() as db:
         rows = db.execute('''SELECT m.*, t.status AS last_status, t.result AS last_result, t.error AS last_error,
-            coalesce((SELECT trim(author_name) FROM posts WHERE platform=m.platform AND lower(author)=m.username
+            coalesce(m.list_title, (SELECT trim(author_name) FROM posts WHERE platform=m.platform AND lower(author)=m.username
                       AND trim(author_name)<>'' ORDER BY id DESC LIMIT 1),
                      (SELECT group_concat(person.name,'、') FROM accounts JOIN people person ON person.id=accounts.person_id
                       WHERE accounts.platform=m.platform AND lower(accounts.username)=m.username)) AS nickname,

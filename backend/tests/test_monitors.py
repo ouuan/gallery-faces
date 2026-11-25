@@ -1,5 +1,7 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
+from unittest.mock import Mock
 import pytest
 from app import db, monitors, worker
 from test_workflows import client, image
@@ -48,6 +50,28 @@ def test_monitor_nicknames_by_platform(client):
     assert {(row['platform'], row['username']): row['nickname'] for row in rows} == {
         ('x', 'alice'): '新昵称', ('instagram', 'alice'): '已关联人物', ('x', 'unknown'): None,
     }
+
+def test_list_title_refresh(client):
+    from gallery_dl.exception import HttpError
+    from app.download_round import DownloadRound
+    from app.downloader import refresh_list_title
+
+    create(client, username='i/lists/123')
+    task = worker.claim()
+    active = DownloadRound(task['id'], task['rounds'])
+    api = Mock(root='https://x.com/i/api', headers={'x-twitter-auth-type': 'OAuth2Session'}, features={})
+    extractor = SimpleNamespace(user='123', api=api, request=Mock())
+    def title():
+        return client.get('/api/v1/admin/monitors').json()[0]['nickname']
+    assert title() is None
+    for list_id, name, expected in [('123', ' 摄影 ', '摄影'), ('123', '街拍', '街拍'), ('123', ' ', '街拍'), ('456', '其他', '街拍')]:
+        extractor.request.return_value.json.return_value = {'data': {'list': {'id_str': list_id, 'name': name}}}
+        refresh_list_title(extractor, active)
+        assert title() == expected
+    assert json.loads(extractor.request.call_args.kwargs['params']['variables']) == {'listId': '123'}
+    extractor.request.side_effect = HttpError('unavailable')
+    refresh_list_title(extractor, active)
+    assert title() == '街拍'
 
 def test_success_overlap_backfill_and_failure(client, monkeypatch):
     monkeypatch.setattr(monitors, 'now', lambda: '2026-01-02T00:00:00Z')

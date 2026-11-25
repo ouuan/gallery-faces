@@ -48,7 +48,37 @@ def normalize_twitter_text(tweet):
     return result
 
 
-def install_policy(report_path=None, feed=None, scope=None):
+def refresh_list_title(extractor, active):
+    import json
+    from gallery_dl.exception import GalleryDLException
+    from .db import connect
+
+    api = extractor.api
+    url = api.root + '/graphql/T-YE5ZY0cd0UVtWu8AP04Q/ListByRestId'
+    try:
+        if api.headers['x-twitter-auth-type']:
+            api._transaction_id(url)
+        else:
+            api._authenticate_guest()
+        response = extractor.request(url, headers=api.headers, retries=0, timeout=8, params={
+            'variables': json.dumps({'listId': extractor.user}),
+            'features': json.dumps(api.features),
+            'fieldToggles': json.dumps({'withPayments': False, 'withDmBlocks': False, 'withAuxiliaryUserLabels': False}),
+        })
+        details = response.json()['data']['list']
+        if details['id_str'] != extractor.user:
+            return
+        title = details['name']
+    except (GalleryDLException, KeyError, TypeError, ValueError):
+        return
+    if isinstance(title, str) and title.strip():
+        with connect(True) as db:
+            active.owner(db)
+            db.execute("UPDATE monitors SET list_title=? WHERE id=? AND platform='x' AND username=?",
+                       (title.strip(), active.payload['monitor_id'], 'i/lists/' + extractor.user))
+
+
+def install_policy(report_path=None, feed=None, scope=None, list_monitor=None):
     from gallery_dl.extractor.common import Extractor
     from gallery_dl.extractor.twitter import TwitterExtractor
     from gallery_dl.extractor.instagram import InstagramExtractor, InstagramStoriesExtractor
@@ -115,6 +145,9 @@ def install_policy(report_path=None, feed=None, scope=None):
         if self.subcategory not in {"tweet", "list"}:
             self.login()
             check(public_user, check(self.api.user_by_screen_name, self.user), "x")
+        elif self.subcategory == 'list' and list_monitor is not None:
+            self.login()
+            refresh_list_title(self, list_monitor)
         if scope and scope.get('quoted'):
             original_tweets = self.tweets
             def checked_quotes():
@@ -339,7 +372,8 @@ def main():
         install_parts(active)
         directory = Path(os.environ['GALLERY_FACES_MEDIA_DIR'])
         install_cursors(active, denied)
-    state = install_policy(os.environ.get('GALLERY_FACES_POLICY_REPORT'), feed, scope)
+    list_monitor = active if active and active.number == 1 and 'monitor_id' in active.payload else None
+    state = install_policy(os.environ.get('GALLERY_FACES_POLICY_REPORT'), feed, scope, list_monitor)
     restore_id = os.environ.get("GALLERY_FACES_RESTORE_IMAGE")
     install_library_filter(os.environ.get("GALLERY_FACES_SKIPPED_REPORT"), int(restore_id) if restore_id else None,
                            json.loads(os.environ.get("GALLERY_FACES_HASHTAGS", "[]")), os.environ.get('GALLERY_FACES_CACHE_POST'),

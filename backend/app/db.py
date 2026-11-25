@@ -153,6 +153,8 @@ def init():
             db.execute("ALTER TABLE monitors ADD COLUMN hashtags TEXT NOT NULL DEFAULT '[]'")
         if 'scope' not in {row[1] for row in db.execute('PRAGMA table_info(monitors)')}:
             db.execute("ALTER TABLE monitors ADD COLUMN scope TEXT NOT NULL DEFAULT '{}'")
+        if 'list_title' not in {row[1] for row in db.execute('PRAGMA table_info(monitors)')}:
+            db.execute('ALTER TABLE monitors ADD COLUMN list_title TEXT')
         for table in ('people', 'groups'):
             if 'name_ja' not in {row[1] for row in db.execute(f'PRAGMA table_info({table})')}:
                 db.execute(f'ALTER TABLE {table} ADD COLUMN name_ja TEXT')

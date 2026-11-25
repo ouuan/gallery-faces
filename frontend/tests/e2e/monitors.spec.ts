@@ -437,4 +437,7 @@ test("shared platform filter and canonical List batch", async ({ page }) => {
   await expect(dialog.getByRole('checkbox', { name: '引用' })).toBeChecked();
   await dialog.getByRole('button', { name: '取消' }).click();
   await expect(page.getByRole("link", { name: "Twitter List 123", exact: true })).toHaveAttribute("href", "https://x.com/i/lists/123/");
+  calls[2].nickname = '街头摄影';
+  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Twitter List · 街头摄影', exact: true })).toHaveAttribute('href', 'https://x.com/i/lists/123/');
 });

@@ -53,7 +53,7 @@ function monitorUrl(account: PublisherAccount) {
 }
 function monitorLabel(account: PublisherAccount, nickname?: string | null) {
   return account.platform === "x" && account.username.startsWith("i/lists/")
-    ? `Twitter List ${account.username.slice(8)}`
+    ? (nickname ? `Twitter List · ${nickname}` : `Twitter List ${account.username.slice(8)}`)
     : `${nickname && nickname.toLowerCase() !== account.username.toLowerCase() ? nickname + ' ' : ''}@${account.username}`;
 }
 const createResults = ref<{ account: PublisherAccount; error?: string }[]>([]);
