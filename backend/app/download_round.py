@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import db as storage
-from .metadata import save_source, source_image
+from .metadata import publisher_blocked, save_source, source_image
 from .feed_scope import feeds
 
 
@@ -126,6 +126,8 @@ class DownloadRound:
             meta['url'] = urlsplit(meta['url'])._replace(query='', fragment='').geturl()
         with storage.connect(True) as db:
             self.owner(db)
+            if publisher_blocked(db, meta):
+                return True
             if db.execute('''SELECT 1 FROM download_items WHERE (task_id,platform,post_key,media)=(?1,?2,?3,?4)
                 UNION ALL SELECT 1 FROM download_item_errors WHERE (task_id,platform,post_key,media)=(?1,?2,?3,?4) LIMIT 1''',
                           self.identity(meta)).fetchone():
@@ -177,7 +179,8 @@ class DownloadRound:
                 db.execute('INSERT INTO download_item_errors VALUES(?,?,?,?,?)', (*self.identity(meta), type(exc).__name__))
                 image_id = None
             else:
-                self.record(db, meta, image_id, outcome)
+                if image_id is not None:
+                    self.record(db, meta, image_id, outcome)
             db.execute('RELEASE import_item')
             db.execute('DELETE FROM download_ready WHERE task_id=?', (self.task_id,))
         path.unlink(missing_ok=True)

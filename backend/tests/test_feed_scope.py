@@ -220,7 +220,8 @@ def test_x_share_keeps_original_id_and_date(extractor_hooks, monkeypatch, kind):
         raw = {'legacy': {'id_str': shared_id, 'retweeted_status_id_str': '123', 'retweeted_status_result': {'result': original}},
                'user': {'protected': False}}
     data = TwitterExtractor._transform_tweet(extractor, raw)
-    assert data == {'tweet_id': '123', 'date': datetime(2026, 1, 1), 'source_date': datetime(2020, 1, 1)}
+    assert data == {'tweet_id': '123', 'date': datetime(2026, 1, 1), 'source_date': datetime(2020, 1, 1),
+                    'via_quote' if kind == 'quote' else 'via_retweet': True}
     original['user']['protected'] = True
     with pytest.raises(ValueError):
         TwitterExtractor._transform_tweet(extractor, raw)

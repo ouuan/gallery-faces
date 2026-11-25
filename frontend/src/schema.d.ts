@@ -1104,6 +1104,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/publishers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Publishers */
+        get: operations["list_publishers_api_v1_admin_publishers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/publishers/{platform}/{username}/rule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Rule */
+        put: operations["update_rule_api_v1_admin_publishers__platform___username__rule_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/publishers/{platform}/{username}/purge-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Purge Preview */
+        get: operations["purge_preview_api_v1_admin_publishers__platform___username__purge_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/publishers/{platform}/{username}/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Purge Posts */
+        post: operations["purge_posts_api_v1_admin_publishers__platform___username__purge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/review-packages/imports": {
         parameters: {
             query?: never;
@@ -1384,6 +1452,11 @@ export interface components {
             task_id?: number | null;
             /** Error */
             error?: string | null;
+        };
+        /** BlockRule */
+        BlockRule: {
+            /** Blocked */
+            blocked: ("all" | "retweets" | "quoted" | "tagged" | "reposts")[];
         };
         /** Body_cookie_upload_api_v1_admin_cookies__platform__post */
         Body_cookie_upload_api_v1_admin_cookies__platform__post: {
@@ -2266,6 +2339,19 @@ export interface components {
             /** Published At */
             published_at: string;
         };
+        /** Publisher */
+        Publisher: {
+            /** Blocked */
+            blocked: ("all" | "retweets" | "quoted" | "tagged" | "reposts")[];
+            /** Username */
+            username: string;
+            /** Label */
+            label: string;
+            /** Posts */
+            posts: number;
+            /** Linked */
+            linked: boolean;
+        };
         /** PublisherAvatar */
         PublisherAvatar: {
             /** Image Url */
@@ -2284,6 +2370,48 @@ export interface components {
             username: string;
             /** Label */
             label: string;
+        };
+        /** PublisherPage */
+        PublisherPage: {
+            /** Items */
+            items: components["schemas"]["Publisher"][];
+            /** Posts Count */
+            posts_count: number;
+            /** Rules Count */
+            rules_count: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** PurgePreview */
+        PurgePreview: {
+            /** Blocked */
+            blocked: ("all" | "retweets" | "quoted" | "tagged" | "reposts")[];
+            /** Posts */
+            posts: number;
+            /** Exclusive */
+            exclusive: number;
+            /** Shared */
+            shared: number;
+            /** References */
+            references: components["schemas"]["Reference"][];
+            /** Scope Token */
+            scope_token: string;
+        };
+        /** PurgeRequest */
+        PurgeRequest: {
+            /** Blocked */
+            blocked: ("all" | "retweets" | "quoted" | "tagged" | "reposts")[];
+            /** Scope Token */
+            scope_token: string;
+        };
+        /** PurgeResult */
+        PurgeResult: {
+            /** Posts */
+            posts: number;
+            /** Cleanup Pending */
+            cleanup_pending: number;
         };
         /** QueueItem */
         QueueItem: {
@@ -2350,6 +2478,15 @@ export interface components {
              * @enum {string}
              */
             kind: "recycle";
+        };
+        /** Reference */
+        Reference: {
+            /** Image Id */
+            image_id: number;
+            /** Reference Id */
+            reference_id: number;
+            /** Person */
+            person: string;
         };
         /** ReferenceInput */
         ReferenceInput: {
@@ -4956,6 +5093,145 @@ export interface operations {
                 };
                 content: {
                     "application/zip": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_publishers_api_v1_admin_publishers_get: {
+        parameters: {
+            query: {
+                platform: "x" | "instagram";
+                view?: "posts" | "rules";
+                search?: string;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublisherPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_rule_api_v1_admin_publishers__platform___username__rule_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                platform: "x" | "instagram";
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlockRule"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockRule"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purge_preview_api_v1_admin_publishers__platform___username__purge_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                platform: "x" | "instagram";
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurgePreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purge_posts_api_v1_admin_publishers__platform___username__purge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                platform: "x" | "instagram";
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurgeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurgeResult"];
                 };
             };
             /** @description Validation Error */

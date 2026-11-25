@@ -91,6 +91,7 @@ def install_policy(report_path=None, feed=None, scope=None):
     def tweet(self, raw):
         public_tweet(raw)
         legacy = raw.get('legacy', raw)
+        via_retweet = bool(legacy.get('retweeted_status_id_str') or raw.get('via_retweet'))
         shared_id = legacy.get('quoted_by_id_str')
         if scope and legacy.get('retweeted_status_id_str'):
             if core := raw.get('core'):
@@ -100,6 +101,10 @@ def install_policy(report_path=None, feed=None, scope=None):
             raw = original.get('tweet', original)
             public_tweet(raw)
         data = transform(self, normalize_twitter_text(raw))
+        if via_retweet:
+            data['via_retweet'] = True
+        if legacy.get('quoted_by_id_str'):
+            data['via_quote'] = True
         if scope and shared_id:
             data['source_date'] = data['date']
             data['date'] = self._tweetid_to_datetime(int(shared_id))
@@ -122,6 +127,8 @@ def install_policy(report_path=None, feed=None, scope=None):
                         if not scope.get('retweets') and 'retweeted_status_id_str' in parent.get('legacy', parent):
                             continue
                         public_tweet(parent)
+                        if parent.get('legacy', parent).get('retweeted_status_id_str'):
+                            raw['via_retweet'] = True
                         if parent.get('pinned'):
                             raw['pinned'] = True
                     else:
@@ -182,7 +189,7 @@ def install_library_filter(report_path=None, restore_id=None, hashtags=(), cache
     from gallery_dl.job import DownloadJob
     from .db import connect
     from .hashtags import matches_hashtags
-    from .metadata import metadata, source_image
+    from .metadata import metadata, publisher_blocked, source_image
 
     original = DownloadJob.handle_url
     wanted = frozenset(hashtags)
@@ -199,7 +206,8 @@ def install_library_filter(report_path=None, restore_id=None, hashtags=(), cache
             raise ValueError('Cache recovery requires a single post')
 
     def handle_url(self, url, raw):
-        meta = metadata({**raw, "category": self.extractor.category}, "")
+        meta = metadata({**raw, 'category': self.extractor.category,
+                         'subcategory': getattr(self.extractor, 'subcategory', raw.get('subcategory'))}, '')
         if not matches_hashtags(wanted, raw, meta):
             return
         if active:
@@ -234,6 +242,8 @@ def install_library_filter(report_path=None, restore_id=None, hashtags=(), cache
                 return original(self, url, raw)
             return
         with connect() as db:
+            if restore_id is None and publisher_blocked(db, meta):
+                return
             known = source_image(db, meta)
         if restore_id is not None:
             if not known or known["id"] != restore_id:

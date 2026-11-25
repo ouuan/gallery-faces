@@ -3591,6 +3591,272 @@
         }
       }
     },
+    "/api/v1/admin/publishers": {
+      "get": {
+        "summary": "List Publishers",
+        "operationId": "list_publishers_api_v1_admin_publishers_get",
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "x",
+                "instagram"
+              ],
+              "type": "string",
+              "title": "Platform"
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "posts",
+                "rules"
+              ],
+              "type": "string",
+              "default": "posts",
+              "title": "View"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Search"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 30,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublisherPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/publishers/{platform}/{username}/rule": {
+      "put": {
+        "summary": "Update Rule",
+        "operationId": "update_rule_api_v1_admin_publishers__platform___username__rule_put",
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "x",
+                "instagram"
+              ],
+              "type": "string",
+              "title": "Platform"
+            }
+          },
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Username"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockRule"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockRule"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/publishers/{platform}/{username}/purge-preview": {
+      "get": {
+        "summary": "Purge Preview",
+        "operationId": "purge_preview_api_v1_admin_publishers__platform___username__purge_preview_get",
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "x",
+                "instagram"
+              ],
+              "type": "string",
+              "title": "Platform"
+            }
+          },
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Username"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurgePreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/publishers/{platform}/{username}/purge": {
+      "post": {
+        "summary": "Purge Posts",
+        "operationId": "purge_posts_api_v1_admin_publishers__platform___username__purge_post",
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "x",
+                "instagram"
+              ],
+              "type": "string",
+              "title": "Platform"
+            }
+          },
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Username"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurgeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurgeResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/review-packages/imports": {
       "post": {
         "summary": "Import Review",
@@ -4396,6 +4662,30 @@
           "status"
         ],
         "title": "BatchResult"
+      },
+      "BlockRule": {
+        "properties": {
+          "blocked": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "all",
+                "retweets",
+                "quoted",
+                "tagged",
+                "reposts"
+              ]
+            },
+            "type": "array",
+            "title": "Blocked"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "blocked"
+        ],
+        "title": "BlockRule"
       },
       "Body_cookie_upload_api_v1_admin_cookies__platform__post": {
         "properties": {
@@ -6865,6 +7155,50 @@
         ],
         "title": "PublicPost"
       },
+      "Publisher": {
+        "properties": {
+          "blocked": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "all",
+                "retweets",
+                "quoted",
+                "tagged",
+                "reposts"
+              ]
+            },
+            "type": "array",
+            "title": "Blocked"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "posts": {
+            "type": "integer",
+            "title": "Posts"
+          },
+          "linked": {
+            "type": "boolean",
+            "title": "Linked"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "blocked",
+          "username",
+          "label",
+          "posts",
+          "linked"
+        ],
+        "title": "Publisher"
+      },
       "PublisherAvatar": {
         "properties": {
           "image_url": {
@@ -6916,6 +7250,141 @@
           "label"
         ],
         "title": "PublisherCandidate"
+      },
+      "PublisherPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Publisher"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "posts_count": {
+            "type": "integer",
+            "title": "Posts Count"
+          },
+          "rules_count": {
+            "type": "integer",
+            "title": "Rules Count"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "posts_count",
+          "rules_count",
+          "page",
+          "page_size"
+        ],
+        "title": "PublisherPage"
+      },
+      "PurgePreview": {
+        "properties": {
+          "blocked": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "all",
+                "retweets",
+                "quoted",
+                "tagged",
+                "reposts"
+              ]
+            },
+            "type": "array",
+            "title": "Blocked"
+          },
+          "posts": {
+            "type": "integer",
+            "title": "Posts"
+          },
+          "exclusive": {
+            "type": "integer",
+            "title": "Exclusive"
+          },
+          "shared": {
+            "type": "integer",
+            "title": "Shared"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/Reference"
+            },
+            "type": "array",
+            "title": "References"
+          },
+          "scope_token": {
+            "type": "string",
+            "title": "Scope Token"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "blocked",
+          "posts",
+          "exclusive",
+          "shared",
+          "references",
+          "scope_token"
+        ],
+        "title": "PurgePreview"
+      },
+      "PurgeRequest": {
+        "properties": {
+          "blocked": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "all",
+                "retweets",
+                "quoted",
+                "tagged",
+                "reposts"
+              ]
+            },
+            "type": "array",
+            "title": "Blocked"
+          },
+          "scope_token": {
+            "type": "string",
+            "title": "Scope Token"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "blocked",
+          "scope_token"
+        ],
+        "title": "PurgeRequest"
+      },
+      "PurgeResult": {
+        "properties": {
+          "posts": {
+            "type": "integer",
+            "title": "Posts"
+          },
+          "cleanup_pending": {
+            "type": "integer",
+            "title": "Cleanup Pending"
+          }
+        },
+        "type": "object",
+        "required": [
+          "posts",
+          "cleanup_pending"
+        ],
+        "title": "PurgeResult"
       },
       "QueueItem": {
         "properties": {
@@ -7181,6 +7650,29 @@
           "kind"
         ],
         "title": "Recycle"
+      },
+      "Reference": {
+        "properties": {
+          "image_id": {
+            "type": "integer",
+            "title": "Image Id"
+          },
+          "reference_id": {
+            "type": "integer",
+            "title": "Reference Id"
+          },
+          "person": {
+            "type": "string",
+            "title": "Person"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_id",
+          "reference_id",
+          "person"
+        ],
+        "title": "Reference"
       },
       "ReferenceInput": {
         "properties": {

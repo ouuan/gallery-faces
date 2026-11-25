@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, field_validator
 from .open_graph import render_open_graph
-from . import daily, list_queries, publisher_avatars, review_packages, social
+from . import daily, list_queries, publisher_avatars, publishers, review_packages, social
 from .review_format import fits
 from .group_index import REVIEW_FLAGS
 from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, cleanup_deleted_files, startup_phase
@@ -2308,6 +2308,7 @@ from .monitors import install as install_monitors
 install_monitors(app, admin)
 from .review_results import install as install_review_results
 review_packages.install(app, admin)
+publishers.install(app, admin)
 install_review_results(app, admin)
 
 static = Path(os.environ.get("FRONTEND_DIR", "../frontend/dist"))

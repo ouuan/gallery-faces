@@ -122,7 +122,16 @@ def metadata(raw, filename):
             raw.get("full_text"), raw.get("text"),
         ])
     text = next((value for value in text_fields if isinstance(value, str) and value.strip()), None)
+    discovery = []
+    if platform == 'x':
+        if raw.get('subcategory') == 'reposts' or raw.get('via_retweet') or raw.get('retweet_id') not in (None, 0, '', '0'):
+            discovery.append('retweets')
+        if raw.get('quote_id') not in (None, 0, '', '0') or raw.get('via_quote'):
+            discovery.append('quoted')
+    elif raw.get('subcategory') in ('tagged', 'reposts'):
+        discovery.append(raw['subcategory'])
     return dict(
+        discovery=discovery,
         platform=platform,
         key=key or "incomplete:" + filename,
         author=author,
@@ -146,6 +155,21 @@ def source_image(db, meta):
         "SELECT i.* FROM sources s JOIN posts p ON p.id=s.post_id JOIN images i ON i.id=s.image_id WHERE p.platform=? AND p.post_key=? AND s.media_key=?",
         (meta["platform"], meta["key"], meta["media"]),
     ).fetchone()
+
+
+def publisher_blocked(db, meta):
+    author = meta.get('author')
+    if not author:
+        post = db.execute('SELECT author FROM posts WHERE platform=? AND post_key=?', (meta['platform'], meta['key'])).fetchone()
+        if not post or not post['author']:
+            return False
+        author = post['author']
+    row = db.execute('SELECT blocked FROM publisher_rules WHERE platform=? AND username=?',
+                     (meta['platform'], author)).fetchone()
+    if not row:
+        return False
+    blocked = json.loads(row[0])
+    return 'all' in blocked or not set(blocked).isdisjoint(meta.get('discovery', ()))
 
 
 def save_source(db, image_id, meta):

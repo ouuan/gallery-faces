@@ -8,7 +8,7 @@ from PIL import Image, ImageOps
 from .db import DATA, IMPORT, connect, settings, file_hash
 from .vision import phash, similarity
 from .media_cache import asset, Unavailable
-from .metadata import metadata, validate_url, source_image, save_source, in_date_range
+from .metadata import metadata, validate_url, source_image, save_source, in_date_range, publisher_blocked
 
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".avif"}
 
@@ -85,6 +85,8 @@ def import_file(path, raw, start=None, end=None, *, counts=None, task_id=None):
         return None
     with connect(True) as db:
         image_id, outcome = import_media(db, path, meta)
+        if image_id is None:
+            return None
         if task_id is not None and db.execute('INSERT OR IGNORE INTO directory_items VALUES(?,?,?)',
                                               (task_id, str(path), image_id)).rowcount:
             field = '$.' + outcome
@@ -98,6 +100,8 @@ def import_file(path, raw, start=None, end=None, *, counts=None, task_id=None):
 
 
 def import_media(db, path, meta, *, tier='bulk'):
+    if publisher_blocked(db, meta):
+        return None, 'blocked'
     known = source_image(db, meta)
     if known and known['hidden']:
         image = known
@@ -117,7 +121,9 @@ def import_media(db, path, meta, *, tier='bulk'):
     else:
         group = db.execute('INSERT INTO duplicate_groups DEFAULT VALUES').lastrowid
         image_id = db.execute(
-            'INSERT INTO images(sha256,filename,width,height,phash,group_id,file_size) VALUES(?,?,?,?,?,?,?)',
+            '''INSERT INTO images(id,sha256,filename,width,height,phash,group_id,file_size)
+               VALUES((SELECT max(CAST(value AS INTEGER),coalesce((SELECT max(id) FROM images),0))+1
+                       FROM private_config WHERE key='purged_image_id'),?,?,?,?,?,?,?)''',
             (digest, filename, width, height, phash(target), group, path.stat().st_size),
         ).lastrowid
         from .db import schedule_detection

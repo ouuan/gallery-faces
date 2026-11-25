@@ -72,6 +72,7 @@ CREATE INDEX IF NOT EXISTS face_image ON faces(image_id);
 CREATE INDEX IF NOT EXISTS image_group ON images(group_id);
 CREATE INDEX IF NOT EXISTS post_date ON posts(published_at,id);
 CREATE INDEX IF NOT EXISTS post_account ON posts(platform,lower(author));
+CREATE TABLE IF NOT EXISTS publisher_rules(platform TEXT NOT NULL,username TEXT NOT NULL COLLATE NOCASE,label TEXT NOT NULL,blocked TEXT NOT NULL,PRIMARY KEY(platform,username)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS publisher_avatars(platform TEXT NOT NULL,username TEXT NOT NULL,digest TEXT,image BLOB,next_check INTEGER NOT NULL DEFAULT 0,failures INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(platform,username));
 CREATE INDEX IF NOT EXISTS avatar_digest ON publisher_avatars(digest);
 CREATE UNIQUE INDEX IF NOT EXISTS active_avatar ON tasks(payload) WHERE kind='avatar' AND status IN ('queued','running');
@@ -348,8 +349,10 @@ def cleanup_deleted_files():
         return db.execute("SELECT count(*) FROM pending_file_deletions").fetchone()[0]
 
 
-def queue_image_cleanup(db, image, originals=None):
+def queue_image_cleanup(db, image, originals=None, *, thumbnail=False):
     paths = [DATA / "images" / image["filename"]]
+    if thumbnail:
+        paths.append(DATA / 'thumbs' / image['filename'])
     paths.extend((DATA / "originals").glob(image["sha256"] + ".*") if originals is None else originals)
     db.executemany(
         "INSERT OR IGNORE INTO pending_file_deletions(path,sha256,filename) VALUES(?,?,?)",

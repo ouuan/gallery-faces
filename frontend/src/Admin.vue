@@ -20,7 +20,7 @@ import {
   NSlider,
   useMessage,
 } from "naive-ui";
-import { Download, Users, ScanFace, Copy, Settings, LogOut } from "@lucide/vue";
+import { Radar, Download, Users, ScanFace, Copy, AtSign, Settings, LogOut } from "@lucide/vue";
 import { api, send } from "./api";
 import { useLibrary } from "./store";
 import { usePageTitle } from "./page-title";
@@ -29,6 +29,7 @@ import FeedFormActions from './FeedFormActions.vue';
 import { defaultScope, feedPlatforms, importScopePlatforms } from './feed-scope';
 import { usePublisherSelection, mergeImportUrls } from "./publisher-selection";
 import Monitors from "./Monitors.vue";
+import Publishers from './Publishers.vue';
 import HashtagField from "./HashtagField.vue";
 import People from "./People.vue";
 import Review from "./Review.vue";
@@ -139,11 +140,12 @@ async function loadTasks(page = taskPage.value, background = false) {
   }
 }
 const nav = [
-  { id: "monitors", label: "发布者监控", icon: Users },
+  { id: "monitors", label: "发布者监控", icon: Radar },
   { id: "import", label: "导入任务", icon: Download },
   { id: "people", label: "人物与分组", icon: Users },
   { id: "review", label: "识别审核", icon: ScanFace },
   { id: "duplicates", label: "重复图片", icon: Copy },
+  { id: "publishers", label: "未关联发布者", icon: AtSign },
   { id: "settings", label: "设置", icon: Settings },
 ];
 usePageTitle(() => {
@@ -327,6 +329,7 @@ onUnmounted(() => {
     <section class="admin-content">
       <h1>{{ nav.find((n) => n.id === section)?.label || "管理工作台" }}</h1>
       <Monitors v-if="section === 'monitors'" />
+      <Publishers v-else-if="section === 'publishers'" />
       <n-alert v-if="error" type="error" closable @close="error = ''">{{
         error
       }}</n-alert><template v-if="section === 'import'"
