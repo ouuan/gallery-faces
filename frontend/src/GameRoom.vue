@@ -18,7 +18,7 @@ const { code, token, room, busy, error, syncError, seconds, enter, act } = useGa
 usePageTitle(() => code.value ? `对战房间 ${code.value}` : '多人对战');
 const query = computed(() => filterOnlyQuery(fromQuery(route.query)));
 const nickname = ref(sessionStorage.getItem('face-room:name') || ''), joinCode = ref(''), joining = ref(false);
-const settings = ref<Settings>({ cropped: false, single_life: false, answer_seconds: 15, continue_seconds: 10 });
+const settings = ref<Settings>({ cropped: true, single_life: false, answer_seconds: 15, continue_seconds: 10 });
 const person = ref<number | null>(null), notFace = ref(false), content = ref(''), editing = ref(false), showLink = ref(false);
 const me = computed(() => room.value?.players.find(player => player.id === room.value?.me));
 const host = computed(() => me.value?.id === room.value?.host);

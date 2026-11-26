@@ -17,7 +17,7 @@ def match(client, monkeypatch):
     monkeypatch.setattr('app.photo_draw.random.random', lambda: 1)
     with db.connect(True) as conn:
         seed(conn)
-    member = client.post(BASE, json={'nickname': '甲', 'filters': {'people': '1,2'}, 'settings': {'cropped': True}}).json()
+    member = client.post(BASE, json={'nickname': '甲', 'filters': {'people': '1,2'}}).json()
     path = f"{BASE}/{member['code']}"
     credentials = [member['token']]
 

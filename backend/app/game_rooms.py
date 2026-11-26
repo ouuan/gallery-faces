@@ -18,7 +18,7 @@ clock = time.monotonic
 class RoomSettings(BaseModel):
     answer_seconds: int = Field(default=15, ge=3, le=300)
     continue_seconds: int = Field(default=10, ge=0, le=300)
-    cropped: bool = False
+    cropped: bool = True
     single_life: bool = False
 
 

@@ -9640,7 +9640,7 @@
           "cropped": {
             "type": "boolean",
             "title": "Cropped",
-            "default": false
+            "default": true
           },
           "single_life": {
             "type": "boolean",

@@ -3115,7 +3115,7 @@ export interface components {
             continue_seconds: number;
             /**
              * Cropped
-             * @default false
+             * @default true
              */
             cropped: boolean;
             /**

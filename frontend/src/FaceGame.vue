@@ -28,7 +28,7 @@ const correctId = computed(() => question.value && correctChoice(question.value)
 const submitted = computed(() => game.round ? feedbackReceipt(game.round, game.outcomes) : undefined);
 const latest = useLatestRequest(), details = useLatestRequest();
 const loading = ref(false), error = ref(''), empty = ref(false);
-const cropped = ref(localStorage.getItem('face-game:cropped') === 'true');
+const cropped = ref(localStorage.getItem('face-game:cropped') !== 'false');
 watch(cropped, value => localStorage.setItem('face-game:cropped', String(value)));
 const photo = computed(() => !loading.value && !error.value && question.value ? { ...question.value, box: question.value.face.box } : null);
 const detail = ref<Photo | null>(null), detailError = ref(''), authenticated = ref(false);

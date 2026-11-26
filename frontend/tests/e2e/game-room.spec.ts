@@ -24,7 +24,7 @@ test('three guests share a cropped round, a correction and the final score', asy
     const [host, guest, late] = await Promise.all(contexts.map(context => context.newPage()));
     await host.goto('/face-game?people=1,2&publishers=x:alice&start=2025-01-01T00:00:00Z');
     const mode = host.getByRole('switch', { name: '截取人脸' });
-    await mode.click();
+    await expect(mode).toBeChecked();
     await expect(host.getByRole('heading', { name: '这是谁？' })).toBeVisible();
     await expect(host.getByRole('button', { name: '按住放大人脸' })).toHaveCount(0);
     await host.getByRole('button', { name: '人2', exact: true }).click();
@@ -34,7 +34,7 @@ test('three guests share a cropped round, a correction and the final score', asy
     await host.getByRole('link', { name: '多人对战' }).click();
     const longName = '这是一位昵称很长需要在窄屏选项内省略的玩家';
     await host.getByRole('textbox', { name: '昵称' }).fill(longName);
-    await host.getByRole('switch', { name: '截取人脸' }).click();
+    await expect(host.getByRole('switch', { name: '截取人脸' })).toBeChecked();
     for (const [index, value] of ['90', '0'].entries()) {
       const input = host.locator('.n-input-number input').nth(index);
       await input.fill(value); await input.press('Tab');
