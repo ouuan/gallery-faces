@@ -469,6 +469,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/gallery/random": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Random Photo */
+        get: operations["random_photo_api_v1_gallery_random_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gallery/random/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Random Image */
+        get: operations["random_image_api_v1_gallery_random_image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/gallery/{group_id}": {
         parameters: {
             query?: never;
@@ -1691,15 +1725,6 @@ export interface components {
             /** Id */
             id: number;
         };
-        /** DailyPhoto */
-        DailyPhoto: {
-            /** Date */
-            date: string;
-            /** Group Id */
-            group_id: number;
-            /** Image Url */
-            image_url: string;
-        };
         /** Decision */
         Decision: {
             /**
@@ -2307,6 +2332,15 @@ export interface components {
             person_id: number;
             /** Name Ja */
             name_ja: string;
+        };
+        /** PhotoDraw */
+        PhotoDraw: {
+            /** Date */
+            date: string;
+            /** Group Id */
+            group_id: number;
+            /** Image Url */
+            image_url: string;
         };
         /** PostDetail */
         PostDetail: {
@@ -3705,7 +3739,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DailyPhoto"];
+                    "application/json": components["schemas"]["PhotoDraw"];
                 };
             };
             /** @description Validation Error */
@@ -3720,6 +3754,92 @@ export interface operations {
         };
     };
     daily_image_api_v1_gallery_daily_image_get: {
+        parameters: {
+            query?: {
+                people?: string;
+                match?: "any" | "all" | "exact" | "subset";
+                publishers?: string;
+                start?: string;
+                end?: string;
+                include_no_faces?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
+                };
+            };
+            /** @description No matching public photo is available */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Media temporarily unavailable; retry later */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    random_photo_api_v1_gallery_random_get: {
+        parameters: {
+            query?: {
+                people?: string;
+                match?: "any" | "all" | "exact" | "subset";
+                publishers?: string;
+                start?: string;
+                end?: string;
+                include_no_faces?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoDraw"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    random_image_api_v1_gallery_random_image_get: {
         parameters: {
             query?: {
                 people?: string;

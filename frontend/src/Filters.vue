@@ -8,12 +8,12 @@ import {
   NRadioButton,
 } from "naive-ui";
 import { useLibrary } from "./store";
-import { CalendarDays, Rss } from "@lucide/vue";
-import { dailyQuery, feedHref, hasFilters, type Filter } from "./filters";
+import { CalendarDays, Rss, Shuffle } from "@lucide/vue";
+import { filterOnlyQuery, feedHref, hasFilters, type Filter } from "./filters";
 import DateRangeHint from "./DateRangeHint.vue";
 import PublisherSelect from "./PublisherSelect.vue";
 import PeopleMultiSelect from "./PeopleMultiSelect.vue";
-const props = defineProps<{ modelValue: Filter; hideNoFaces?: boolean; showDaily?: boolean; contained?: boolean }>(),
+const props = defineProps<{ modelValue: Filter; hideNoFaces?: boolean; showGalleryLinks?: boolean; contained?: boolean }>(),
   emit = defineEmits(["update:modelValue", "clear"]);
 const store = useLibrary();
 const personValues = computed(() =>
@@ -85,17 +85,18 @@ function set(key: keyof Filter, value: any) {
       @update:checked="set('include_no_faces', $event)"
       >{{ t("包含无人脸图片") }}</n-checkbox
     >
-    <div v-if="showDaily" class="gallery-links"><router-link class="daily-link" :to="{ path: '/daily', query: dailyQuery(modelValue) }">
-      <CalendarDays :size="18" aria-hidden="true" />每日一图
-    </router-link>
-      <span class="gallery-links-divider" aria-hidden="true"></span>
+    <div v-if="showGalleryLinks" class="gallery-links">
+      <router-link class="icon-link" :to="{ path: '/daily', query: filterOnlyQuery(modelValue) }" title="每日一图" aria-label="每日一图">
+        <CalendarDays :size="18" aria-hidden="true" />
+      </router-link>
+      <router-link class="icon-link" :to="{ path: '/random', query: filterOnlyQuery(modelValue) }" title="随机图片" aria-label="随机图片">
+        <Shuffle :size="18" aria-hidden="true" />
+      </router-link>
       <a class="icon-link" :href="feedHref(modelValue)" title="订阅图库 RSS" aria-label="订阅图库 RSS"><Rss :size="18" aria-hidden="true" /></a></div>
   </div>
 </template>
 <style scoped>
 .gallery-links { display: flex; align-items: center; justify-content: center; border-top: 1px solid var(--line); padding-top: 8px; }
-.gallery-links-divider { height: 18px; border-inline-start: 1px solid var(--line); }
-.daily-link { display: flex; align-items: center; gap: 8px; min-height: 44px; padding-inline: 13px; }
 .filters-ja > .section-heading { min-height: 44px; gap: 8px; }
 .filters-ja .filter-clear { position: static; transform: none; flex-shrink: 0; }
 .filters-ja .field-label.date-field { grid-template-columns: 2em minmax(0, 1fr); gap: 8px; }

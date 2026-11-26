@@ -320,7 +320,7 @@ onUnmounted(() => {
   <main class="gallery-shell">
     <aside class="desktop-filters">
       <Filters
-        show-daily
+        show-gallery-links
         :model-value="filter"
         @update:model-value="apply"
         @clear="apply(clearFilters(filter))"
@@ -455,7 +455,7 @@ onUnmounted(() => {
     aria-label="筛选照片"
     @update:show="!$event && applyAndCloseFilters()"
     ><n-drawer-content
-      ><Filters v-model="draft" contained show-daily @clear="draft = clearFilters(draft)" /><template
+      ><Filters v-model="draft" contained show-gallery-links @clear="draft = clearFilters(draft)" /><template
         #footer
         ><n-button
           type="primary"

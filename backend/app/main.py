@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, field_validator
 from .open_graph import render_open_graph
-from . import daily, list_queries, publisher_avatars, publishers, review_packages, social
+from . import list_queries, photo_draw, publisher_avatars, publishers, review_packages, social
 from .review_format import fits
 from .group_index import REVIEW_FLAGS
 from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, cleanup_deleted_files, startup_phase
@@ -1090,38 +1090,42 @@ def download_gallery(reads: MediaReads, groups: str = Query(min_length=1, max_le
     })
 
 
-class DailyPhoto(BaseModel):
+class PhotoDraw(BaseModel):
     date: str
     group_id: int
     image_url: str
 
 
-def daily_selection(reads: MediaReads, people: str = '', match: PeopleMatch = 'any', publishers: str = '',
-                    start: str = '', end: str = '', include_no_faces: bool = False):
-    ids, accounts = parse_people_publishers(people, publishers)
-    bounds = date_bounds(start, end)
-    source, args = source_filter(accounts, *bounds)
-    key = daily.filter_key(ids, match, accounts, bounds, include_no_faces)
-    def pin(identifier):
-        reads.close()
-        return pin_public(reads, public_row(identifier), 'image')
-    return daily.resolve(key, (ids, match, source, args, include_no_faces), pin)
+def register_photo_draw(mode):
+    def selection(reads: MediaReads, people: str = '', match: PeopleMatch = 'any', publishers: str = '',
+                  start: str = '', end: str = '', include_no_faces: bool = False):
+        ids, accounts = parse_people_publishers(people, publishers)
+        bounds = date_bounds(start, end)
+        source, args = source_filter(accounts, *bounds)
+        key = photo_draw.filter_key(ids, match, accounts, bounds, include_no_faces) if mode == 'daily' else None
+
+        def pin(identifier):
+            reads.close()
+            return pin_public(reads, public_row(identifier), 'image')
+        return photo_draw.resolve(key, (ids, match, source, args, include_no_faces), pin)
+
+    @app.get(f'/api/v1/gallery/{mode}', name=f'{mode}_photo', response_model=PhotoDraw)
+    def photo(picked=Depends(selection)):
+        day, group, (variant, _, row) = picked
+        return PhotoDraw(date=day, group_id=group, image_url=variant_url(row, variant))
+
+    @app.get(f'/api/v1/gallery/{mode}/image', name=f'{mode}_image', response_class=FileResponse, responses={
+        200: {'content': {'image/*': {'schema': {'type': 'string', 'format': 'binary'}}}},
+        404: {'description': 'No matching public photo is available'},
+        503: {'description': 'Media temporarily unavailable; retry later'},
+    })
+    def image(picked=Depends(selection)):
+        _, _, (variant, path, row) = picked
+        return FileResponse(path, media_type=mimetypes.guess_type(media_name(row, variant))[0])
 
 
-@app.get('/api/v1/gallery/daily', response_model=DailyPhoto)
-def daily_photo(selection=Depends(daily_selection)):
-    day, group, (variant, _, row) = selection
-    return DailyPhoto(date=day, group_id=group, image_url=variant_url(row, variant))
-
-
-@app.get('/api/v1/gallery/daily/image', response_class=FileResponse, responses={
-    200: {'content': {'image/*': {'schema': {'type': 'string', 'format': 'binary'}}}},
-    404: {'description': 'No matching public photo is available'},
-    503: {'description': 'Media temporarily unavailable; retry later'},
-})
-def daily_image(selection=Depends(daily_selection)):
-    _, _, (variant, path, row) = selection
-    return FileResponse(path, media_type=mimetypes.guess_type(media_name(row, variant))[0])
+register_photo_draw('daily')
+register_photo_draw('random')
 
 
 @app.get("/api/v1/gallery/{group_id}", response_model=GalleryPhoto)

@@ -1367,7 +1367,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DailyPhoto"
+                  "$ref": "#/components/schemas/PhotoDraw"
                 }
               }
             }
@@ -1389,6 +1389,205 @@
       "get": {
         "summary": "Daily Image",
         "operationId": "daily_image_api_v1_gallery_daily_image_get",
+        "parameters": [
+          {
+            "name": "people",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "People"
+            }
+          },
+          {
+            "name": "match",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "any",
+                "all",
+                "exact",
+                "subset"
+              ],
+              "type": "string",
+              "default": "any",
+              "title": "Match"
+            }
+          },
+          {
+            "name": "publishers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Publishers"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "End"
+            }
+          },
+          {
+            "name": "include_no_faces",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include No Faces"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No matching public photo is available"
+          },
+          "503": {
+            "description": "Media temporarily unavailable; retry later"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/gallery/random": {
+      "get": {
+        "summary": "Random Photo",
+        "operationId": "random_photo_api_v1_gallery_random_get",
+        "parameters": [
+          {
+            "name": "people",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "People"
+            }
+          },
+          {
+            "name": "match",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "any",
+                "all",
+                "exact",
+                "subset"
+              ],
+              "type": "string",
+              "default": "any",
+              "title": "Match"
+            }
+          },
+          {
+            "name": "publishers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Publishers"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "End"
+            }
+          },
+          {
+            "name": "include_no_faces",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include No Faces"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoDraw"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/gallery/random/image": {
+      "get": {
+        "summary": "Random Image",
+        "operationId": "random_image_api_v1_gallery_random_image_get",
         "parameters": [
           {
             "name": "people",
@@ -5458,29 +5657,6 @@
         ],
         "title": "Created"
       },
-      "DailyPhoto": {
-        "properties": {
-          "date": {
-            "type": "string",
-            "title": "Date"
-          },
-          "group_id": {
-            "type": "integer",
-            "title": "Group Id"
-          },
-          "image_url": {
-            "type": "string",
-            "title": "Image Url"
-          }
-        },
-        "type": "object",
-        "required": [
-          "date",
-          "group_id",
-          "image_url"
-        ],
-        "title": "DailyPhoto"
-      },
       "Decision": {
         "properties": {
           "decision": {
@@ -7106,6 +7282,29 @@
           "name_ja"
         ],
         "title": "PersonNameJa"
+      },
+      "PhotoDraw": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "group_id": {
+            "type": "integer",
+            "title": "Group Id"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "group_id",
+          "image_url"
+        ],
+        "title": "PhotoDraw"
       },
       "PostDetail": {
         "properties": {

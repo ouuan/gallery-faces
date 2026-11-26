@@ -42,7 +42,7 @@ def resolve(key, filters, pin):
         with connect() as db:
             db.execute('BEGIN')
             day = local_day()
-            saved = saved_pick(db, key)
+            saved = saved_pick(db, key) if key is not None else None
             last = saved[1] if saved else None
             current = candidates(db, filters, group_id=last) if saved and saved[0] == day else []
         if current:
@@ -70,13 +70,14 @@ def resolve(key, filters, pin):
                     continue
                 raise
 
-            with connect(True) as db:
-                if local_day() != day or saved_pick(db, key) != saved:
+            with connect(key is not None) as db:
+                if key is not None and (local_day() != day or saved_pick(db, key) != saved):
                     break
                 if candidates(db, filters, group_id=group) != [(group, representative)]:
                     continue
-                db.execute('INSERT INTO daily_picks VALUES(?,?,?) ON CONFLICT(filter_key) DO UPDATE SET '
-                           'day=excluded.day,group_id=excluded.group_id', (key, day, group))
+                if key is not None:
+                    db.execute('INSERT INTO daily_picks VALUES(?,?,?) ON CONFLICT(filter_key) DO UPDATE SET '
+                               'day=excluded.day,group_id=excluded.group_id', (key, day, group))
                 return day, group, asset
         else:
             raise HTTPException(404, '当前筛选下没有可展示的照片')

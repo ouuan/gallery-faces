@@ -4,11 +4,12 @@ from datetime import date, datetime, timezone
 
 from fastapi import HTTPException
 
-from app import daily, db, main
+from app import db, main, photo_draw
 from test_workflows import client, image
 
 
 DAILY = '/api/v1/gallery/daily'
+RANDOM = '/api/v1/gallery/random'
 
 
 def photo(conn, **kwargs):
@@ -21,7 +22,7 @@ def photo(conn, **kwargs):
 
 def test_rotation_persistence_and_bytes(client, monkeypatch):
     day = '2026-11-01'
-    monkeypatch.setattr(daily, 'local_day', lambda: day)
+    monkeypatch.setattr(photo_draw, 'local_day', lambda: day)
     assert client.get(DAILY).status_code == 404
     with db.connect(True) as conn:
         first = photo(conn)
@@ -43,6 +44,25 @@ def test_rotation_persistence_and_bytes(client, monkeypatch):
         assert meta.json()['group_id'] == expected
 
 
+def test_random_draws_again_for_page_and_image_without_changing_daily(client, monkeypatch):
+    with db.connect(True) as conn:
+        first = photo(conn)
+    assert client.get(DAILY).json()['group_id'] == first
+    with db.connect(True) as conn:
+        second = photo(conn)
+
+    picks = iter([second, first, second])
+    monkeypatch.setattr(photo_draw, 'draw', lambda filters, last: [(group, group) for group in [next(picks)]])
+    for expected in (second, first):
+        response = client.get(RANDOM)
+        assert response.json()['group_id'] == expected
+        assert response.headers['cache-control'] == 'no-store'
+    direct = client.get(RANDOM + '/image')
+    assert direct.content == f'{second}.jpg'.encode()
+    assert direct.headers['cache-control'] == 'no-store'
+    assert client.get(DAILY).json()['group_id'] == first
+
+
 def test_filter_identity_and_gallery_eligibility(client):
     with db.connect(True) as conn:
         group = photo(conn)
@@ -55,6 +75,7 @@ def test_filter_identity_and_gallery_eligibility(client):
                       sort='oldest', start='2026-01-01T08:00:00+08:00')
     for params in (base, equivalent):
         assert client.get(DAILY, params=params).json()['group_id'] == group
+        assert client.get(RANDOM, params=params).json()['group_id'] == group
     with db.connect() as conn:
         assert conn.execute('SELECT count(*) FROM daily_picks').fetchone()[0] == 1
     assert client.get(DAILY, params={'publishers': 'x:bob'}).json()['group_id'] == group
@@ -63,6 +84,7 @@ def test_filter_identity_and_gallery_eligibility(client):
     with db.connect(True) as conn:
         conn.execute('UPDATE faces SET person_id=NULL')
     assert client.get(DAILY, params=base).status_code == 404
+    assert client.get(RANDOM, params=base).status_code == 404
     assert client.get(DAILY, params={'people': '-1'}).status_code == 400
 
 
@@ -103,14 +125,14 @@ def test_day_uses_local_midnight(monkeypatch):
         def today(cls):
             return cls.fromtimestamp(instant.timestamp())
 
-    monkeypatch.setattr(daily, 'date', TestDate)
+    monkeypatch.setattr(photo_draw, 'date', TestDate)
     try:
         with monkeypatch.context() as patch:
             patch.setenv('TZ', 'Asia/Shanghai')
             time.tzset()
             instant = datetime(2026, 11, 21, 15, 59, 59, tzinfo=timezone.utc)
-            assert daily.local_day() == '2026-11-21'
+            assert photo_draw.local_day() == '2026-11-21'
             instant = instant.replace(hour=16, minute=0, second=0)
-            assert daily.local_day() == '2026-11-22'
+            assert photo_draw.local_day() == '2026-11-22'
     finally:
         time.tzset()

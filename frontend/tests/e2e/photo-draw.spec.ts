@@ -1,15 +1,15 @@
 import { expect, test } from '@playwright/test';
 
-for (const width of [390, 1280]) {
-  test(`daily links preserve the selected filters at ${width}px`, async ({ page }) => {
+for (const [mode, label] of [['daily', '每日一图'], ['random', '随机图片']]) {
+  for (const width of [390, 1280]) test(`${mode} links preserve the selected filters at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
     const imagePath = '/api/v1/media/42';
-    const dailyRequests: string[] = [];
+    const requests: string[] = [];
     await page.route('**/api/v1/**', route => {
       const url = new URL(route.request().url());
-      if (url.pathname.endsWith('/daily')) {
-        dailyRequests.push(url.search);
-        return route.fulfill({ json: { date: '2026-11-22', group_id: 7, image_url: imagePath } });
+      if (url.pathname.endsWith(`/${mode}`)) {
+        requests.push(url.search);
+        return route.fulfill({ json: { date: '2026-11-22', group_id: mode === 'random' ? requests.length : 7, image_url: imagePath } });
       }
       if (url.pathname === imagePath) return route.fulfill({ contentType: 'image/png',
         body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jAscAAAAASUVORK5CYII=', 'base64') });
@@ -19,14 +19,17 @@ for (const width of [390, 1280]) {
     await page.goto('/?sort=oldest');
     if (width < 600) await page.getByRole('button', { name: '筛选', exact: true }).click();
     await page.getByRole('checkbox', { name: '包含无人脸图片' }).check();
-    await page.getByRole('link', { name: '每日一图' }).click();
-    await expect(page).toHaveURL(/\/daily\?include_no_faces=true$/);
+    const entry = page.getByRole('link', { name: label, exact: true });
+    await expect(entry).toHaveText('');
+    await entry.click();
+    await expect(page).toHaveURL(new RegExp(`/${mode}\\?include_no_faces=true$`));
+    await expect(page.getByRole('link', { name: '在图库中查看' })).toHaveAttribute('href', `/?include_no_faces=true&photo=${mode === 'random' ? 1 : 7}`);
     await page.reload();
-    await expect(page.getByRole('img', { name: '2026-11-22 的每日一图' })).toBeVisible();
-    await expect(page.locator('.daily-picture')).toHaveAttribute('aria-busy', 'false');
-    await expect(page.getByRole('link', { name: '图片直链' })).toHaveAttribute('href', '/api/v1/gallery/daily/image?include_no_faces=true');
-    await expect(page.getByRole('link', { name: '在图库中查看' })).toHaveAttribute('href', '/?include_no_faces=true&photo=7');
-    expect(dailyRequests.every(query => query === '?include_no_faces=true')).toBe(true);
+    await expect(page.getByRole('img', { name: `2026-11-22 的${label}` })).toBeVisible();
+    await expect(page.locator('.draw-picture')).toHaveAttribute('aria-busy', 'false');
+    await expect(page.getByRole('link', { name: '图片直链' })).toHaveAttribute('href', `/api/v1/gallery/${mode}/image?include_no_faces=true`);
+    await expect(page.getByRole('link', { name: '在图库中查看' })).toHaveAttribute('href', `/?include_no_faces=true&photo=${mode === 'random' ? 2 : 7}`);
+    expect(requests).toEqual(['?include_no_faces=true', '?include_no_faces=true']);
   });
 }
 
