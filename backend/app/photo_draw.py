@@ -45,13 +45,13 @@ def game_choices(db, face, selected):
     answer = face['person_id']
     scope = (set(selected or people) & people.keys()) - {answer}
     ranked = [item['person_id'] for item in sorted(json.loads(face['candidates']),
-              key=lambda item: item['score'], reverse=True) if item['person_id'] in people and item['person_id'] != answer]
-    choices = list(dict.fromkeys(person for person in ranked if person in scope))[:4]
+              key=lambda item: item['score'], reverse=True) if item['person_id'] in scope]
+    count = min(4, len(scope) + 1)
+    choices = [answer] if len(scope) < 4 or random.random() >= 0.1 else []
+    ranked_slots = max(0, count - 1 - len(choices))
+    choices.extend(list(dict.fromkeys(ranked))[:ranked_slots])
     remaining = sorted(scope.difference(choices))
-    choices.extend(random.sample(remaining, min(len(remaining), 4 - len(choices))))
-    choices = list(dict.fromkeys([*choices, *ranked]))[:4]
-    if len(choices) < 4 or random.random() >= 0.1:
-        choices = [answer, *choices[:3]]
+    choices.extend(random.sample(remaining, count - len(choices)))
     random.shuffle(choices)
     return [dict(id=person, name=people[person]) for person in choices]
 

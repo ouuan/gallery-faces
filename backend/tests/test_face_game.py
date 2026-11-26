@@ -18,25 +18,27 @@ def seed(conn):
     return identifier
 
 
-@pytest.mark.parametrize(('scope', 'expected'), [('', {1, 8, 5, 3}), ('1,2,3,4', {1, 2, 3, 4}),
-                                                ('1,2', {1, 2, 8, 5}), ('1', {1, 8, 5, 3})])
+@pytest.mark.parametrize(('scope', 'expected'), [('', {1, 8, 5, 2}), ('1,2,3,4', {1, 2, 3, 4}),
+                                                ('1,2,3', {1, 2, 3}), ('1,2', {1, 2}), ('1', {1})])
 def test_choices_and_public_payload(client, monkeypatch, scope, expected):
     monkeypatch.setattr('app.photo_draw.random.random', lambda: .1)
+    monkeypatch.setattr('app.photo_draw.random.sample', lambda population, count: population[:count])
     with db.connect(True) as conn:
         target = seed(conn)
     response = client.get(GAME, params={'people': scope})
     assert response.status_code == 200 and response.headers['cache-control'] == 'no-store'
     question = response.json()
     assert question['image_id'] == target and question['face']['locked']
-    assert len(question['choices']) == 4 and {item['id'] for item in question['choices']} == expected
+    assert sorted(item['id'] for item in question['choices']) == sorted(expected)
     assert set(question['face']) == {'id', 'box', 'person_id', 'locked', 'revision'}
     assert all(set(item) == {'id', 'name'} for item in question['choices'])
 
 
-@pytest.mark.parametrize(('scope', 'expected'), [('', {8, 5, 3, 4}), ('1,2', {2, 8, 5, 3}),
+@pytest.mark.parametrize(('scope', 'expected'), [('', {8, 5, 3, 2}),
                                                 ('1,2,3,4,6', {2, 3, 4, 6})])
 def test_omit_recognition_with_four_alternatives(client, monkeypatch, scope, expected):
     monkeypatch.setattr('app.photo_draw.random.random', lambda: .0999)
+    monkeypatch.setattr('app.photo_draw.random.sample', lambda population, count: population[:count])
     with db.connect(True) as conn:
         seed(conn)
     question = client.get(GAME, params={'people': scope}).json()
@@ -50,7 +52,7 @@ def test_keep_recognition_without_four_distinct_alternatives(client, monkeypatch
         seed(conn)
         ranked = [{'person_id': person, 'score': .8} for person in [1, 2, 2, 3, 4]]
         conn.execute('UPDATE faces SET candidates=?', (json.dumps(ranked),))
-    choices = client.get(GAME, params={'people': '1,2'}).json()['choices']
+    choices = client.get(GAME, params={'people': '1,2,3,4'}).json()['choices']
     assert {choice['id'] for choice in choices} == {1, 2, 3, 4}
 
 
