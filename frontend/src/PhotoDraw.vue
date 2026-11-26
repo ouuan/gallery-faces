@@ -51,7 +51,7 @@ watch([() => props.mode, suffix], load, { immediate: true });
     <header class="draw-header">
       <div class="draw-title">
         <h1>{{ title }}</h1>
-        <time v-if="photo" :datetime="photo.date">{{ photo.date }}</time>
+        <time v-if="mode === 'daily' && photo" :datetime="photo.date">{{ photo.date }}</time>
       </div>
       <nav :aria-label="`${title}链接`">
         <router-link :to="{ path: '/', query: photo ? { ...query, photo: photo.group_id } : query }">
@@ -64,7 +64,7 @@ watch([() => props.mode, suffix], load, { immediate: true });
       <div v-if="error" class="draw-message" role="status">
         <p>{{ error }}</p><n-button v-if="!empty" @click="load">重试</n-button>
       </div>
-      <img v-else-if="photo" :src="photo.image_url" :alt="`${photo.date} 的${title}`"
+      <img v-else-if="photo" :src="photo.image_url" :alt="mode === 'daily' ? `${photo.date} 的${title}` : title"
         @load="imageLoaded = true" @error="error = '照片加载失败，请重试'" />
       <LoadingOverlay :show="!error && !imageLoaded" center :label="`正在加载${title}`" />
     </div>

@@ -25,7 +25,10 @@ for (const [mode, label] of [['daily', '每日一图'], ['random', '随机图片
     await expect(page).toHaveURL(new RegExp(`/${mode}\\?include_no_faces=true$`));
     await expect(page.getByRole('link', { name: '在图库中查看' })).toHaveAttribute('href', `/?include_no_faces=true&photo=${mode === 'random' ? 1 : 7}`);
     await page.reload();
-    await expect(page.getByRole('img', { name: `2026-11-22 的${label}` })).toBeVisible();
+    await expect(page.getByRole('img', { name: mode === 'daily' ? `2026-11-22 的${label}` : label, exact: true })).toBeVisible();
+    const date = page.getByText('2026-11-22', { exact: true });
+    if (mode === 'daily') await expect(date).toBeVisible();
+    else await expect(date).toHaveCount(0);
     await expect(page.locator('.draw-picture')).toHaveAttribute('aria-busy', 'false');
     await expect(page.getByRole('link', { name: '图片直链' })).toHaveAttribute('href', `/api/v1/gallery/${mode}/image?include_no_faces=true`);
     await expect(page.getByRole('link', { name: '在图库中查看' })).toHaveAttribute('href', `/?include_no_faces=true&photo=${mode === 'random' ? 2 : 7}`);
