@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { ArrowLeft, ArrowRight, Check, X } from '@lucide/vue';
+import { ArrowLeft, ArrowRight, Check, X, ZoomIn } from '@lucide/vue';
 import { NAlert, NButton } from 'naive-ui';
 import { api, ApiError, facePosition, type Photo } from './api';
 import { filterOnlyQuery, fromQuery } from './filters';
-import { answer, correctChoice, feedbackReceipt, game, openRound, score, type Question } from './face-game';
+import { answer, correctChoice, faceZoom, feedbackReceipt, game, openRound, score, type Question } from './face-game';
 import { useLibrary } from './store';
 import { useLatestRequest } from './use-latest-request';
 import { usePageTitle } from './page-title';
@@ -27,6 +27,18 @@ const correctId = computed(() => question.value && correctChoice(question.value)
 const submitted = computed(() => game.round ? feedbackReceipt(game.round, game.outcomes) : undefined);
 const latest = useLatestRequest(), details = useLatestRequest();
 const loading = ref(false), imageReady = ref(false), error = ref(''), empty = ref(false);
+const zoomed = ref(false);
+function holdZoom(event: PointerEvent) {
+  if (!event.isPrimary || event.button !== 0 || !imageReady.value) return;
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  zoomed.value = true;
+}
+const imageStyle = computed(() => {
+  if (!zoomed.value || !question.value) return;
+  const { face, width, height } = question.value;
+  const { scale, left, top } = faceZoom(face.box, width, height);
+  return { transform: `translate(${left * 100}%, ${top * 100}%) scale(${scale})` };
+});
 const detail = ref<Photo | null>(null), detailError = ref(''), authenticated = ref(false);
 const answerName = computed(() => {
   const personId = question.value?.face.person_id;
@@ -46,7 +58,7 @@ async function next() {
   loading.value = true; empty.value = false; error.value = ''; detail.value = null; detailError.value = '';
   try {
     const result = await api<Question>(`/gallery/face-game?${params}`, { signal });
-    if (!signal.aborted) { imageReady.value = false; openRound(result); }
+    if (!signal.aborted) { imageReady.value = false; zoomed.value = false; openRound(result); }
   } catch (cause) {
     if (!signal.aborted) { error.value = (cause as Error).message; empty.value = cause instanceof ApiError && cause.status === 404; }
   } finally { if (!signal.aborted) loading.value = false; }
@@ -89,13 +101,20 @@ onMounted(() => {
     <div v-else :key="game.round.key" class="game-layout">
       <div class="game-picture">
         <div class="game-frame" :style="{ width: `min(100%, ${question.width}px, ${question.width / question.height * 64}svh)`, aspectRatio: `${question.width} / ${question.height}` }">
-          <img :src="question.image_url" alt="题目照片" @load="imageReady = true" @error="error = '照片加载失败，请重试'" />
-          <span v-if="imageReady" class="target-face" :style="facePosition(question.face.box, question.width, question.height)" aria-label="要辨认的人脸" />
+          <img :src="question.image_url" :style="imageStyle" alt="题目照片" @load="imageReady = true" @error="error = '照片加载失败，请重试'" />
+          <span v-if="imageReady && !zoomed" class="target-face" :style="facePosition(question.face.box, question.width, question.height)" aria-label="要辨认的人脸" />
           <LoadingOverlay :show="!imageReady" center label="正在加载照片…" />
         </div>
       </div>
       <div class="game-controls">
-        <h2 id="game-prompt">框中的是谁？</h2>
+        <div class="game-prompt-row">
+          <h2 id="game-prompt">框中的是谁？</h2>
+          <n-button quaternary circle :disabled="!imageReady" aria-label="按住放大人脸" title="按住放大人脸"
+            @pointerdown="holdZoom" @lostpointercapture="zoomed = false" @contextmenu.prevent
+            @keydown.space.enter.prevent="zoomed = true" @keyup.space.enter.prevent="zoomed = false" @blur="zoomed = false">
+            <ZoomIn :size="18" aria-hidden="true" />
+          </n-button>
+        </div>
         <div class="game-options" role="group" aria-labelledby="game-prompt">
           <button v-for="choice in choices" :key="choice.id ?? 'none'" type="button" :disabled="answered || !imageReady"
             :class="{ fallback: choice.id === null, right: answered && choice.id === correctId, wrong: answered && choice.id === game.round.choice && choice.id !== correctId }"
@@ -137,9 +156,12 @@ onMounted(() => {
 .game-picture { display: grid; place-items: center; }
 .game-frame, .game-status { position: relative; }
 .game-status { min-height: 200px; text-align: center; }
-.game-frame img { display: block; width: 100%; height: 100%; border-radius: 4px; }
+.game-frame { overflow: hidden; border-radius: 4px; }
+.game-frame img { display: block; width: 100%; height: 100%; transform-origin: top left; }
 .target-face { position: absolute; border: 3px solid white; outline: 2px solid #222; pointer-events: none; }
 .game-controls { min-width: 0; }
+.game-prompt-row { display: flex; align-items: center; gap: 4px; }
+.game-prompt-row button { width: 44px; height: 44px; touch-action: none; user-select: none; }
 .game-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
 .game-options button {
   display: grid; grid-template-columns: minmax(0, 1fr) 16px; align-items: center; gap: 8px;

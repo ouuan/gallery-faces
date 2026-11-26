@@ -63,6 +63,23 @@ for (const width of [390, 1280]) test(`filtered face game, shared feedback and s
   const box = (await page.locator('.target-face').boundingBox())!;
   expect(Math.abs(box.x - frame.x - frame.width * .1)).toBeLessThan(1);
   expect(Math.abs(box.height - frame.height * .3)).toBeLessThan(1);
+  const zoomButton = button('按住放大人脸');
+  await zoomButton.hover();
+  await page.mouse.down();
+  await expect(page.locator('.target-face')).toBeHidden();
+  const zoomed = (await page.getByAltText('题目照片').boundingBox())!;
+  expect(zoomed.height / frame.height).toBeCloseTo(5 / 3);
+  await page.mouse.move(0, 0);
+  await page.mouse.up();
+  await expect(page.locator('.target-face')).toBeVisible();
+  expect(await page.getByAltText('题目照片').boundingBox()).toEqual(frame);
+  await zoomButton.focus();
+  for (const key of ['Space', 'Enter']) {
+    await page.keyboard.down(key);
+    await expect(page.locator('.target-face')).toBeHidden();
+    await page.keyboard.up(key);
+    await expect(page.locator('.target-face')).toBeVisible();
+  }
   await button('甲').click();
   await expect(button('下一题')).toBeEnabled();
   const result = page.getByRole('status').filter({ hasText: /图库答案|本题已记为存疑/ });
@@ -79,6 +96,7 @@ for (const width of [390, 1280]) test(`filtered face game, shared feedback and s
   await expect(page.getByRole('link', { name: '在图库中查看' })).toHaveCount(0);
   await expect(button('选择人脸')).toBeVisible();
   await button('下一题').click();
+  await expect(page.locator('.target-face')).toBeVisible();
   await button('乙').click();
   await expect(result).toHaveText('答错了，你选了乙。图库答案：甲');
   await expect(page.getByLabel('建议人物')).toContainText('乙');

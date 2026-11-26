@@ -8,6 +8,12 @@ export const game = reactive<{ filter: string | null; round: Round | null; outco
   filter: null, round: null, outcomes: [],
 });
 
+export function faceZoom(box: number[], width: number, height: number) {
+  const scale = Math.max(1, Math.min(width / (2 * box[2]!), height / (2 * box[3]!)));
+  const offset = (center: number) => Math.max(1 - scale, Math.min(0, 0.5 - center * scale));
+  return { scale, left: offset((box[0]! + box[2]! / 2) / width), top: offset((box[1]! + box[3]! / 2) / height) };
+}
+
 export function score(outcomes: Outcome[]) {
   let correct = 0, wrong = 0, disputed = 0, streak = 0;
   for (const outcome of outcomes) {
