@@ -141,12 +141,12 @@ function clear() {
     />
     <LoadingOverlay :show="failed.has(image.id) || !urls.has(image.id)" center :error="failed.has(image.id)" :label="failed.has(image.id) ? '图片加载失败' : '正在加载图片…'" />
     <span
-      v-for="face in image.faces"
+      v-for="(face, index) in image.faces"
       :key="face.id"
       class="face-box"
       :class="{ ignored: face.ignored }"
       :style="style(face.box)"
-      >#{{ face.id }}</span
+      >#{{ index + 1 }}</span
     >
     <span v-if="draft" class="face-box draft-box" :style="style(draft)"
       ><span>待保存</span></span

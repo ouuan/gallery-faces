@@ -8,6 +8,7 @@ const props = defineProps<{
   modelValue: number | null;
   disabled?: boolean;
   accessibleLabel: string;
+  placeholder?: string;
 }>();
 const emit = defineEmits<{ "update:modelValue": [value: number | null] }>();
 const store = useLibrary();
@@ -36,7 +37,7 @@ function update(key: string | number | (string | number)[] | null) {
     expand-trigger="click"
     :show-path="false"
     :virtual-scroll="false"
-    placeholder="未知人物"
+    :placeholder="placeholder || '未知人物'"
     :menu-props="{ class: 'people-cascader-menu' }"
     :filter-menu-props="{ class: 'people-cascader-search' }"
     :theme-overrides="{

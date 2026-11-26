@@ -142,6 +142,13 @@ def init():
         db.execute("PRAGMA journal_mode=WAL")
         db.executescript(SCHEMA)
     with startup_phase('database migrations'), connect(True) as db:
+        if 'face_revision' not in {row[1] for row in db.execute('PRAGMA table_info(feedback)')}:
+            for column in ('face_id INTEGER REFERENCES faces ON DELETE SET NULL', 'face_revision INTEGER',
+                           'original_name TEXT', 'suggested_person_id INTEGER REFERENCES people ON DELETE SET NULL',
+                           'suggested_name TEXT'):
+                db.execute(f'ALTER TABLE feedback ADD COLUMN {column}')
+        if 'not_face' not in {row[1] for row in db.execute('PRAGMA table_info(feedback)')}:
+            db.execute('ALTER TABLE feedback ADD COLUMN not_face INTEGER NOT NULL DEFAULT 0 CHECK(not_face IN (0,1))')
         db.execute("UPDATE review_suggestions SET status='recorded' WHERE status='pending' AND json_extract(payload,'$.kind')='review_outcome'")
         if 'detection_id' not in {row[1] for row in db.execute('PRAGMA table_info(review_suggestions)')}:
             db.execute('ALTER TABLE review_suggestions ADD COLUMN detection_id INTEGER REFERENCES review_detections')

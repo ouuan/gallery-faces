@@ -19,18 +19,15 @@ import {
   Download,
   ZoomIn,
   ZoomOut,
-  ExternalLink,
   Check,
 } from "@lucide/vue";
 import { useLibrary } from "./store";
 import { usePageTitle } from "./page-title";
-import { api, dateLabel, platformLabel, type Photo } from "./api";
+import { api, type Photo } from "./api";
 import SocialTime from './SocialTime.vue';
-import { t } from "./locale";
 import { feedHref, hasFilters, clearFilters, emptyFilter, fromQuery, toQuery, type Filter } from "./filters";
 import Filters from "./Filters.vue";
-import FeedbackPanel from "./FeedbackPanel.vue";
-import SourceText from "./SourceText.vue";
+import PhotoSidebar from "./PhotoSidebar.vue";
 import { useMasonry } from "./use-masonry";
 import { useImageDownloads } from "./use-review-images";
 const store = useLibrary(),
@@ -104,11 +101,6 @@ const selecting = ref(false),
   downloadError = ref(""),
   downloadNotice = ref("");
 const allLoadedSelected = computed(() => photos.value.length > 0 && photos.value.every(photo => downloadSelection.value.has(photo.id)));
-function coauthorLabel(coauthor: { username: string; full_name?: string | null }) {
-  const name = coauthor.full_name?.trim();
-  const username = coauthor.username?.trim();
-  return name && username ? `${name} (@${username})` : name || (username ? `@${username}` : "");
-}
 let downloadController: AbortController | null = null;
 function cancelPreparation() {
   downloadController?.abort();
@@ -527,40 +519,8 @@ onUnmounted(() => {
           />
           <LoadingOverlay :show="failedDetailImages.has(detail.image_id) || !detailImageUrls.has(detail.image_id)" center :error="failedDetailImages.has(detail.image_id)" :label="failedDetailImages.has(detail.image_id) ? '图片加载失败' : '正在加载图片…'" />
         </div>
-        <aside class="detail-sidebar">
-          <header class="detail-summary">
-            <h2>{{ detail.people.map((p) => p.name).join("、") || "未知人物" }}</h2>
-            <div v-if="authenticated" class="detail-manage-actions">
-              <router-link class="detail-manage" :to="{ path: '/admin/review', query: { state: 'image', image: detail.image_id } }">管理此图片</router-link>
-              <router-link class="detail-manage" :to="{ path: '/admin/duplicates', query: { image: detail.image_id } }">审核重复图片</router-link>
-            </div>
-          </header>
-          <section class="detail-sources" aria-label="图片来源">
-            <h2 class="detail-sources-heading">来源 · {{ detail.source_count }}</h2>
-            <div v-for="source in detail.sources" :key="source.id" class="source-block">
-              <header class="source-header">
-                <h3>
-                  <router-link class="source-title-link" :to="{ path: '/posts/' + (source.key ?? `${source.platform}:record:${source.id}`), query: toQuery(filter), state: { fromPhoto: true } }">
-                    <span>{{ platformLabel(source.platform) }} · {{ store.publisherName(source) }}</span>
-                  </router-link><a class="icon-link" :href="source.url" target="_blank" rel="noopener noreferrer" title="打开原帖" aria-label="打开原帖"><ExternalLink :size="16" aria-hidden="true" /></a>
-                </h3>
-                <div class="source-meta">
-                  <time :datetime="source.published_at">{{ dateLabel(source.published_at) }}</time>
-                  <span v-if="source.images?.length" class="source-resolution">
-                    <span aria-hidden="true">·</span>
-                    <span>{{ [...new Set(source.images.map(image => image.width + " × " + image.height))].join("、") }}</span>
-                  </span>
-                </div>
-                <div v-if="source.coauthors?.length" class="source-coauthors">
-                  <strong>{{ t("共同作者") }}</strong>
-                  <span>{{ source.coauthors.map(coauthorLabel).filter(Boolean).join("、") }}</span>
-                </div>
-              </header>
-              <SourceText :text="source.post_text" />
-            </div>
-          </section>
-          <FeedbackPanel :key="detail.image_id" :image-id="detail.image_id" :pending-count="detail.pending_feedback_count" @changed="detail.pending_feedback_count = (detail.pending_feedback_count || 0) + 1" />
-        </aside>
+        <PhotoSidebar :detail="detail" :authenticated="authenticated" :query="toQuery(filter)"
+          @changed="detail.pending_feedback_count = (detail.pending_feedback_count || 0) + 1" />
       </div>
       <div v-else class="detail-loading loading-region" aria-busy="true"><LoadingOverlay show center label="正在加载照片详情" /></div></div
   ></n-modal>

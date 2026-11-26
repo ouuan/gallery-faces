@@ -11,12 +11,12 @@ import { usePageTitle } from './page-title';
 import SocialTime from './SocialTime.vue';
 import LoadingOverlay from './LoadingOverlay.vue';
 
-const props = defineProps<{ postKey: string }>();
+const props = defineProps<{ postKey: string; returnPath?: string }>();
 const route = useRoute(), router = useRouter();
 const filters = computed(() => toQuery(fromQuery(route.query)));
 function close() {
   if (window.history.state?.fromPhoto) router.back();
-  else router.replace({ path: '/', query: filters.value });
+  else router.replace({ path: props.returnPath ?? '/', query: filters.value });
 }
 const post = ref<components['schemas']['PostDetail'] | null>(null);
 const unavailableTip = ref<number | null>(null);

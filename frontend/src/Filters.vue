@@ -8,7 +8,7 @@ import {
   NRadioButton,
 } from "naive-ui";
 import { useLibrary } from "./store";
-import { CalendarDays, Rss, Shuffle } from "@lucide/vue";
+import { CalendarDays, Rss, Shuffle, ScanFace } from "@lucide/vue";
 import { filterOnlyQuery, feedHref, hasFilters, type Filter } from "./filters";
 import DateRangeHint from "./DateRangeHint.vue";
 import PublisherSelect from "./PublisherSelect.vue";
@@ -92,6 +92,7 @@ function set(key: keyof Filter, value: any) {
       <router-link class="icon-link" :to="{ path: '/random', query: filterOnlyQuery(modelValue) }" title="随机图片" aria-label="随机图片">
         <Shuffle :size="18" aria-hidden="true" />
       </router-link>
+      <router-link class="icon-link" :to="{ path: '/face-game', query: filterOnlyQuery(modelValue) }" title="认脸游戏" aria-label="认脸游戏"><ScanFace :size="18" aria-hidden="true" /></router-link>
       <a class="icon-link" :href="feedHref(modelValue)" title="订阅图库 RSS" aria-label="订阅图库 RSS"><Rss :size="18" aria-hidden="true" /></a></div>
   </div>
 </template>

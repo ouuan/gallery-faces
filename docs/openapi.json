@@ -1687,6 +1687,138 @@
         }
       }
     },
+    "/api/v1/gallery/face-game": {
+      "get": {
+        "summary": "Face Game",
+        "operationId": "face_game_api_v1_gallery_face_game_get",
+        "parameters": [
+          {
+            "name": "people",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "People"
+            }
+          },
+          {
+            "name": "match",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "any",
+                "all",
+                "exact",
+                "subset"
+              ],
+              "type": "string",
+              "default": "any",
+              "title": "Match"
+            }
+          },
+          {
+            "name": "publishers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Publishers"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "End"
+            }
+          },
+          {
+            "name": "include_no_faces",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include No Faces"
+            }
+          },
+          {
+            "name": "last_group",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9223372036854775807,
+                  "exclusiveMinimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Group"
+            }
+          },
+          {
+            "name": "last_face",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9223372036854775807,
+                  "exclusiveMinimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Face"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameQuestion"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/gallery/{group_id}": {
       "get": {
         "summary": "Detail",
@@ -1724,7 +1856,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GalleryPhoto"
+                  "$ref": "#/components/schemas/GalleryDetail"
                 }
               }
             }
@@ -2111,6 +2243,43 @@
       "delete": {
         "summary": "Feedback Delete",
         "operationId": "feedback_delete_api_v1_admin_feedback__feedback_id__delete",
+        "parameters": [
+          {
+            "name": "feedback_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Feedback Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/feedback/{feedback_id}/apply": {
+      "post": {
+        "summary": "Feedback Apply",
+        "operationId": "feedback_apply_api_v1_admin_feedback__feedback_id__apply_post",
         "parameters": [
           {
             "name": "feedback_id",
@@ -6081,14 +6250,54 @@
           "content": {
             "type": "string",
             "maxLength": 1000,
-            "minLength": 1,
-            "title": "Content"
+            "title": "Content",
+            "default": ""
+          },
+          "face_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Face Id"
+          },
+          "face_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Face Revision"
+          },
+          "suggested_person_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Person Id"
+          },
+          "not_face": {
+            "type": "boolean",
+            "title": "Not Face",
+            "default": false
           }
         },
         "type": "object",
-        "required": [
-          "content"
-        ],
         "title": "FeedbackInput"
       },
       "FeedbackOutput": {
@@ -6127,6 +6336,65 @@
               }
             ],
             "title": "Resolved At"
+          },
+          "face_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Face Id"
+          },
+          "face_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Face Revision"
+          },
+          "original_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
+          },
+          "suggested_person_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Person Id"
+          },
+          "suggested_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Name"
+          },
+          "not_face": {
+            "type": "boolean",
+            "title": "Not Face"
           }
         },
         "type": "object",
@@ -6136,7 +6404,13 @@
           "content",
           "status",
           "created_at",
-          "resolved_at"
+          "resolved_at",
+          "face_id",
+          "face_revision",
+          "original_name",
+          "suggested_person_id",
+          "suggested_name",
+          "not_face"
         ],
         "title": "FeedbackOutput"
       },
@@ -6144,7 +6418,7 @@
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/FeedbackOutput"
+              "$ref": "#/components/schemas/ReviewFeedback"
             },
             "type": "array",
             "title": "Items"
@@ -6184,6 +6458,78 @@
           "status"
         ],
         "title": "FeedbackStatus"
+      },
+      "GalleryDetail": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "title": "Image Id"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          },
+          "thumbnail_url": {
+            "type": "string",
+            "title": "Thumbnail Url"
+          },
+          "download_url": {
+            "type": "string",
+            "title": "Download Url"
+          },
+          "people": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "People"
+          },
+          "source_count": {
+            "type": "integer",
+            "title": "Source Count"
+          },
+          "matched_source": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Matched Source"
+          },
+          "faces": {
+            "items": {
+              "$ref": "#/components/schemas/PublicFace"
+            },
+            "type": "array",
+            "title": "Faces"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "id",
+          "image_id",
+          "width",
+          "height",
+          "image_url",
+          "thumbnail_url",
+          "download_url",
+          "people",
+          "source_count",
+          "matched_source",
+          "faces"
+        ],
+        "title": "GalleryDetail"
       },
       "GalleryDownloadInput": {
         "properties": {
@@ -6331,6 +6677,69 @@
           "matched_source"
         ],
         "title": "GalleryPhoto"
+      },
+      "GameChoice": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "GameChoice"
+      },
+      "GameQuestion": {
+        "properties": {
+          "group_id": {
+            "type": "integer",
+            "title": "Group Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "title": "Image Id"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          },
+          "face": {
+            "$ref": "#/components/schemas/PublicFace"
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/GameChoice"
+            },
+            "type": "array",
+            "title": "Choices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "group_id",
+          "image_id",
+          "width",
+          "height",
+          "image_url",
+          "face",
+          "choices"
+        ],
+        "title": "GameQuestion"
       },
       "GroupInput": {
         "properties": {
@@ -7503,6 +7912,49 @@
         ],
         "title": "PostPicture"
       },
+      "PublicFace": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "box": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Box"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Id"
+          },
+          "locked": {
+            "type": "boolean",
+            "title": "Locked"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "box",
+          "revision",
+          "person_id",
+          "locked"
+        ],
+        "title": "PublicFace"
+      },
       "PublicPost": {
         "properties": {
           "id": {
@@ -8221,6 +8673,131 @@
           "username"
         ],
         "title": "ReviewAccount"
+      },
+      "ReviewFeedback": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "title": "Image Id"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "resolved"
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "face_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Face Id"
+          },
+          "face_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Face Revision"
+          },
+          "original_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Name"
+          },
+          "suggested_person_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Person Id"
+          },
+          "suggested_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Name"
+          },
+          "not_face": {
+            "type": "boolean",
+            "title": "Not Face"
+          },
+          "face_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Face Number"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "image_id",
+          "content",
+          "status",
+          "created_at",
+          "resolved_at",
+          "face_id",
+          "face_revision",
+          "original_name",
+          "suggested_person_id",
+          "suggested_name",
+          "not_face"
+        ],
+        "title": "ReviewFeedback"
       },
       "ReviewGroupName": {
         "properties": {

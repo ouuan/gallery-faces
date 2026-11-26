@@ -230,7 +230,7 @@ useReviewShortcuts({
   c: { run: confirmAll, enabled: () => !actionsDisabled.value && pendingFaces.value.length > 0 },
   d: { run: () => deleteImages(actionIds.value), enabled: () => state.value !== "trash" && !actionsDisabled.value },
 }, () => !suggestionsView.value && state.value !== "trash" && !!active.value && !navigationDisabled.value && !sourceEdit.value && !newPersonFace.value && moreFace.value === null);
-const visibleFaces = computed(() =>
+const visibleFaces = computed<any[]>(() =>
   active.value?.faces.filter((face: any) => !face.ignored) ?? [],
 );
 const editorImage = computed(() => ({ ...active.value, faces: visibleFaces.value }));
@@ -792,7 +792,7 @@ onMounted(load);
               >
             </div>
             <div
-              v-for="face in visibleFaces"
+              v-for="(face, index) in visibleFaces"
               :key="face.id"
               class="face-review"
             >
@@ -804,11 +804,11 @@ onMounted(load);
                   loading="lazy"
                 />
                 <div class="face-selection">
-                  <h4>人脸 #{{ face.id }}</h4>
+                  <h4>人脸 #{{ index + 1 }}</h4>
                   <PersonSelect
                     :model-value="facePerson(face)"
                     :disabled="savingFaces"
-                    :accessible-label="`人脸 #${face.id} 的人物`"
+                    :accessible-label="`人脸 #${index + 1} 的人物`"
                     @update:model-value="selectFacePerson(face.id, $event)"
                   />
                 </div>

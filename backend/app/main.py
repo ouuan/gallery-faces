@@ -27,7 +27,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, field_validator
+from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, field_validator, model_validator
 from .open_graph import render_open_graph
 from . import list_queries, photo_draw, publisher_avatars, publishers, review_packages, social
 from .review_format import fits
@@ -1128,7 +1128,52 @@ register_photo_draw('daily')
 register_photo_draw('random')
 
 
-@app.get("/api/v1/gallery/{group_id}", response_model=GalleryPhoto)
+class PublicFace(BaseModel):
+    id: int
+    box: list[float]
+    revision: int
+    person_id: int | None
+    locked: bool
+
+
+class GameChoice(BaseModel):
+    id: int
+    name: str
+
+
+class GameQuestion(BaseModel):
+    group_id: int
+    image_id: int
+    width: int
+    height: int
+    image_url: str
+    face: PublicFace
+    choices: list[GameChoice]
+
+
+@app.get('/api/v1/gallery/face-game', response_model=GameQuestion)
+def face_game(reads: MediaReads, people: str = '', match: PeopleMatch = 'any', publishers: str = '',
+              start: str = '', end: str = '', include_no_faces: bool = False,
+              last_group: int | None = Query(None, gt=0, le=9223372036854775807),
+              last_face: int | None = Query(None, gt=0, le=9223372036854775807)):
+    ids, accounts = parse_people_publishers(people, publishers)
+    source, args = source_filter(accounts, *date_bounds(start, end))
+
+    def pin(identifier):
+        reads.close()
+        return pin_public(reads, public_row(identifier), 'image')
+
+    group, (variant, _, row), face, choices = photo_draw.game_question(
+        (ids, match, source, args, include_no_faces), last_group, last_face, pin)
+    return dict(group_id=group, image_id=row['id'], width=row['width'], height=row['height'],
+                image_url=variant_url(row, variant), face=face, choices=choices)
+
+
+class GalleryDetail(GalleryPhoto):
+    faces: list[PublicFace]
+
+
+@app.get("/api/v1/gallery/{group_id}", response_model=GalleryDetail)
 def detail(group_id: int, matched_post: int | None = None):
     with connect() as db:
         db.execute("BEGIN")
@@ -1155,6 +1200,15 @@ def detail(group_id: int, matched_post: int | None = None):
             if source := by_post.get(link['post_id']):
                 source['images'].append({key: link[key] for key in ('image_id', 'width', 'height')})
         matched = next((s for s in sources if s["id"] == matched_post), sources[0])
+        faces, labels = [], {}
+        for face in db.execute('SELECT f.id,f.box,f.revision,f.person_id,f.locked,p.name FROM faces f '
+                               'LEFT JOIN people p ON p.id=f.person_id WHERE f.image_id=? AND f.ignored=0 '
+                               "ORDER BY json_extract(f.box,'$[0]') + json_extract(f.box,'$[2]') / 2.0,f.id", (members[0]['id'],)):
+            item = dict(face, box=json.loads(face['box']))
+            name = item.pop('name')
+            if name is not None:
+                labels[item['person_id']] = dict(id=item['person_id'], name=name)
+            faces.append(item)
         result = summary(
             dict(
                 group_id=group_id,
@@ -1164,9 +1218,10 @@ def detail(group_id: int, matched_post: int | None = None):
                 published_at=matched["published_at"],
                 url=matched["url"],
             ),
-            members[0], gallery_labels(db, [members[0]['id']])[members[0]['id']], len(post_ids),
+            members[0], list(labels.values()), len(post_ids),
         )
         result.update(
+            faces=faces,
             sources=sources,
             earliest_source=sources[0],
             matched_source=matched,
@@ -1347,7 +1402,21 @@ def media(image_id: int, reads: MediaReads, thumbnail: bool = False, download: b
 
 
 class FeedbackInput(BaseModel):
-    content: str = Field(min_length=1, max_length=1000)
+    content: str = Field(default='', max_length=1000)
+    face_id: int | None = Field(default=None, gt=0, le=9223372036854775807)
+    face_revision: int | None = Field(default=None, ge=0)
+    suggested_person_id: int | None = Field(default=None, gt=0, le=9223372036854775807)
+    not_face: bool = False
+
+    @model_validator(mode='after')
+    def valid_target(self):
+        if (self.face_id is None) != (self.face_revision is None):
+            raise ValueError('请选择有效的人脸')
+        if self.not_face and (self.suggested_person_id is not None or self.face_id is None):
+            raise ValueError('“不是人脸”需要选定人脸框，不能同时建议人物')
+        if self.face_id is None and (not self.content or self.suggested_person_id is not None):
+            raise ValueError('请填写反馈内容或选择人脸')
+        return self
 
     @field_validator("content", mode="before")
     @classmethod
@@ -1366,10 +1435,20 @@ class FeedbackOutput(BaseModel):
     status: Literal["pending", "resolved"]
     created_at: str
     resolved_at: str | None
+    face_id: int | None
+    face_revision: int | None
+    original_name: str | None
+    suggested_person_id: int | None
+    suggested_name: str | None
+    not_face: bool
+
+
+class ReviewFeedback(FeedbackOutput):
+    face_number: int | None = None
 
 
 class FeedbackPage(BaseModel):
-    items: list[FeedbackOutput]
+    items: list[ReviewFeedback]
     next_cursor: int | None
 
 
@@ -1389,7 +1468,16 @@ def feedback_page(db, ids, before_id, limit):
         + (" AND id<?" if before_id else "") + " ORDER BY id DESC LIMIT ?",
         [*ids, *([before_id] if before_id else []), limit + 1],
     ).fetchall()
-    return {"items": [dict(row) for row in rows[:limit]],
+    items = [dict(row) for row in rows[:limit]]
+    image_ids = sorted({item['image_id'] for item in items if item['face_id'] is not None})
+    if image_ids:
+        numbers = dict(db.execute(f'''SELECT id,row_number() OVER (PARTITION BY image_id ORDER BY
+            json_extract(box,'$[0]') + json_extract(box,'$[2]') / 2.0,id) FROM faces
+            WHERE ignored=0 AND image_id IN ({placeholders(image_ids)})''', image_ids))
+        for item in items:
+            if item['face_id'] is not None:
+                item['face_number'] = numbers.get(item['face_id'])
+    return {"items": items,
             "next_cursor": rows[limit - 1]["id"] if len(rows) > limit else None}
 
 
@@ -1421,12 +1509,29 @@ def feedback_create(image_id: int, body: FeedbackInput, request: Request):
                 retry = max(retry, math.ceil(recent[-limit] + window - now))
         if retry:
             raise HTTPException(429, f"反馈提交过于频繁，请在 {retry} 秒后重试", headers={"Retry-After": str(retry)})
-        feedback_id = db.execute("INSERT INTO feedback(image_id,content) VALUES(?,?)", (image_id, body.content)).lastrowid
+        original_name = suggested_name = None
+        if body.face_id is not None:
+            face = db.execute('SELECT f.revision,p.name FROM faces f LEFT JOIN people p ON p.id=f.person_id '
+                              'WHERE f.id=? AND f.image_id=? AND f.ignored=0', (body.face_id, image_id)).fetchone()
+            if not face or not db.execute('SELECT 1 FROM public_groups WHERE representative=?', (image_id,)).fetchone():
+                fail('目标人脸已不可用，请刷新后再试', 404)
+            if face['revision'] != body.face_revision:
+                fail('人脸已更新，请刷新后再试', 409)
+            original_name = face['name']
+            if body.suggested_person_id is not None:
+                suggested = db.execute('SELECT name FROM people WHERE id=?', (body.suggested_person_id,)).fetchone()
+                if not suggested:
+                    fail('建议人物已不存在', 409)
+                suggested_name = suggested['name']
+        feedback_id = db.execute('INSERT INTO feedback(image_id,content,face_id,face_revision,original_name,'
+                                 'suggested_person_id,suggested_name,not_face) VALUES(?,?,?,?,?,?,?,?)',
+                                 (image_id, body.content, body.face_id, body.face_revision, original_name,
+                                  body.suggested_person_id, suggested_name, body.not_face)).lastrowid
         db.execute("INSERT INTO feedback_submissions VALUES(?,?)", (key, now))
         return dict(db.execute("SELECT * FROM feedback WHERE id=?", (feedback_id,)).fetchone())
 
 
-@app.get("/api/v1/admin/images/{image_id}/feedback", response_model=FeedbackPage)
+@app.get("/api/v1/admin/images/{image_id}/feedback", response_model=FeedbackPage, response_model_exclude_unset=True)
 def feedback_admin(image_id: int, before_id: int | None = Query(None, ge=1), limit: int = Query(20, ge=1, le=100), scope: Literal["image", "group"] = "image", _: None = Depends(admin)):
     with connect() as db:
         db.execute("BEGIN")
@@ -1457,6 +1562,21 @@ def feedback_delete(feedback_id: int, _: None = Depends(admin)):
         if not db.execute("DELETE FROM feedback WHERE id=?", (feedback_id,)).rowcount:
             fail("反馈不存在", 404)
     return {"ok": True}
+
+
+@app.post('/api/v1/admin/feedback/{feedback_id}/apply')
+def feedback_apply(feedback_id: int, _: None = Depends(admin)):
+    with connect(True) as db:
+        row = db.execute('SELECT * FROM feedback WHERE id=?', (feedback_id,)).fetchone()
+        if not row:
+            fail('反馈不存在', 404)
+        if row['status'] != 'pending' or row['face_id'] is None or (row['suggested_person_id'] is None and not row['not_face']):
+            fail('此反馈没有可应用的建议', 409)
+        if not db.execute('SELECT 1 FROM public_groups WHERE representative=?', (row['image_id'],)).fetchone():
+            fail('代表图已变化，请重新审核', 409)
+        write_face_edit(db, row['face_id'], FaceEdit(person_id=row['suggested_person_id'], ignored=bool(row['not_face']), revision=row['face_revision']))
+        db.execute("UPDATE feedback SET status='resolved',resolved_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=?", (feedback_id,))
+    return {'ok': True}
 
 
 @app.get("/api/v1/admin/media/{image_id}")

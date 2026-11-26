@@ -1,4 +1,10 @@
 import { ja, t } from "./locale";
+import type { components } from './schema';
+export type PublicFace = components['schemas']['PublicFace'];
+export function facePosition(box: number[], width: number, height: number) {
+  return { left: `${100 * box[0]! / width}%`, top: `${100 * box[1]! / height}%`,
+    width: `${100 * box[2]! / width}%`, height: `${100 * box[3]! / height}%` };
+}
 export class ApiError extends Error {
   constructor(message: string, public status: number, public retryAfter: number) { super(message); }
 }
@@ -76,6 +82,7 @@ export function publisherLabel(source: Source, people: Person[]) {
 }
 export type DetailSource = Source & { images: { image_id: number; width: number; height: number }[] };
 export type Photo = {
+  faces?: PublicFace[];
   image_url: string;
   thumbnail_url: string;
   download_url: string;

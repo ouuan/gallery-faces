@@ -12,6 +12,7 @@ const router = createRouter({
       { path: "posts/:key", name: "gallery-post", component: () => import("./PostDetail.vue"), props: route => ({ postKey: route.params.key }) },
     ] },
     { path: "/:mode(daily|random)", component: () => import("./PhotoDraw.vue"), props: true },
+    { path: '/face-game', component: () => import('./FaceGame.vue') },
     { path: "/admin/:section?", component: Admin },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],

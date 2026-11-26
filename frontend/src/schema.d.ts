@@ -503,6 +503,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/gallery/face-game": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Face Game */
+        get: operations["face_game_api_v1_gallery_face_game_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/gallery/{group_id}": {
         parameters: {
             query?: never;
@@ -602,6 +619,23 @@ export interface paths {
         post?: never;
         /** Feedback Delete */
         delete: operations["feedback_delete_api_v1_admin_feedback__feedback_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/feedback/{feedback_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Feedback Apply */
+        post: operations["feedback_apply_api_v1_admin_feedback__feedback_id__apply_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1879,8 +1913,22 @@ export interface components {
         };
         /** FeedbackInput */
         FeedbackInput: {
-            /** Content */
+            /**
+             * Content
+             * @default
+             */
             content: string;
+            /** Face Id */
+            face_id?: number | null;
+            /** Face Revision */
+            face_revision?: number | null;
+            /** Suggested Person Id */
+            suggested_person_id?: number | null;
+            /**
+             * Not Face
+             * @default false
+             */
+            not_face: boolean;
         };
         /** FeedbackOutput */
         FeedbackOutput: {
@@ -1899,11 +1947,23 @@ export interface components {
             created_at: string;
             /** Resolved At */
             resolved_at: string | null;
+            /** Face Id */
+            face_id: number | null;
+            /** Face Revision */
+            face_revision: number | null;
+            /** Original Name */
+            original_name: string | null;
+            /** Suggested Person Id */
+            suggested_person_id: number | null;
+            /** Suggested Name */
+            suggested_name: string | null;
+            /** Not Face */
+            not_face: boolean;
         };
         /** FeedbackPage */
         FeedbackPage: {
             /** Items */
-            items: components["schemas"]["FeedbackOutput"][];
+            items: components["schemas"]["ReviewFeedback"][];
             /** Next Cursor */
             next_cursor: number | null;
         };
@@ -1914,6 +1974,37 @@ export interface components {
              * @enum {string}
              */
             status: "pending" | "resolved";
+        };
+        /** GalleryDetail */
+        GalleryDetail: {
+            /** Id */
+            id: number;
+            /** Image Id */
+            image_id: number;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** Image Url */
+            image_url: string;
+            /** Thumbnail Url */
+            thumbnail_url: string;
+            /** Download Url */
+            download_url: string;
+            /** People */
+            people: {
+                [key: string]: unknown;
+            }[];
+            /** Source Count */
+            source_count: number;
+            /** Matched Source */
+            matched_source: {
+                [key: string]: unknown;
+            };
+            /** Faces */
+            faces: components["schemas"]["PublicFace"][];
+        } & {
+            [key: string]: unknown;
         };
         /** GalleryDownloadInput */
         GalleryDownloadInput: {
@@ -1966,6 +2057,29 @@ export interface components {
             };
         } & {
             [key: string]: unknown;
+        };
+        /** GameChoice */
+        GameChoice: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        };
+        /** GameQuestion */
+        GameQuestion: {
+            /** Group Id */
+            group_id: number;
+            /** Image Id */
+            image_id: number;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** Image Url */
+            image_url: string;
+            face: components["schemas"]["PublicFace"];
+            /** Choices */
+            choices: components["schemas"]["GameChoice"][];
         };
         /** GroupInput */
         GroupInput: {
@@ -2402,6 +2516,19 @@ export interface components {
             /** Thumbnail Url */
             thumbnail_url: string;
         };
+        /** PublicFace */
+        PublicFace: {
+            /** Id */
+            id: number;
+            /** Box */
+            box: number[];
+            /** Revision */
+            revision: number;
+            /** Person Id */
+            person_id: number | null;
+            /** Locked */
+            locked: boolean;
+        };
         /** PublicPost */
         PublicPost: {
             /** Id */
@@ -2624,6 +2751,38 @@ export interface components {
             platform: "instagram" | "x";
             /** Username */
             username: string;
+        };
+        /** ReviewFeedback */
+        ReviewFeedback: {
+            /** Id */
+            id: number;
+            /** Image Id */
+            image_id: number;
+            /** Content */
+            content: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "resolved";
+            /** Created At */
+            created_at: string;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Face Id */
+            face_id: number | null;
+            /** Face Revision */
+            face_revision: number | null;
+            /** Original Name */
+            original_name: string | null;
+            /** Suggested Person Id */
+            suggested_person_id: number | null;
+            /** Suggested Name */
+            suggested_name: string | null;
+            /** Not Face */
+            not_face: boolean;
+            /** Face Number */
+            face_number?: number | null;
         };
         /** ReviewGroupName */
         ReviewGroupName: {
@@ -3889,6 +4048,44 @@ export interface operations {
             };
         };
     };
+    face_game_api_v1_gallery_face_game_get: {
+        parameters: {
+            query?: {
+                people?: string;
+                match?: "any" | "all" | "exact" | "subset";
+                publishers?: string;
+                start?: string;
+                end?: string;
+                include_no_faces?: boolean;
+                last_group?: number | null;
+                last_face?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameQuestion"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     detail_api_v1_gallery__group_id__get: {
         parameters: {
             query?: {
@@ -3908,7 +4105,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GalleryPhoto"];
+                    "application/json": components["schemas"]["GalleryDetail"];
                 };
             };
             /** @description Validation Error */
@@ -4156,6 +4353,37 @@ export interface operations {
         };
     };
     feedback_delete_api_v1_admin_feedback__feedback_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedback_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    feedback_apply_api_v1_admin_feedback__feedback_id__apply_post: {
         parameters: {
             query?: never;
             header?: never;

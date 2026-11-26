@@ -37,7 +37,9 @@ def test_lifecycle(client):
     detail = client.get(f'/api/v1/gallery/{group}').json()
     assert detail['pending_feedback_count'] == 1
     assert feedback['content'] not in str(detail)
-    assert set(feedback) == {'id', 'image_id', 'content', 'status', 'created_at', 'resolved_at'}
+    assert set(feedback) == {'id', 'image_id', 'content', 'status', 'created_at', 'resolved_at',
+                             'face_id', 'face_revision', 'original_name', 'suggested_person_id', 'suggested_name', 'not_face'}
+    assert feedback['face_revision'] is None and not feedback['not_face']
     client.cookies.update(cookies)
     assert client.get('/api/v1/admin/images?state=feedback').json()[0]['pending_feedback_count'] == 1
     assert client.get('/api/v1/admin/images').json()[0]['id'] == target
@@ -95,6 +97,21 @@ def test_admin_pagination(client):
     last = client.get(f"{path}?before_id={page['next_cursor']}").json()
     assert last['items'] == [first]
     assert last['next_cursor'] is None
+
+
+def test_group_feedback_numbers_visible_faces_per_image(client):
+    target, group = seed()
+    with db.connect(True) as conn:
+        sibling = image(conn, group=group)
+        for identifier in (target, sibling):
+            conn.execute("UPDATE faces SET box='[30,0,10,10]' WHERE image_id=?", (identifier,))
+            face = conn.execute('SELECT id FROM faces WHERE image_id=?', (identifier,)).fetchone()[0]
+            conn.execute("INSERT INTO faces(image_id,box,ignored) VALUES(?,'[0,0,10,10]',1)", (identifier,))
+            if identifier == target:
+                conn.execute("INSERT INTO faces(image_id,box) VALUES(?,'[5,0,10,10]')", (identifier,))
+            conn.execute("INSERT INTO feedback(image_id,face_id,face_revision,content) VALUES(?,?,0,'')", (identifier, face))
+    items = client.get(f'/api/v1/admin/images/{target}/feedback?scope=group').json()['items']
+    assert {item['image_id']: item['face_number'] for item in items} == {target: 2, sibling: 1}
 
 
 @pytest.mark.parametrize('content', ['', ' \n ', 'x' * 1001, None])

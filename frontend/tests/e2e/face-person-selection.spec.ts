@@ -5,8 +5,8 @@ test.use({ reducedMotion: "reduce" });
 test("each face selects and saves its own person independently", async ({ page }) => {
   page.on("pageerror", (error) => { throw error; });
   const saved: { face: number; person_id: number | null; locked: boolean; ignored: boolean }[] = [];
-  const faces = [1, 2].map((id) => ({
-    id, box: [id * 30, 20, 20, 20], person_id: (id === 2 ? 8 : null) as number | null,
+  const faces = [42, 17].map((id, index) => ({
+    id, box: [(index + 1) * 30, 20, 20, 20], person_id: (index === 1 ? 8 : null) as number | null,
     locked: 0, ignored: 0, revision: 0, candidates: [8, 9, 10, 11, 12].map((person_id, i) => ({ person_id, score: 0.9 - i * 0.1 })),
   }));
   await page.route("**/api/v1/**", async (route) => {
@@ -37,6 +37,8 @@ test("each face selects and saves its own person independently", async ({ page }
   const second = page.locator(".face-review").nth(1);
   await expect(first).toBeVisible();
   await expect(first.getByRole("heading")).toHaveText("人脸 #1");
+  await expect(second.getByRole('heading')).toHaveText('人脸 #2');
+  await expect(page.locator('.face-box-editor .face-box')).toHaveText(['#1', '#2']);
   await expect(first.getByRole("button", { name: "确认", exact: true })).toBeDisabled();
   await expect(second.getByRole("button", { name: "确认", exact: true })).toBeEnabled();
   await expect(page.locator('.review-main > .field-label')).toHaveCount(0);
@@ -88,8 +90,8 @@ test("each face selects and saves its own person independently", async ({ page }
   await expect(second.locator(".n-cascader")).toContainText("人物乙");
   await expect(second.getByRole("button", { name: "确认", exact: true })).toBeDisabled();
   expect(saved).toEqual([
-    { face: 1, person_id: 7, locked: true, ignored: false },
-    { face: 2, person_id: 8, locked: true, ignored: false },
+    { face: 42, person_id: 7, locked: true, ignored: false },
+    { face: 17, person_id: 8, locked: true, ignored: false },
   ]);
   await first.locator("label").filter({ has: page.getByRole("radio", { name: /人物乙/ }) }).click();
   await first.getByRole("button", { name: "撤销", exact: true }).click();
@@ -109,7 +111,7 @@ test("each face selects and saves its own person independently", async ({ page }
   await expect(first.locator(".n-cascader")).toContainText("未知人物");
   await first.getByRole("button", { name: "确认", exact: true }).click();
   await expect.poll(() => saved.length).toBe(3);
-  expect(saved[2]).toEqual({ face: 1, person_id: null, locked: false, ignored: false });
+  expect(saved[2]).toEqual({ face: 42, person_id: null, locked: false, ignored: false });
   await expect(first.getByRole("button", { name: "确认", exact: true })).toBeDisabled();
   await page.reload();
   await expect(first.locator(".n-cascader")).toContainText("未知人物");
@@ -117,6 +119,8 @@ test("each face selects and saves its own person independently", async ({ page }
   await first.getByRole("button", { name: "删除", exact: true }).click();
   await expect(page.locator(".face-review")).toHaveCount(1);
   await expect(page.locator(".face-box-editor .face-box")).toHaveCount(1);
-  expect(saved[3]).toEqual({ face: 1, person_id: null, locked: true, ignored: true });
+  await expect(first.getByRole('heading')).toHaveText('人脸 #1');
+  await expect(page.locator('.face-box-editor .face-box')).toHaveText('#1');
+  expect(saved[3]).toEqual({ face: 42, person_id: null, locked: true, ignored: true });
   await expect(page.getByRole("button", { name: /^(保存并下一张|暂不标记|恢复未知|撤销修改|误检)$/ })).toHaveCount(0);
 });

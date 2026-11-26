@@ -121,7 +121,8 @@ def snapshot(db, image_id):
         reasons.append('unconfirmed_match')
     incomplete = [row[0] for row in db.execute(f'''SELECT id FROM images i WHERE i.group_id=? AND i.hidden=0
         AND NOT {complete_source_sql('i')} ORDER BY id''', group)]
-    feedback = [dict(row) for row in db.execute('''SELECT f.id,f.image_id,f.content,f.created_at FROM images i
+    feedback = [dict(row) for row in db.execute('''SELECT f.id,f.image_id,f.content,f.created_at,f.face_id,f.face_revision,
+        f.original_name,f.suggested_person_id,f.suggested_name,f.not_face FROM images i
         JOIN feedback f ON f.image_id=i.id WHERE i.group_id=? AND i.hidden=0 AND f.status='pending' ORDER BY f.id''', group)]
     sources = [dict(row, coauthors=json.loads(row['coauthors'] or '[]')) for row in db.execute('''SELECT s.image_id,
         p.id,p.post_key,p.author,p.author_name,p.platform,p.coauthors,p.post_text,p.url,p.published_at FROM images i
