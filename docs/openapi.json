@@ -2110,6 +2110,216 @@
         }
       }
     },
+    "/api/v1/face-game/rooms": {
+      "post": {
+        "summary": "Create Room",
+        "operationId": "create_room_api_v1_face_game_rooms_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoom"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Membership"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/face-game/rooms/{code}/join": {
+      "post": {
+        "summary": "Join Room",
+        "operationId": "join_room_api_v1_face_game_rooms__code__join_post",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinRoom"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Membership"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/face-game/rooms/{code}": {
+      "get": {
+        "summary": "Read Room",
+        "operationId": "read_room_api_v1_face_game_rooms__code__get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "name": "x-room-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Room-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/face-game/rooms/{code}/actions": {
+      "post": {
+        "summary": "Room Action",
+        "operationId": "room_action_api_v1_face_game_rooms__code__actions_post",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          },
+          {
+            "name": "x-room-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Room-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoomAction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/images/{image_id}/feedback": {
       "get": {
         "summary": "Feedback Admin",
@@ -5455,7 +5665,7 @@
         ],
         "title": "Candidate"
       },
-      "Choice": {
+      "Choice-Input": {
         "properties": {
           "id": {
             "type": "integer",
@@ -5492,6 +5702,61 @@
           "id"
         ],
         "title": "Choice"
+      },
+      "Choice-Output": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "Choice"
+      },
+      "ChoiceTally": {
+        "properties": {
+          "choice": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choice"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "nickname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nickname"
+          }
+        },
+        "type": "object",
+        "required": [
+          "choice",
+          "count",
+          "nickname"
+        ],
+        "title": "ChoiceTally"
       },
       "Cleanup": {
         "properties": {
@@ -5808,6 +6073,27 @@
         ],
         "title": "CreatePerson"
       },
+      "CreateRoom": {
+        "properties": {
+          "nickname": {
+            "type": "string",
+            "maxLength": 24,
+            "minLength": 1,
+            "title": "Nickname"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/RoomSettings"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/GameFilters"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nickname"
+        ],
+        "title": "CreateRoom"
+      },
       "Created": {
         "properties": {
           "task_id": {
@@ -5839,7 +6125,7 @@
           },
           "items": {
             "items": {
-              "$ref": "#/components/schemas/Choice"
+              "$ref": "#/components/schemas/Choice-Input"
             },
             "type": "array",
             "maxItems": 100,
@@ -6696,6 +6982,48 @@
         ],
         "title": "GameChoice"
       },
+      "GameFilters": {
+        "properties": {
+          "people": {
+            "type": "string",
+            "title": "People",
+            "default": ""
+          },
+          "publishers": {
+            "type": "string",
+            "title": "Publishers",
+            "default": ""
+          },
+          "match": {
+            "type": "string",
+            "enum": [
+              "any",
+              "all",
+              "exact",
+              "subset"
+            ],
+            "title": "Match",
+            "default": "any"
+          },
+          "start": {
+            "type": "string",
+            "title": "Start",
+            "default": ""
+          },
+          "end": {
+            "type": "string",
+            "title": "End",
+            "default": ""
+          },
+          "include_no_faces": {
+            "type": "boolean",
+            "title": "Include No Faces",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "GameFilters"
+      },
       "GameQuestion": {
         "properties": {
           "group_id": {
@@ -7196,6 +7524,21 @@
         ],
         "title": "Job"
       },
+      "JoinRoom": {
+        "properties": {
+          "nickname": {
+            "type": "string",
+            "maxLength": 24,
+            "minLength": 1,
+            "title": "Nickname"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nickname"
+        ],
+        "title": "JoinRoom"
+      },
       "LibraryReference": {
         "properties": {
           "face_id": {
@@ -7302,6 +7645,24 @@
           "person_id"
         ],
         "title": "Match"
+      },
+      "Membership": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "token": {
+            "type": "string",
+            "title": "Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "token"
+        ],
+        "title": "Membership"
       },
       "Monitor": {
         "properties": {
@@ -7715,6 +8076,64 @@
         ],
         "title": "PhotoDraw"
       },
+      "PlayerView": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "correct": {
+            "type": "integer",
+            "title": "Correct"
+          },
+          "wrong": {
+            "type": "integer",
+            "title": "Wrong"
+          },
+          "unanswered": {
+            "type": "integer",
+            "title": "Unanswered"
+          },
+          "eliminated": {
+            "type": "boolean",
+            "title": "Eliminated"
+          },
+          "online": {
+            "type": "boolean",
+            "title": "Online"
+          },
+          "playing": {
+            "type": "boolean",
+            "title": "Playing"
+          },
+          "answered": {
+            "type": "boolean",
+            "title": "Answered"
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "correct",
+          "wrong",
+          "unanswered",
+          "eliminated",
+          "online",
+          "playing",
+          "answered",
+          "ready"
+        ],
+        "title": "PlayerView"
+      },
       "PostDetail": {
         "properties": {
           "key": {
@@ -7911,6 +8330,48 @@
           "thumbnail_url"
         ],
         "title": "PostPicture"
+      },
+      "Proposal": {
+        "properties": {
+          "suggested_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Name"
+          },
+          "suggested_person_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Person Id"
+          },
+          "not_face": {
+            "type": "boolean",
+            "title": "Not Face"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "suggested_name",
+          "suggested_person_id",
+          "not_face",
+          "content"
+        ],
+        "title": "Proposal"
       },
       "PublicFace": {
         "properties": {
@@ -8648,6 +9109,24 @@
         "type": "object",
         "title": "Resume"
       },
+      "RevealedPhoto": {
+        "properties": {
+          "group_id": {
+            "type": "integer",
+            "title": "Group Id"
+          },
+          "image_id": {
+            "type": "integer",
+            "title": "Image Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "group_id",
+          "image_id"
+        ],
+        "title": "RevealedPhoto"
+      },
       "ReviewAccount": {
         "properties": {
           "platform": {
@@ -9015,6 +9494,380 @@
           "id"
         ],
         "title": "ReviewSource"
+      },
+      "RoomAction": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "settings",
+              "start",
+              "restart",
+              "answer",
+              "ready",
+              "draft",
+              "cancel",
+              "submit",
+              "vote",
+              "finish",
+              "leave"
+            ],
+            "title": "Action"
+          },
+          "stage": {
+            "type": "integer",
+            "title": "Stage"
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoomSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "choice": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choice"
+          },
+          "support": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support"
+          },
+          "suggested_person_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Person Id"
+          },
+          "not_face": {
+            "type": "boolean",
+            "title": "Not Face",
+            "default": false
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Content",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "stage"
+        ],
+        "title": "RoomAction"
+      },
+      "RoomPhoto": {
+        "properties": {
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          },
+          "box": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Box"
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/Choice-Output"
+            },
+            "type": "array",
+            "title": "Choices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "width",
+          "height",
+          "image_url",
+          "box",
+          "choices"
+        ],
+        "title": "RoomPhoto"
+      },
+      "RoomSettings": {
+        "properties": {
+          "answer_seconds": {
+            "type": "integer",
+            "maximum": 300.0,
+            "minimum": 3.0,
+            "title": "Answer Seconds",
+            "default": 15
+          },
+          "continue_seconds": {
+            "type": "integer",
+            "maximum": 300.0,
+            "minimum": 0.0,
+            "title": "Continue Seconds",
+            "default": 10
+          },
+          "cropped": {
+            "type": "boolean",
+            "title": "Cropped",
+            "default": false
+          },
+          "single_life": {
+            "type": "boolean",
+            "title": "Single Life",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "RoomSettings"
+      },
+      "RoomView": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "stage": {
+            "type": "integer",
+            "title": "Stage"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "lobby",
+              "answer",
+              "reveal",
+              "draft",
+              "vote",
+              "waiting",
+              "finished"
+            ],
+            "title": "Phase"
+          },
+          "round": {
+            "type": "integer",
+            "title": "Round"
+          },
+          "host": {
+            "type": "integer",
+            "title": "Host"
+          },
+          "me": {
+            "type": "integer",
+            "title": "Me"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/RoomSettings"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/GameFilters"
+          },
+          "remaining": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining"
+          },
+          "players": {
+            "items": {
+              "$ref": "#/components/schemas/PlayerView"
+            },
+            "type": "array",
+            "title": "Players"
+          },
+          "photo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoomPhoto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_photo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RevealedPhoto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tallies": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ChoiceTally"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tallies"
+          },
+          "choice": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choice"
+          },
+          "answer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Name"
+          },
+          "correct_choice": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correct Choice"
+          },
+          "void": {
+            "type": "boolean",
+            "title": "Void"
+          },
+          "proposer": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposer"
+          },
+          "proposal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Proposal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accepted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted"
+          },
+          "votes_for": {
+            "type": "integer",
+            "title": "Votes For"
+          },
+          "votes_against": {
+            "type": "integer",
+            "title": "Votes Against"
+          },
+          "voted": {
+            "type": "boolean",
+            "title": "Voted"
+          },
+          "ending": {
+            "type": "boolean",
+            "title": "Ending"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "version",
+          "stage",
+          "phase",
+          "round",
+          "host",
+          "me",
+          "settings",
+          "filters",
+          "remaining",
+          "players",
+          "photo",
+          "source_photo",
+          "tallies",
+          "choice",
+          "answer_name",
+          "correct_choice",
+          "void",
+          "proposer",
+          "proposal",
+          "accepted",
+          "votes_for",
+          "votes_against",
+          "voted",
+          "ending",
+          "message"
+        ],
+        "title": "RoomView"
       },
       "SettingsInput": {
         "properties": {

@@ -1,5 +1,10 @@
 import { expect, it } from 'vitest';
-import { answer, faceZoom, feedbackReceipt, game, openRound, score, type Question } from '../src/face-game';
+import { answer, cropBox, faceZoom, feedbackReceipt, game, openRound, score, type Question } from '../src/face-game';
+
+it('clips the target to photo edges without stretching or creating an empty viewport', () => {
+  expect(cropBox([-5, 80, 40, 40], 100, 100)).toEqual([0, 80, 35, 20]);
+  expect(cropBox([100, 100, 0, 0], 100, 100)).toEqual([99, 99, 1, 1]);
+});
 
 it('zooms a small face beyond 2x and keeps centered and edge crops inside the photo', () => {
   expect(faceZoom([280, 80, 40, 40], 800, 400)).toEqual({ scale: 5, left: -1.375, top: -.75 });

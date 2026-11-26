@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-for (const width of [390, 1280]) test(`filtered face game, shared feedback and scoring at ${width}px`, async ({ page }, testInfo) => {
+for (const width of [375, 1280]) test(`filtered face game, shared feedback and scoring at ${width}px`, async ({ page }, testInfo) => {
   const admin = width === 1280;
-  await page.setViewportSize({ width, height: 860 });
+  await page.setViewportSize({ width, height: admin ? 860 : 667 });
   const face = { id: 19, box: [80, 40, 160, 120], revision: 2, person_id: 1, locked: true };
   const choices = [{ id: 1, name: '甲' }, { id: 2, name: '乙' }, { id: 3, name: '一位名字很长的候选人物' }, { id: 4, name: 'Alex Chen' }];
   const question = { group_id: 9, image_id: 15, width: 800, height: 400, image_url: '/fixture.jpg', choices, face };
@@ -67,6 +67,7 @@ for (const width of [390, 1280]) test(`filtered face game, shared feedback and s
     });
   });
   const initialBoxes = await optionBoxes();
+  await expect(button('都不是')).toBeInViewport({ ratio: 1 });
   const [first, second, third, fourth, fallback] = initialBoxes;
   expect(first.y).toBe(second.y);
   expect(third.y).toBe(fourth.y);
@@ -99,6 +100,7 @@ for (const width of [390, 1280]) test(`filtered face game, shared feedback and s
   }
   await button('甲').click();
   await expect(button('下一题')).toBeEnabled();
+  await expect(button('下一题')).toBeInViewport({ ratio: 1 });
   const result = page.getByRole('status').filter({ hasText: /图库答案|本题已记为存疑/ });
   await expect(result).toHaveText('答对了。图库答案：甲');
   await expect(result).toHaveCSS('clip-path', 'inset(50%)');

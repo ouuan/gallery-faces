@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, field_validator, model_validator
 from .open_graph import render_open_graph
-from . import list_queries, photo_draw, publisher_avatars, publishers, review_packages, social
+from . import game_rooms, list_queries, photo_draw, publisher_avatars, publishers, review_packages, social
 from .review_format import fits
 from .group_index import REVIEW_FLAGS
 from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, cleanup_deleted_files, startup_phase
@@ -56,7 +56,8 @@ async def lifespan(app):
         cleanup_deleted_files()
     feedback_limits()
     with review_packages.service():
-        yield
+        async with game_rooms.service():
+            yield
 
 
 app = FastAPI(title="Gallery Faces", version="1.0.0", lifespan=lifespan)
@@ -1156,15 +1157,24 @@ def face_game(reads: MediaReads, people: str = '', match: PeopleMatch = 'any', p
               start: str = '', end: str = '', include_no_faces: bool = False,
               last_group: int | None = Query(None, gt=0, le=9223372036854775807),
               last_face: int | None = Query(None, gt=0, le=9223372036854775807)):
-    ids, accounts = parse_people_publishers(people, publishers)
-    source, args = source_filter(accounts, *date_bounds(start, end))
+    filters = game_rooms.GameFilters(people=people, match=match, publishers=publishers, start=start, end=end,
+                                     include_no_faces=include_no_faces)
+    return draw_game_question(reads, game_scope(filters), last_group, last_face)
+
+
+def game_scope(filters):
+    ids, accounts = parse_people_publishers(filters.people, filters.publishers)
+    source, args = source_filter(accounts, *date_bounds(filters.start, filters.end))
+    return ids, filters.match, source, args, filters.include_no_faces
+
+
+def draw_game_question(reads, scope, last_group, last_face):
 
     def pin(identifier):
         reads.close()
         return pin_public(reads, public_row(identifier), 'image')
 
-    group, (variant, _, row), face, choices = photo_draw.game_question(
-        (ids, match, source, args, include_no_faces), last_group, last_face, pin)
+    group, (variant, _, row), face, choices = photo_draw.game_question(scope, last_group, last_face, pin)
     return dict(group_id=group, image_id=row['id'], width=row['width'], height=row['height'],
                 image_url=variant_url(row, variant), face=face, choices=choices)
 
@@ -1529,6 +1539,25 @@ def feedback_create(image_id: int, body: FeedbackInput, request: Request):
                                   body.suggested_person_id, suggested_name, body.not_face)).lastrowid
         db.execute("INSERT INTO feedback_submissions VALUES(?,?)", (key, now))
         return dict(db.execute("SELECT * FROM feedback WHERE id=?", (feedback_id,)).fetchone())
+
+
+def draw_room_question(filters, previous):
+    with MediaRead() as reads:
+        question = draw_game_question(reads, game_scope(filters), previous and previous['group_id'],
+                                      previous and previous['face']['id'])
+    return question
+
+
+def save_room_feedback(question, proposal, request):
+    face = question['face']
+    if proposal.not_face and proposal.suggested_person_id is not None:
+        fail('不能同时标记误检和建议人物', 422)
+    body = FeedbackInput(face_id=face['id'], face_revision=face['revision'], content=proposal.content,
+                         suggested_person_id=proposal.suggested_person_id, not_face=proposal.not_face)
+    return feedback_create(question['image_id'], body, request)
+
+
+app.include_router(game_rooms.router(draw_room_question, game_scope, save_room_feedback))
 
 
 @app.get("/api/v1/admin/images/{image_id}/feedback", response_model=FeedbackPage, response_model_exclude_unset=True)

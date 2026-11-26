@@ -589,6 +589,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/face-game/rooms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Room */
+        post: operations["create_room_api_v1_face_game_rooms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/face-game/rooms/{code}/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Join Room */
+        post: operations["join_room_api_v1_face_game_rooms__code__join_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/face-game/rooms/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Room */
+        get: operations["read_room_api_v1_face_game_rooms__code__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/face-game/rooms/{code}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Room Action */
+        post: operations["room_action_api_v1_face_game_rooms__code__actions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/images/{image_id}/feedback": {
         parameters: {
             query?: never;
@@ -1635,13 +1703,29 @@ export interface components {
             label: string | null;
         };
         /** Choice */
-        Choice: {
+        "Choice-Input": {
             /** Id */
             id: number;
             /** Face Index */
             face_index?: number | null;
             /** Scope Token */
             scope_token?: string | null;
+        };
+        /** Choice */
+        "Choice-Output": {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        };
+        /** ChoiceTally */
+        ChoiceTally: {
+            /** Choice */
+            choice: number | null;
+            /** Count */
+            count: number;
+            /** Nickname */
+            nickname: string | null;
         };
         /** Cleanup */
         Cleanup: {
@@ -1752,6 +1836,13 @@ export interface components {
              */
             new_groups?: (string | components["schemas"]["ReviewGroupName"])[];
         };
+        /** CreateRoom */
+        CreateRoom: {
+            /** Nickname */
+            nickname: string;
+            settings?: components["schemas"]["RoomSettings"];
+            filters?: components["schemas"]["GameFilters"];
+        };
         /** Created */
         Created: {
             /** Task Id */
@@ -1767,7 +1858,7 @@ export interface components {
              */
             decision: "accept" | "reject" | "acknowledge";
             /** Items */
-            items: components["schemas"]["Choice"][];
+            items: components["schemas"]["Choice-Input"][];
         };
         /** Decisions */
         Decisions: {
@@ -2065,6 +2156,40 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** GameFilters */
+        GameFilters: {
+            /**
+             * People
+             * @default
+             */
+            people: string;
+            /**
+             * Publishers
+             * @default
+             */
+            publishers: string;
+            /**
+             * Match
+             * @default any
+             * @enum {string}
+             */
+            match: "any" | "all" | "exact" | "subset";
+            /**
+             * Start
+             * @default
+             */
+            start: string;
+            /**
+             * End
+             * @default
+             */
+            end: string;
+            /**
+             * Include No Faces
+             * @default false
+             */
+            include_no_faces: boolean;
+        };
         /** GameQuestion */
         GameQuestion: {
             /** Group Id */
@@ -2281,6 +2406,11 @@ export interface components {
             /** Error */
             error?: string | null;
         };
+        /** JoinRoom */
+        JoinRoom: {
+            /** Nickname */
+            nickname: string;
+        };
         /** LibraryReference */
         LibraryReference: {
             /** Face Id */
@@ -2313,6 +2443,13 @@ export interface components {
             face_id: number;
             /** Person Id */
             person_id: number | string | null;
+        };
+        /** Membership */
+        Membership: {
+            /** Code */
+            code: string;
+            /** Token */
+            token: string;
         };
         /** Monitor */
         Monitor: {
@@ -2456,6 +2593,29 @@ export interface components {
             /** Image Url */
             image_url: string;
         };
+        /** PlayerView */
+        PlayerView: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Correct */
+            correct: number;
+            /** Wrong */
+            wrong: number;
+            /** Unanswered */
+            unanswered: number;
+            /** Eliminated */
+            eliminated: boolean;
+            /** Online */
+            online: boolean;
+            /** Playing */
+            playing: boolean;
+            /** Answered */
+            answered: boolean;
+            /** Ready */
+            ready: boolean;
+        };
         /** PostDetail */
         PostDetail: {
             /** Key */
@@ -2515,6 +2675,17 @@ export interface components {
             image_url: string | null;
             /** Thumbnail Url */
             thumbnail_url: string;
+        };
+        /** Proposal */
+        Proposal: {
+            /** Suggested Name */
+            suggested_name: string | null;
+            /** Suggested Person Id */
+            suggested_person_id: number | null;
+            /** Not Face */
+            not_face: boolean;
+            /** Content */
+            content: string;
         };
         /** PublicFace */
         PublicFace: {
@@ -2742,6 +2913,13 @@ export interface components {
              */
             start: string;
         };
+        /** RevealedPhoto */
+        RevealedPhoto: {
+            /** Group Id */
+            group_id: number;
+            /** Image Id */
+            image_id: number;
+        };
         /** ReviewAccount */
         ReviewAccount: {
             /**
@@ -2882,6 +3060,122 @@ export interface components {
             image_ids?: number[];
         } & {
             [key: string]: unknown;
+        };
+        /** RoomAction */
+        RoomAction: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "settings" | "start" | "restart" | "answer" | "ready" | "draft" | "cancel" | "submit" | "vote" | "finish" | "leave";
+            /** Stage */
+            stage: number;
+            settings?: components["schemas"]["RoomSettings"] | null;
+            /** Choice */
+            choice?: number | null;
+            /** Support */
+            support?: boolean | null;
+            /** Suggested Person Id */
+            suggested_person_id?: number | null;
+            /**
+             * Not Face
+             * @default false
+             */
+            not_face: boolean;
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+        };
+        /** RoomPhoto */
+        RoomPhoto: {
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** Image Url */
+            image_url: string;
+            /** Box */
+            box: number[];
+            /** Choices */
+            choices: components["schemas"]["Choice-Output"][];
+        };
+        /** RoomSettings */
+        RoomSettings: {
+            /**
+             * Answer Seconds
+             * @default 15
+             */
+            answer_seconds: number;
+            /**
+             * Continue Seconds
+             * @default 10
+             */
+            continue_seconds: number;
+            /**
+             * Cropped
+             * @default false
+             */
+            cropped: boolean;
+            /**
+             * Single Life
+             * @default false
+             */
+            single_life: boolean;
+        };
+        /** RoomView */
+        RoomView: {
+            /** Code */
+            code: string;
+            /** Version */
+            version: number;
+            /** Stage */
+            stage: number;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "lobby" | "answer" | "reveal" | "draft" | "vote" | "waiting" | "finished";
+            /** Round */
+            round: number;
+            /** Host */
+            host: number;
+            /** Me */
+            me: number;
+            settings: components["schemas"]["RoomSettings"];
+            filters: components["schemas"]["GameFilters"];
+            /** Remaining */
+            remaining: number | null;
+            /** Players */
+            players: components["schemas"]["PlayerView"][];
+            photo: components["schemas"]["RoomPhoto"] | null;
+            source_photo: components["schemas"]["RevealedPhoto"] | null;
+            /** Tallies */
+            tallies: components["schemas"]["ChoiceTally"][] | null;
+            /** Choice */
+            choice: number | null;
+            /** Answer Name */
+            answer_name: string | null;
+            /** Correct Choice */
+            correct_choice: number | null;
+            /** Void */
+            void: boolean;
+            /** Proposer */
+            proposer: number | null;
+            proposal: components["schemas"]["Proposal"] | null;
+            /** Accepted */
+            accepted: boolean | null;
+            /** Votes For */
+            votes_for: number;
+            /** Votes Against */
+            votes_against: number;
+            /** Voted */
+            voted: boolean;
+            /** Ending */
+            ending: boolean;
+            /** Message */
+            message: string;
         };
         /** SettingsInput */
         SettingsInput: {
@@ -4269,6 +4563,146 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeedbackOutput"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_room_api_v1_face_game_rooms_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRoom"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Membership"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    join_room_api_v1_face_game_rooms__code__join_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinRoom"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Membership"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_room_api_v1_face_game_rooms__code__get: {
+        parameters: {
+            query?: {
+                after?: number | null;
+            };
+            header: {
+                "x-room-token": string;
+            };
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    room_action_api_v1_face_game_rooms__code__actions_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-room-token": string;
+            };
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoomAction"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomView"];
                 };
             };
             /** @description Validation Error */

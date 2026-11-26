@@ -24,6 +24,12 @@ export function score(outcomes: Outcome[]) {
   return { correct, wrong, disputed, streak, accuracy: correct + wrong ? `${Math.round(100 * correct / (correct + wrong))}%` : '—' };
 }
 
+export function cropBox(box: number[], width: number, height: number) {
+  const left = Math.max(0, Math.min(width - 1, box[0]!)), top = Math.max(0, Math.min(height - 1, box[1]!));
+  return [left, top, Math.max(1, Math.min(width, box[0]! + box[2]!) - left),
+    Math.max(1, Math.min(height, box[1]! + box[3]!) - top)] as const;
+}
+
 let sequence = 0;
 export function openRound(question: Question) {
   game.round = { question, index: game.outcomes.length, key: ++sequence };

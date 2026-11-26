@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { ArrowLeft, ArrowRight, Check, X, ZoomIn } from '@lucide/vue';
-import { NAlert, NButton } from 'naive-ui';
-import { api, ApiError, facePosition, type Photo } from './api';
+import { ArrowLeft, ArrowRight } from '@lucide/vue';
+import { NAlert, NButton, NSwitch } from 'naive-ui';
+import { api, ApiError, type Photo } from './api';
 import { filterOnlyQuery, fromQuery } from './filters';
-import { answer, correctChoice, faceZoom, feedbackReceipt, game, openRound, score, type Question } from './face-game';
+import { answer, correctChoice, feedbackReceipt, game, openRound, score, type Question } from './face-game';
 import { useLibrary } from './store';
 import { useLatestRequest } from './use-latest-request';
 import { usePageTitle } from './page-title';
+import GameBoard from './GameBoard.vue';
 import PhotoSidebar from './PhotoSidebar.vue';
 import LoadingOverlay from './LoadingOverlay.vue';
 
@@ -26,19 +27,10 @@ const choices = computed(() => [...(question.value?.choices ?? []), { id: null, 
 const correctId = computed(() => question.value && correctChoice(question.value));
 const submitted = computed(() => game.round ? feedbackReceipt(game.round, game.outcomes) : undefined);
 const latest = useLatestRequest(), details = useLatestRequest();
-const loading = ref(false), imageReady = ref(false), error = ref(''), empty = ref(false);
-const zoomed = ref(false);
-function holdZoom(event: PointerEvent) {
-  if (!event.isPrimary || event.button !== 0 || !imageReady.value) return;
-  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-  zoomed.value = true;
-}
-const imageStyle = computed(() => {
-  if (!zoomed.value || !question.value) return;
-  const { face, width, height } = question.value;
-  const { scale, left, top } = faceZoom(face.box, width, height);
-  return { transform: `translate(${left * 100}%, ${top * 100}%) scale(${scale})` };
-});
+const loading = ref(false), error = ref(''), empty = ref(false);
+const cropped = ref(localStorage.getItem('face-game:cropped') === 'true');
+watch(cropped, value => localStorage.setItem('face-game:cropped', String(value)));
+const photo = computed(() => !loading.value && !error.value && question.value ? { ...question.value, box: question.value.face.box } : null);
 const detail = ref<Photo | null>(null), detailError = ref(''), authenticated = ref(false);
 const answerName = computed(() => {
   const personId = question.value?.face.person_id;
@@ -58,7 +50,7 @@ async function next() {
   loading.value = true; empty.value = false; error.value = ''; detail.value = null; detailError.value = '';
   try {
     const result = await api<Question>(`/gallery/face-game?${params}`, { signal });
-    if (!signal.aborted) { imageReady.value = false; zoomed.value = false; openRound(result); }
+    if (!signal.aborted) openRound(result);
   } catch (cause) {
     if (!signal.aborted) { error.value = (cause as Error).message; empty.value = cause instanceof ApiError && cause.status === 404; }
   } finally { if (!signal.aborted) loading.value = false; }
@@ -77,7 +69,7 @@ async function loadDetail() {
 }
 
 function choose(person: number | null) {
-  if (answered.value || !imageReady.value) return;
+  if (answered.value) return;
   answer(person);
   void loadDetail();
 }
@@ -94,36 +86,15 @@ onMounted(() => {
 
 <template>
   <main class="game-page">
-    <header class="game-header"><h1>认脸游戏</h1><router-link :to="{ path: '/', query }"><ArrowLeft :size="16" />返回筛选</router-link></header>
+    <header class="game-header"><h1>认脸游戏</h1><nav><router-link :to="{ path: '/face-game/rooms', query }">多人对战</router-link><router-link :to="{ path: '/', query }" aria-label="返回筛选" title="返回筛选"><ArrowLeft :size="16" /><span>返回筛选</span></router-link></nav></header>
     <div class="game-score" aria-label="本局统计"><strong>正确率 {{ stats.accuracy }}</strong><span>正确 {{ stats.correct }}</span><span>错误 {{ stats.wrong }}</span><span>存疑 {{ stats.disputed }}</span><span>连对 {{ stats.streak }}</span></div>
-    <div class="game-layout">
-      <div class="game-picture">
-        <div v-if="error" class="game-status" role="status"><p>{{ error }}</p><n-button v-if="!empty" @click="next">重试</n-button></div>
-        <LoadingOverlay v-else-if="loading || !question || !game.round" show center label="正在出题…" />
-        <div v-else :key="game.round.key" class="game-frame" :style="{ width: `min(100%, ${question.width}px, ${question.width / question.height * 100}cqh)`, aspectRatio: `${question.width} / ${question.height}` }">
-          <img :src="question.image_url" :style="imageStyle" alt="题目照片" @load="imageReady = true" @error="error = '照片加载失败，请重试'" />
-          <span v-if="imageReady && !zoomed" class="target-face" :style="facePosition(question.face.box, question.width, question.height)" aria-label="要辨认的人脸" />
-          <LoadingOverlay :show="!imageReady" center label="正在加载照片…" />
-        </div>
-      </div>
-      <div v-if="!loading && !error && question && game.round" :key="game.round.key" class="game-controls">
-        <div class="game-prompt-row">
-          <h2 id="game-prompt">框中的是谁？</h2>
-          <n-button quaternary circle :disabled="!imageReady" aria-label="按住放大人脸" title="按住放大人脸"
-            @pointerdown="holdZoom" @lostpointercapture="zoomed = false" @contextmenu.prevent
-            @keydown.space.enter.prevent="zoomed = true" @keyup.space.enter.prevent="zoomed = false" @blur="zoomed = false">
-            <ZoomIn :size="18" aria-hidden="true" />
-          </n-button>
-        </div>
-        <div class="game-options" role="group" aria-labelledby="game-prompt">
-          <button v-for="choice in choices" :key="choice.id ?? 'none'" type="button" :disabled="answered || !imageReady"
-            :class="{ fallback: choice.id === null, right: answered && choice.id === correctId, wrong: answered && choice.id === game.round.choice && choice.id !== correctId }"
-            @click="choose(choice.id)">
-            <span>{{ choice.name }}<template v-if="answered && choice.id === null && correctId === null && answerName">（{{ answerName }}）</template></span>
-            <Check v-if="answered && choice.id === correctId" :size="16" aria-hidden="true" />
-            <X v-else-if="answered && choice.id === game.round.choice" :size="16" aria-hidden="true" />
-          </button>
-        </div>
+    <GameBoard :key="game.round?.key" :photo="photo" :cropped="cropped" :revealed="answered" :locked="answered" :selected="game.round?.choice" :correct-id="correctId" :answer-name="answerName" @choose="choose">
+      <template #placeholder>
+        <div v-if="error" role="status"><p>{{ error }}</p><n-button v-if="!empty" @click="next">重试</n-button></div>
+        <LoadingOverlay v-else show center label="正在出题…" />
+      </template>
+      <template #mode><label class="crop-mode"><n-switch v-model:value="cropped" size="small" aria-label="截取人脸" />截取人脸</label></template>
+      <template v-if="question && game.round">
         <div class="game-actions">
           <n-button v-if="answered" type="primary" @click="next">下一题 <ArrowRight :size="16" /></n-button>
           <p role="status" :class="{ 'sr-only': outcome !== 'disputed' }">
@@ -139,8 +110,8 @@ onMounted(() => {
           <n-alert v-else-if="detailError" type="error">{{ detailError }} <n-button @click="loadDetail">重试加载详情</n-button></n-alert>
           <div v-else class="detail-loading loading-region"><LoadingOverlay show label="正在加载照片详情…" /></div>
         </template>
-      </div>
-    </div>
+      </template>
+    </GameBoard>
   </main>
   <PostDetail v-if="postKey" :post-key="postKey" return-path="/face-game" />
 </template>
@@ -151,35 +122,24 @@ onMounted(() => {
 .game-header { justify-content: space-between; gap: 12px; }
 .game-header a { gap: 6px; min-height: 44px; }
 .game-score { flex-wrap: wrap; gap: 4px 16px; padding: 8px 0 16px; margin-bottom: 20px; border-bottom: 1px solid var(--line); color: var(--muted); font-variant-numeric: tabular-nums; }
+.game-header nav, .crop-mode { display: flex; align-items: center; gap: 12px; }
+.crop-mode { margin-inline-start: auto; min-height: 44px; gap: 6px; color: var(--muted); }
+.game-header a { justify-content: center; min-width: 44px; }
 .game-score strong { color: var(--text); }
-.game-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 28px; align-items: start; }
-.game-picture { position: relative; display: grid; grid-template: 100% / 100%; place-items: center; container-type: size; height: 64svh; }
-.game-status { text-align: center; }
-.game-frame { position: relative; overflow: hidden; border-radius: 4px; }
-.game-frame img { position: absolute; inset: 0; width: 100%; height: 100%; transform-origin: top left; }
-.target-face { position: absolute; border: 3px solid white; outline: 2px solid #222; pointer-events: none; }
-.game-controls { min-width: 0; }
-.game-prompt-row { display: flex; align-items: center; gap: 4px; }
-.game-prompt-row button { width: 44px; height: 44px; touch-action: none; user-select: none; }
-.game-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
-.game-options button {
-  display: grid; grid-template-columns: minmax(0, 1fr) 16px; align-items: center; gap: 8px;
-  min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px;
-  background: var(--panel); color: var(--text); font-size: 14px; line-height: 1.6; text-align: start; overflow-wrap: anywhere;
-}
-.game-options .fallback, .game-options button:first-child:nth-last-child(2) { grid-column: 1 / -1; }
-.game-options .fallback { background: transparent; color: var(--muted); }
-.game-options button:disabled { cursor: default; color: var(--muted); }
-@media (hover: hover) { .game-options button:enabled:hover { border-color: var(--accent); color: var(--accent); } }
-.game-options button.right { border-color: var(--success); background: var(--success-bg); color: var(--success); }
-.game-options button.wrong { border-color: var(--error); color: var(--error); }
 .game-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; color: var(--muted); }
 .game-actions:has(button) { margin-top: 16px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.game-controls :deep(.detail-sidebar) { border: 0; border-top: 1px solid var(--line); padding: 16px 0 0; margin-top: 20px; }
+:deep(.detail-sidebar) { border: 0; border-top: 1px solid var(--line); padding: 16px 0 0; margin-top: 20px; }
 @media (max-width: 768px) {
-  .game-page { padding: 12px 16px 24px; }
-  .game-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
-  .game-picture { height: auto; aspect-ratio: 1; max-height: 64svh; width: 100%; }
+  .game-page { padding: 4px 16px 24px; }
+  .game-score { gap: 4px 12px; padding: 0 0 8px; margin-bottom: 8px; }
+  .game-actions:has(button) { margin-top: 8px; }
+  .game-actions button { flex: 1; }
+  .game-header a span { display: none; }
+}
+@media (min-width: 600px) and (orientation: landscape) and (max-height: 540px) {
+  .game-page { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px 20px; padding: 4px 16px 16px; }
+  .game-score { justify-content: end; gap: 4px 12px; margin: 0; padding: 0; border: 0; }
+  .game-page > .game-layout { grid-column: 1 / -1; }
 }
 </style>

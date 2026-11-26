@@ -70,12 +70,14 @@ def game_question(filters, last_group, last_face, pin):
             if candidates(db, filters, group_id=group, game=True) != [(group, representative)]:
                 continue
             condition = ' AND person_id IN (SELECT value FROM json_each(?))' if selected else ''
-            face = db.execute('SELECT id,box,revision,locked,person_id,candidates FROM faces WHERE image_id=? '
+            face = db.execute('SELECT id,box,revision,locked,person_id,candidates, '
+                              '(SELECT name FROM people WHERE id=faces.person_id) AS answer_name FROM faces WHERE image_id=? '
                               f'AND ignored=0 AND person_id IS NOT NULL{condition} ORDER BY id IS ?,random() LIMIT 1',
                               [representative, *([json.dumps(selected)] if selected else []), last_face]).fetchone()
             if face:
                 return group, asset, dict(id=face['id'], box=json.loads(face['box']), revision=face['revision'],
-                                          locked=bool(face['locked']), person_id=face['person_id']), game_choices(db, face, selected)
+                                          locked=bool(face['locked']), person_id=face['person_id'],
+                                          answer_name=face['answer_name']), game_choices(db, face, selected)
     raise HTTPException(404, '当前筛选下没有可出题的人脸')
 
 
