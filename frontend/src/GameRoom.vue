@@ -18,7 +18,25 @@ const { code, token, room, busy, error, syncError, seconds, enter, act } = useGa
 usePageTitle(() => code.value ? `对战房间 ${code.value}` : '多人对战');
 const query = computed(() => filterOnlyQuery(fromQuery(route.query)));
 const nickname = ref(sessionStorage.getItem('face-room:name') || ''), joinCode = ref(''), joining = ref(false);
-const settings = ref<Settings>({ cropped: true, single_life: false, answer_seconds: 15, continue_seconds: 10 });
+const settingsKey = 'face-room:settings';
+function loadSettings(): Settings {
+  const defaults = { cropped: true, single_life: false, answer_seconds: 15, continue_seconds: 10 };
+  try {
+    const saved = JSON.parse(localStorage.getItem(settingsKey) ?? 'null');
+    if (!saved || typeof saved !== 'object') return defaults;
+    for (const key of ['cropped', 'single_life'] as const) {
+      if (typeof saved[key] === 'boolean') defaults[key] = saved[key];
+    }
+    for (const [key, minimum] of [['answer_seconds', 3], ['continue_seconds', 0]] as const) {
+      if (Number.isInteger(saved[key]) && saved[key] >= minimum && saved[key] <= 300) defaults[key] = saved[key];
+    }
+  } catch { return defaults; }
+  return defaults;
+}
+const settings = ref(loadSettings()), draftSettings = ref<Settings>({ ...settings.value });
+watch(settings, value => {
+  try { localStorage.setItem(settingsKey, JSON.stringify(value)); } catch { return; }
+});
 const person = ref<number | null>(null), notFace = ref(false), content = ref(''), editing = ref(false), showLink = ref(false);
 const me = computed(() => room.value?.players.find(player => player.id === room.value?.me));
 const host = computed(() => me.value?.id === room.value?.host);
@@ -52,11 +70,14 @@ async function copyInvite() {
 }
 function editSettings() {
   if (!room.value) return;
-  settings.value = { ...room.value.settings }; editing.value = true;
+  draftSettings.value = { ...room.value.settings }; editing.value = true;
 }
 async function saveSettings() {
-  await act('settings', { settings: settings.value });
-  if (!error.value) editing.value = false;
+  await act('settings', { settings: draftSettings.value });
+  if (!error.value && room.value) {
+    settings.value = { ...room.value.settings };
+    editing.value = false;
+  }
 }
 </script>
 
@@ -82,7 +103,7 @@ async function saveSettings() {
       </div>
       <section v-if="room.phase === 'lobby'" class="entry">
         <h2>等待开局 · {{ online }}/12 人</h2>
-        <template v-if="editing"><GameRoomSettings v-model="settings" /><div class="actions"><n-button :disabled="busy" @click="saveSettings">保存设置</n-button><n-button quaternary @click="editing = false">取消</n-button></div></template>
+        <template v-if="editing"><GameRoomSettings v-model="draftSettings" /><div class="actions"><n-button :disabled="busy" @click="saveSettings">保存设置</n-button><n-button quaternary @click="editing = false">取消</n-button></div></template>
         <template v-else><p>{{ room.settings.cropped ? '截取人脸' : '显示全图' }} · 每题 {{ room.settings.answer_seconds }} 秒 · {{ room.settings.continue_seconds ? `${room.settings.continue_seconds} 秒后切题` : '全员继续后切题' }}</p>
           <p v-if="room.settings.single_life">一命模式 · 答错或未答即淘汰，开局后不可加入</p>
           <div v-if="host" class="actions"><n-button type="primary" :disabled="busy || online < 2" @click="act('start')">开始对战</n-button><n-button :disabled="busy" @click="editSettings">修改设置</n-button></div>

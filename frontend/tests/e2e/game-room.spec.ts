@@ -2,6 +2,27 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { expect, test } from '@playwright/test';
 
+test('room creation remembers preferences across reloads', async ({ page }) => {
+  await page.goto('/face-game/rooms');
+  await page.evaluate(() => localStorage.setItem('face-room:settings', '{'));
+  await page.reload();
+  const cropped = page.getByRole('switch', { name: '截取人脸' });
+  const singleLife = page.getByRole('switch', { name: '一命模式' });
+  const times = page.locator('.n-input-number input');
+  await expect(cropped).toBeChecked();
+  await expect(singleLife).not.toBeChecked();
+  await expect(times.nth(0)).toHaveValue('15');
+  await expect(times.nth(1)).toHaveValue('10');
+  await cropped.click(); await singleLife.click();
+  await times.nth(0).fill('45'); await times.nth(0).press('Tab');
+  await times.nth(1).fill('0'); await times.nth(1).press('Tab');
+  await page.reload();
+  await expect(cropped).not.toBeChecked();
+  await expect(singleLife).toBeChecked();
+  await expect(times.nth(0)).toHaveValue('45');
+  await expect(times.nth(1)).toHaveValue('0');
+});
+
 test('three guests share a cropped round, a correction and the final score', async ({ browser, baseURL }, testInfo) => {
   test.setTimeout(60000);
   const server = spawn('.venv/bin/python', ['tests/serve_room_fixture.py'], { cwd: '../backend', env: { ...process.env, PYTHONPATH: '.' }, stdio: ['ignore', 'pipe', 'inherit'] });
@@ -41,6 +62,14 @@ test('three guests share a cropped round, a correction and the final score', asy
     }
     await host.getByRole('button', { name: '创建并进入' }).click();
     await expect(host.getByRole('heading', { name: /等待开局/ })).toBeVisible();
+    const editSettings = host.getByRole('button', { name: '修改设置' });
+    const answerTime = host.locator('.n-input-number input').first();
+    await editSettings.click();
+    await answerTime.fill('80'); await answerTime.press('Tab');
+    await host.getByRole('button', { name: '保存设置' }).click();
+    await editSettings.click();
+    await answerTime.fill('70'); await answerTime.press('Tab');
+    await host.getByRole('button', { name: '取消' }).click();
     const invitation = new URL(host.url()).pathname;
     async function join(page: typeof host, name: string) {
       await page.goto(invitation);
@@ -100,6 +129,7 @@ test('three guests share a cropped round, a correction and the final score', asy
     await expect(late.getByRole('table').getByRole('row', { name: /玩家丙/ }).getByRole('cell')).toHaveText(['0', '1', '0']);
 
     await host.goto('/face-game/rooms?people=1,2');
+    await expect(answerTime).toHaveValue('80');
     await host.getByRole('switch', { name: '一命模式' }).click();
     await host.getByRole('button', { name: '创建并进入' }).click();
     await expect(host.getByRole('heading', { name: /等待开局/ })).toBeVisible();
