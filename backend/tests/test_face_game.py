@@ -29,7 +29,7 @@ def test_choices_and_public_payload(client, monkeypatch, scope, expected):
     assert response.status_code == 200 and response.headers['cache-control'] == 'no-store'
     question = response.json()
     assert question['image_id'] == target and question['face']['locked']
-    assert sorted(item['id'] for item in question['choices']) == sorted(expected)
+    assert [item['id'] for item in question['choices']] == sorted(expected)
     assert set(question['face']) == {'id', 'box', 'person_id', 'locked', 'revision'}
     assert all(set(item) == {'id', 'name'} for item in question['choices'])
 
@@ -43,7 +43,7 @@ def test_omit_recognition_with_four_alternatives(client, monkeypatch, scope, exp
         seed(conn)
     question = client.get(GAME, params={'people': scope}).json()
     assert question['face']['person_id'] == 1
-    assert {choice['id'] for choice in question['choices']} == expected
+    assert [choice['id'] for choice in question['choices']] == sorted(expected)
 
 
 def test_keep_recognition_without_four_distinct_alternatives(client, monkeypatch):

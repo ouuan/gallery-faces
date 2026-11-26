@@ -52,8 +52,7 @@ def game_choices(db, face, selected):
     choices.extend(list(dict.fromkeys(ranked))[:ranked_slots])
     remaining = sorted(scope.difference(choices))
     choices.extend(random.sample(remaining, count - len(choices)))
-    random.shuffle(choices)
-    return [dict(id=person, name=people[person]) for person in choices]
+    return [dict(id=person, name=people[person]) for person in sorted(choices)]
 
 
 def game_question(filters, last_group, last_face, pin):
