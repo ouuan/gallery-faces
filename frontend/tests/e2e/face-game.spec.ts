@@ -13,7 +13,12 @@ for (const width of [390, 1280]) test(`filtered face game, shared feedback and s
   let resumeSecondDraw!: () => void;
   const secondDraw = new Promise<void>(resolve => { resumeSecondDraw = resolve; });
   const sent: Record<string, unknown>[] = [];
-  await page.route('**/fixture.jpg', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400"><rect width="800" height="400" fill="#b8bcc1"/><rect x="80" y="40" width="160" height="120" fill="#64869e"/><rect x="320" y="40" width="160" height="120" fill="#bc9469"/></svg>' }));
+  let releasePhoto!: () => void;
+  const photoPending = new Promise<void>(resolve => { releasePhoto = resolve; });
+  await page.route('**/fixture.jpg', async route => {
+    await photoPending;
+    await route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400"><rect width="800" height="400" fill="#b8bcc1"/><rect x="80" y="40" width="160" height="120" fill="#64869e"/><rect x="320" y="40" width="160" height="120" fill="#bc9469"/></svg>' });
+  });
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()), path = url.pathname;
     if (path.endsWith('/face-game')) {
@@ -43,8 +48,17 @@ for (const width of [390, 1280]) test(`filtered face game, shared feedback and s
   await page.getByRole('link', { name: '认脸游戏' }).click();
   await expect(page).toHaveURL(/face-game\?people=1(?:,|%2C)2$/);
   const button = (name: string) => page.getByRole('button', { name, exact: true });
-  await expect(button('甲')).toBeEnabled();
   const options = page.getByRole('group', { name: '框中的是谁？' });
+  const photoFrame = page.locator('.game-frame');
+  const picture = page.locator('.game-picture');
+  const layout = () => Promise.all([photoFrame.boundingBox(), options.boundingBox()]);
+  await expect(options).toBeVisible();
+  const loadingLayout = await layout();
+  releasePhoto();
+  await expect(button('甲')).toBeEnabled();
+  expect(await layout()).toEqual(loadingLayout);
+  const pictureHeight = (await picture.boundingBox())!.height;
+  expect(pictureHeight).toBeGreaterThan(0);
   const optionBoxes = () => options.evaluate(group => {
     const origin = group.getBoundingClientRect();
     return Array.from(group.querySelectorAll('button'), button => {
@@ -102,6 +116,7 @@ for (const width of [390, 1280]) test(`filtered face game, shared feedback and s
   try {
     await expect(page.getByText('正在出题…', { exact: true })).toBeVisible();
     await expect(options).toHaveCount(0);
+    expect((await picture.boundingBox())?.height).toBe(pictureHeight);
   } finally { resumeSecondDraw(); }
   await expect(page.locator('.target-face')).toBeVisible();
   await button('乙').click();

@@ -96,17 +96,17 @@ onMounted(() => {
   <main class="game-page">
     <header class="game-header"><h1>认脸游戏</h1><router-link :to="{ path: '/', query }"><ArrowLeft :size="16" />返回筛选</router-link></header>
     <div class="game-score" aria-label="本局统计"><strong>正确率 {{ stats.accuracy }}</strong><span>正确 {{ stats.correct }}</span><span>错误 {{ stats.wrong }}</span><span>存疑 {{ stats.disputed }}</span><span>连对 {{ stats.streak }}</span></div>
-    <div v-if="error" class="game-status" role="status"><p>{{ error }}</p><n-button v-if="!empty" @click="next">重试</n-button></div>
-    <div v-else-if="loading || !question || !game.round" class="game-status"><LoadingOverlay show center label="正在出题…" /></div>
-    <div v-else :key="`round:${game.round.key}`" class="game-layout">
+    <div class="game-layout">
       <div class="game-picture">
-        <div class="game-frame" :style="{ width: `min(100%, ${question.width}px, ${question.width / question.height * 64}svh)`, aspectRatio: `${question.width} / ${question.height}` }">
+        <div v-if="error" class="game-status" role="status"><p>{{ error }}</p><n-button v-if="!empty" @click="next">重试</n-button></div>
+        <LoadingOverlay v-else-if="loading || !question || !game.round" show center label="正在出题…" />
+        <div v-else :key="game.round.key" class="game-frame" :style="{ width: `min(100%, ${question.width}px, ${question.width / question.height * 100}cqh)`, aspectRatio: `${question.width} / ${question.height}` }">
           <img :src="question.image_url" :style="imageStyle" alt="题目照片" @load="imageReady = true" @error="error = '照片加载失败，请重试'" />
           <span v-if="imageReady && !zoomed" class="target-face" :style="facePosition(question.face.box, question.width, question.height)" aria-label="要辨认的人脸" />
           <LoadingOverlay :show="!imageReady" center label="正在加载照片…" />
         </div>
       </div>
-      <div class="game-controls">
+      <div v-if="!loading && !error && question && game.round" :key="game.round.key" class="game-controls">
         <div class="game-prompt-row">
           <h2 id="game-prompt">框中的是谁？</h2>
           <n-button quaternary circle :disabled="!imageReady" aria-label="按住放大人脸" title="按住放大人脸"
@@ -146,18 +146,17 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.game-page { max-width: 1440px; margin: auto; padding: 20px 28px; }
+.game-page { width: min(100%, 1440px); margin: auto; padding: 20px 28px; }
 .game-header, .game-header a, .game-score { display: flex; align-items: center; }
 .game-header { justify-content: space-between; gap: 12px; }
 .game-header a { gap: 6px; min-height: 44px; }
 .game-score { flex-wrap: wrap; gap: 4px 16px; padding: 8px 0 16px; margin-bottom: 20px; border-bottom: 1px solid var(--line); color: var(--muted); font-variant-numeric: tabular-nums; }
 .game-score strong { color: var(--text); }
 .game-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 28px; align-items: start; }
-.game-picture { display: grid; place-items: center; }
-.game-frame, .game-status { position: relative; }
-.game-status { min-height: 200px; text-align: center; }
-.game-frame { overflow: hidden; border-radius: 4px; }
-.game-frame img { display: block; width: 100%; height: 100%; transform-origin: top left; }
+.game-picture { position: relative; display: grid; grid-template: 100% / 100%; place-items: center; container-type: size; height: 64svh; }
+.game-status { text-align: center; }
+.game-frame { position: relative; overflow: hidden; border-radius: 4px; }
+.game-frame img { position: absolute; inset: 0; width: 100%; height: 100%; transform-origin: top left; }
 .target-face { position: absolute; border: 3px solid white; outline: 2px solid #222; pointer-events: none; }
 .game-controls { min-width: 0; }
 .game-prompt-row { display: flex; align-items: center; gap: 4px; }
@@ -178,5 +177,9 @@ onMounted(() => {
 .game-actions:has(button) { margin-top: 16px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .game-controls :deep(.detail-sidebar) { border: 0; border-top: 1px solid var(--line); padding: 16px 0 0; margin-top: 20px; }
-@media (max-width: 768px) { .game-page { padding: 12px 16px 24px; } .game-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; } }
+@media (max-width: 768px) {
+  .game-page { padding: 12px 16px 24px; }
+  .game-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .game-picture { height: auto; aspect-ratio: 1; max-height: 64svh; width: 100%; }
+}
 </style>
