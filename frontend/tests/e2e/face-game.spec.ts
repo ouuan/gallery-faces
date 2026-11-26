@@ -10,13 +10,16 @@ for (const width of [390, 1280]) test(`filtered face game, shared feedback and s
   const photo = { ...question, id: 9, people: choices, source_count: 1, sources: [source], matched_source: source,
     faces: [face, { ...face, id: 20, box: [320, 40, 160, 120] }] };
   let draws = 0, details = 0, galleryLoads = 0, failFeedback = true;
+  let resumeSecondDraw!: () => void;
+  const secondDraw = new Promise<void>(resolve => { resumeSecondDraw = resolve; });
   const sent: Record<string, unknown>[] = [];
   await page.route('**/fixture.jpg', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400"><rect width="800" height="400" fill="#b8bcc1"/><rect x="80" y="40" width="160" height="120" fill="#64869e"/><rect x="320" y="40" width="160" height="120" fill="#bc9469"/></svg>' }));
-  await page.route('**/api/v1/**', route => {
+  await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()), path = url.pathname;
     if (path.endsWith('/face-game')) {
       expect(url.searchParams.get('people')).toBe('1,2');
       if (draws++) { expect(url.searchParams.get('last_face')).toBe('19'); expect(url.searchParams.get('last_group')).toBe('9'); }
+      if (draws === 2) await secondDraw;
       if (draws >= 4) return route.fulfill({ json: { ...question, choices: [...choices.slice(1), { id: 5, name: '丙' }] } });
       return route.fulfill({ json: question });
     }
@@ -96,6 +99,10 @@ for (const width of [390, 1280]) test(`filtered face game, shared feedback and s
   await expect(page.getByRole('link', { name: '在图库中查看' })).toHaveCount(0);
   await expect(button('选择人脸')).toBeVisible();
   await button('下一题').click();
+  try {
+    await expect(page.getByText('正在出题…', { exact: true })).toBeVisible();
+    await expect(options).toHaveCount(0);
+  } finally { resumeSecondDraw(); }
   await expect(page.locator('.target-face')).toBeVisible();
   await button('乙').click();
   await expect(result).toHaveText('答错了，你选了乙。图库答案：甲');

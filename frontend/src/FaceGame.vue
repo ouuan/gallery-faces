@@ -98,7 +98,7 @@ onMounted(() => {
     <div class="game-score" aria-label="本局统计"><strong>正确率 {{ stats.accuracy }}</strong><span>正确 {{ stats.correct }}</span><span>错误 {{ stats.wrong }}</span><span>存疑 {{ stats.disputed }}</span><span>连对 {{ stats.streak }}</span></div>
     <div v-if="error" class="game-status" role="status"><p>{{ error }}</p><n-button v-if="!empty" @click="next">重试</n-button></div>
     <div v-else-if="loading || !question || !game.round" class="game-status"><LoadingOverlay show center label="正在出题…" /></div>
-    <div v-else :key="game.round.key" class="game-layout">
+    <div v-else :key="`round:${game.round.key}`" class="game-layout">
       <div class="game-picture">
         <div class="game-frame" :style="{ width: `min(100%, ${question.width}px, ${question.width / question.height * 64}svh)`, aspectRatio: `${question.width} / ${question.height}` }">
           <img :src="question.image_url" :style="imageStyle" alt="题目照片" @load="imageReady = true" @error="error = '照片加载失败，请重试'" />
