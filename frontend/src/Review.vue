@@ -687,7 +687,7 @@ onMounted(load);
       <span class="muted">共 {{ total }} 组</span>
       <ListPagination :page="page" :page-count="pageCount" :disabled="navigationDisabled" @change="changePage" />
     </nav>
-    <div :key="page" ref="thumbnailStrip" class="review-strip">
+    <div :key="`strip:${page}`" ref="thumbnailStrip" class="review-strip">
       <div
         v-for="(image, i) in images"
         :key="image.group_id ?? image.id"
