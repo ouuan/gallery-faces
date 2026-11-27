@@ -12,6 +12,44 @@ async function stable(locator: Locator, before: Awaited<ReturnType<typeof rect>>
     expect(Math.abs(after[key] - before[key]), key).toBeLessThanOrEqual(1);
 }
 for (const width of [390, 1280]) {
+  for (const game of ['face-game', 'history-quiz']) test(`${game} keeps its layout while drawing and loading at ${width}px`, async ({ page }) => {
+    const face = game === 'face-game';
+    const pending = new Map<string, Route>();
+    await page.setViewportSize({ width, height: 844 });
+    await page.route('**/api/v1/**', route => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith(`/gallery/${game}`)) { pending.set('question', route); return; }
+      return route.fulfill({ json: /\/(site|session|date-bounds)$/.test(path) ? {} : [] });
+    });
+    await page.route('**/question.svg', route => { pending.set('photo', route); });
+    await page.goto(`/${game}`);
+    await page.getByRole('button', { name: '开始游戏' }).click();
+    await expect(page.getByText('正在出题…', { exact: true })).toBeVisible();
+    const picture = page.locator(face ? '.game-picture' : '.picture');
+    const controls = page.locator(face ? '.game-options' : '.controls');
+    const stage = await rect(picture), answers = await rect(controls);
+    const choices = ['甲', '乙', '丙', '丁'].map((name, id) => ({ id: id + 1, name }));
+    await expect.poll(() => pending.has('question')).toBe(true);
+    await pending.get('question')!.fulfill({ json: { group_id: 1, image_id: 1, width: 800, height: 200, image_url: '/question.svg',
+      ...(face ? { choices, face: { id: 1, person_id: 1, box: [10, 10, 50, 50] } }
+        : { first_date: '2026-01-01', last_date: '2026-01-10', correct_date: '2026-01-08' }) } });
+    const answer = page.getByRole('button', { name: face ? '甲' : '提交日期', exact: true });
+    await expect(page.getByText('正在加载照片…', { exact: true })).toBeVisible();
+    await expect(answer).toBeDisabled();
+    await stable(picture, stage);
+    await stable(controls, answers);
+    await expect.poll(() => pending.has('photo')).toBe(true);
+    await pending.get('photo')!.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="200"/>' });
+    await expect(answer).toBeEnabled();
+    await stable(picture, stage);
+    await stable(controls, answers);
+    await answer.click();
+    await page.getByRole('button', { name: '下一题' }).click();
+    await expect(page.getByText('正在出题…', { exact: true })).toBeVisible();
+    await stable(picture, stage);
+    await stable(controls, answers);
+  });
+
   test(`task polling preserves geometry at ${width}px`, async ({ page }) => {
     let held: Route | undefined;
     let hold = false;

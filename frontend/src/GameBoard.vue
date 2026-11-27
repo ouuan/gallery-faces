@@ -9,6 +9,7 @@ import LoadingOverlay from './LoadingOverlay.vue';
 import type { components } from './schema';
 
 const props = defineProps<{ photo?: components['schemas']['RoomPhoto'] | null; cropped: boolean; revealed: boolean;
+  pendingChoices?: number;
   locked: boolean; selected?: number | null; correctId?: number | null; answerName?: string | null; voided?: boolean;
   order?: number[]; started?: number | null; interval?: number; correctCells?: number | null; wrongChoices?: (number | null)[];
   tallies?: components['schemas']['ChoiceTally'][] | null }>();
@@ -94,7 +95,7 @@ const imageStyle = computed(() => {
         <LoadingOverlay :show="!imageReady" center label="正在加载照片…" />
       </div>
     </div>
-    <div v-if="photo" class="game-controls">
+    <div v-if="photo || pendingChoices" class="game-controls" :inert="!photo">
         <div class="game-prompt-row">
           <h2 id="game-prompt">{{ crop ? '这是谁？' : '框中的是谁？' }}</h2>
           <n-button v-if="!crop && !liveGrid" quaternary circle :disabled="!imageReady" aria-label="按住放大人脸" title="按住放大人脸"
@@ -109,7 +110,11 @@ const imageStyle = computed(() => {
           </n-button>
           <span v-if="grid && order" class="grid-progress">已显示 {{ shown }} / {{ order.length }} 格</span>
         </div>
-        <div class="game-options" role="group" aria-labelledby="game-prompt">
+        <div v-if="!photo" class="game-options" aria-hidden="true">
+          <span v-for="index in pendingChoices" :key="index" class="option-placeholder" />
+          <span class="option-placeholder fallback" />
+        </div>
+        <div v-else class="game-options" role="group" aria-labelledby="game-prompt">
           <button v-for="choice in choices" :key="choice.id ?? 'none'" type="button" :disabled="locked || !imageReady || (grid && shown === 0) || wrongChoices?.includes(choice.id)"
             :aria-description="!voided && wrongChoices?.includes(choice.id) ? '已答错' : undefined"
             :class="{ fallback: choice.id === null, selected: !revealed && choice.id === selected, right: revealed && !voided && choice.id === correctId, wrong: !voided && (wrongChoices?.includes(choice.id) || (revealed && choice.id === selected && choice.id !== correctId)) }"
@@ -121,7 +126,7 @@ const imageStyle = computed(() => {
             <X v-else-if="!voided && (wrongChoices?.includes(choice.id) || (revealed && choice.id === selected))" :size="16" aria-hidden="true" />
           </button>
         </div>
-      <slot :grid-complete="liveGrid && liveCells === order?.length" />
+      <slot v-if="photo" :grid-complete="liveGrid && liveCells === order?.length" />
     </div>
   </div>
 </template>
@@ -140,12 +145,12 @@ const imageStyle = computed(() => {
 .game-prompt-row { display: flex; align-items: center; flex-wrap: wrap; min-height: 44px; gap: 4px; }
 .game-prompt-row button { width: 44px; height: 44px; touch-action: none; user-select: none; }
 .game-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
-.game-options button {
+.game-options button, .option-placeholder {
   display: grid; grid-template-columns: minmax(0, 1fr) 16px; align-items: center; gap: 8px;
   min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px;
   background: var(--panel); color: var(--text); font-size: 14px; line-height: 1.6; text-align: start; overflow-wrap: anywhere;
 }
-.game-options .fallback, .game-options button:first-child:nth-last-child(2) { grid-column: 1 / -1; }
+.game-options .fallback, .game-options > :first-child:nth-last-child(2) { grid-column: 1 / -1; }
 .game-options .fallback { background: transparent; color: var(--muted); }
 .option-label { min-width: 0; }
 .option-tally { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }

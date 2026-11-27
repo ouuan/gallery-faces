@@ -111,7 +111,7 @@ onMounted(() => {
     </SoloGameSetup>
     <template v-else>
     <div class="game-score" aria-label="本局统计"><strong>正确率 {{ stats.accuracy }}</strong><span>正确 {{ stats.correct }}</span><span>错误 {{ stats.wrong }}</span><span>存疑 {{ stats.disputed }}</span><span>连对 {{ stats.streak }}</span><span v-if="game.display.grid">答对时平均 {{ cellAverage }}</span></div>
-    <GameBoard :key="game.round?.key" :photo="photo" :cropped="game.display.cropped" :revealed="answered" :locked="answered" :selected="game.round?.choice" :correct-id="correctId" :answer-name="answerName" @choose="choose"
+    <GameBoard :key="game.round?.key" :photo="photo" :pending-choices="error ? undefined : question?.choices.length ?? Math.min(4, draft.people.length || store.people.length || 4)" :cropped="game.display.cropped" :revealed="!!photo && answered" :locked="answered" :selected="game.round?.choice" :correct-id="correctId" :answer-name="answerName" @choose="choose"
       :order="game.round?.order" :started="game.round?.started" :interval="game.display.grid_seconds" :correct-cells="game.round?.correctCells" @loaded="startGrid">
       <template #placeholder>
         <div v-if="error" role="status"><p>{{ error }}</p><n-button v-if="!empty" @click="next">重试</n-button></div>

@@ -41,11 +41,10 @@ onMounted(() => { if (playing.value && !session.question) void next(); });
     <SoloGameSetup v-else-if="!playing" v-model="draft" @start="begin" />
     <template v-else>
     <div class="score" aria-label="本局统计"><strong>平均偏差 {{ average(session.total, session.count) }}</strong><span>已答 {{ session.count }} 题</span><n-button text @click="end">结束本局</n-button></div>
-    <p v-if="loading" role="status">正在出题…</p>
-    <div v-else-if="error" role="alert">{{ error }} <n-button v-if="!empty" @click="next">重试</n-button></div>
-    <HistoryBoard v-else-if="session.question" :photo="session.question" :selected="session.guess" :correct="session.submitted ? session.question.correct_date : null"
+    <div v-if="error" role="alert">{{ error }} <n-button v-if="!empty" @click="next">重试</n-button></div>
+    <HistoryBoard v-else :key="loading ? 'pending' : session.question?.group_id" :photo="loading ? null : session.question" :selected="loading ? null : session.guess" :correct="!loading && session.submitted ? session.question?.correct_date : null"
       @change="session.guess = $event" @choose="submit">
-      <template v-if="session.submitted"><n-button type="primary" @click="next">下一题</n-button>
+      <template v-if="!loading && session.submitted && session.question"><n-button type="primary" @click="next">下一题</n-button>
         <GameRoomSources :group-id="session.question.group_id" :image-id="session.question.image_id" :query="query" /></template>
     </HistoryBoard>
     </template>
