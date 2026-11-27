@@ -22,7 +22,7 @@ for (const width of [375, 1280]) test(`filtered face game, shared feedback and s
   await page.route('**/api/v1/**', async route => {
     const url = new URL(route.request().url()), path = url.pathname;
     if (path.endsWith('/face-game')) {
-      expect(url.searchParams.get('people')).toBe('1,2');
+      expect(url.searchParams.get('people')).toBe('1-2');
       if (draws++) { expect(url.searchParams.get('last_face')).toBe('19'); expect(url.searchParams.get('last_group')).toBe('9'); }
       if (draws === 2) await secondDraw;
       if (draws >= 4) return route.fulfill({ json: { ...question, choices: [...choices.slice(1), { id: 5, name: '丙' }] } });
@@ -47,7 +47,7 @@ for (const width of [375, 1280]) test(`filtered face game, shared feedback and s
   await page.evaluate(() => localStorage.setItem('face-game:cropped', 'false'));
   if (!admin) await page.getByRole('button', { name: '筛选', exact: true }).click();
   await page.getByRole('link', { name: '认脸游戏' }).click();
-  await expect(page).toHaveURL(/face-game\?people=1(?:,|%2C)2$/);
+  await expect(page).toHaveURL(/face-game\?people=1-2$/);
   const button = (name: string) => page.getByRole('button', { name, exact: true });
   const options = page.getByRole('group', { name: '框中的是谁？' });
   const photoFrame = page.locator('.game-frame');

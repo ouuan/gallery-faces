@@ -145,7 +145,7 @@ test("edits gallery filters in a modal, applies together, restores and clears", 
   await page.getByLabel("结束时间", { exact: true }).press("Enter");
   await page.getByRole("button", { name: "应用筛选", exact: true }).click();
   await expect.poll(() => requests.at(-1)?.searchParams.get("end")).toBe("2026-01-03T00:00:00Z");
-  for (const [key, value] of Object.entries({state:"unknown",people:"1,2",match:"all",publishers:"x:alice"})) {
+  for (const [key, value] of Object.entries({state:"unknown",people:"1-2",match:"all",publishers:"x:alice"})) {
     expect(requests.at(-1)?.searchParams.get(key)).toBe(value);
   }
   await page.reload();

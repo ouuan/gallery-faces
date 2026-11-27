@@ -2,6 +2,8 @@
 
 One API and one worker share a SQLite WAL database and a persistent filesystem. Public routes check completed processing, complete provenance and visibility independently of identity labels. A duplicate group is a presentation unit; source filters are evaluated on one post row and identity matching on the public representative image. Sources share post records so a caption update applies to every media item in a post.
 
+Gallery filters accept inclusive ID ranges alongside comma-separated single IDs, e.g. `people=1-3,7` and `publishers=person:4-6,x:alice`. Each numeric filter accepts up to 4096 expanded IDs. ZIP download links sort and deduplicate group IDs before merging them into ranges, so the same selection produces the same `groups` parameter regardless of click order. The 200-photo limit still applies.
+
 The unlinked-publisher manager separates accounts with posts from accounts retained only for their collection rules. Rules match the original publisher by platform and case-insensitive username. Monitors and manual imports check the discovery route, not the monitored account; an indirect-source block does not prevent a later direct import. A block on all sources also applies to directory imports with unknown provenance. Cache recovery and trash restoration do not create new sources and are exempt.
 
 Publisher purges are separate from recycling: a confirmed purge removes all of the account’s posts, but only images losing their last source, including their managed thumbnails. Reference images prevent the entire operation. A preview token binds the source set and existing rule; rule changes and deletion commit together, and failed filesystem cleanup is retried. Mounted import files are never deleted.

@@ -7,6 +7,17 @@ from app import db, main
 from test_workflows import client, image
 
 
+def test_people_and_publisher_ranges():
+    assert main.parse_people_publishers('3,1-3,5', 'person:7-8,x:12') == (
+        [1, 2, 3, 5], [('person', '7'), ('person', '8'), ('x', '12')])
+
+
+@pytest.mark.parametrize('filters', [{'people': '5-3'}, {'people': '1-9223372036854775807'},
+                                     {'publishers': 'person:1-4096,person:5000'}])
+def test_invalid_filter_ranges(client, filters):
+    assert client.get('/api/v1/gallery', params=filters).status_code == 400
+
+
 def test_gallery_reads_are_batched(client, monkeypatch):
     with db.connect(True) as conn:
         group = image(conn)

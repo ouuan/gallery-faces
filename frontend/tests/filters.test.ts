@@ -4,6 +4,12 @@ import { emptyFilter, fromQuery, toQuery } from "../src/filters";
 import { publisherLabel, platformLabel, type Person } from "../src/api";
 import SourceText from "../src/SourceText.vue";
 describe("gallery state", () => {
+  it('compacts numeric selections without changing account names', () => {
+    const legacy = { people: '9,2,1,2,4,6,5', publishers: 'x:12,person:5,person:4,instagram:1-3' };
+    const compact = { people: '1-2,4-6,9', publishers: 'person:4-5,x:12,instagram:1-3' };
+    expect(toQuery(fromQuery(legacy))).toEqual(compact);
+    expect(fromQuery(compact)).toMatchObject({ people: [1, 2, 4, 5, 6, 9], publishers: ['person:4', 'person:5', 'x:12', 'instagram:1-3'] });
+  });
   it("restores filters and excludes no-face images on clear", () => {
     const f = {
       ...emptyFilter(),

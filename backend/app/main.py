@@ -815,22 +815,43 @@ def source_record(row):
     return source
 
 
+FILTER_ID_LIMIT = 4096
+
+
+def id_range(token, remaining):
+    match = re.fullmatch(r'([0-9]{1,19})(?:-([0-9]{1,19}))?', token)
+    if not match:
+        raise ValueError()
+    first = int(match[1])
+    last = int(match[2] or match[1])
+    if not 0 < first <= last <= 9223372036854775807 or last - first + 1 > remaining:
+        raise ValueError()
+    return range(first, last + 1)
+
+
 def parse_people_publishers(people, publishers):
     try:
-        ids = sorted(set(int(i) for i in people.split(",") if i))
-        if any(not 0 < i <= 9223372036854775807 for i in ids):
-            raise ValueError()
+        ids = []
+        for token in filter(None, people.split(',')):
+            ids.extend(id_range(token, FILTER_ID_LIMIT - len(ids)))
     except ValueError:
         fail("人物编号无效，请重新选择人物")
     try:
-        accounts = [a.split(":", 1) for a in publishers.split(",") if a]
-        if any(len(a) != 2 or a[0] not in ("x", "instagram", "person") or not a[1] for a in accounts):
-            raise ValueError()
-        if any(platform == "person" and (not author.isascii() or not author.isdigit() or not 0 < int(author) <= 9223372036854775807) for platform, author in accounts):
-            raise ValueError()
+        accounts = []
+        person_count = 0
+        for token in filter(None, publishers.split(',')):
+            platform, author = token.split(':', 1)
+            if platform == 'person':
+                selected = id_range(author, FILTER_ID_LIMIT - person_count)
+                person_count += len(selected)
+                accounts.extend((platform, str(identifier)) for identifier in selected)
+            elif platform in ('x', 'instagram') and author:
+                accounts.append((platform, author))
+            else:
+                raise ValueError()
     except ValueError:
         fail("发布者格式无效，请重新选择发布者")
-    return ids, accounts
+    return sorted(set(ids)), accounts
 
 
 class PublicPost(BaseModel):
@@ -1060,11 +1081,19 @@ def gallery_download_files(group_ids, reads, *, preflight=False):
 
 @app.post("/api/v1/gallery/downloads", response_model=GalleryDownloadLink)
 def prepare_gallery_download(body: GalleryDownloadInput, reads: MediaReads):
-    ids = list(dict.fromkeys(body.group_ids))
+    ids = sorted(set(body.group_ids))
     _, variants = gallery_download_files(ids, reads, preflight=True)
     # Validate before handing the request to the browser's download manager.
     # This stores no archive or job; GET rechecks visibility and availability.
-    return {"download_url": "/api/v1/gallery/download.zip?prepared=true&groups=" + ",".join(map(str, ids)),
+    ranges = []
+    first = last = ids[0]
+    for identifier in ids[1:]:
+        if identifier != last + 1:
+            ranges.append(str(first) if first == last else f'{first}-{last}')
+            first = identifier
+        last = identifier
+    ranges.append(str(first) if first == last else f'{first}-{last}')
+    return {"download_url": "/api/v1/gallery/download.zip?prepared=true&groups=" + ",".join(ranges),
             "display_count": variants.count('image'), "thumbnail_count": variants.count('thumbnail')}
 
 
@@ -1073,12 +1102,12 @@ def prepare_gallery_download(body: GalleryDownloadInput, reads: MediaReads):
     responses={200: {"content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}}}},
 )
 def download_gallery(reads: MediaReads, groups: str = Query(min_length=1, max_length=4000), prepared: bool = False):
-    parts = groups.split(",")
-    if len(parts) > 200 or any(not re.fullmatch(r"[0-9]{1,19}", part) for part in parts):
+    ids = []
+    try:
+        for token in groups.split(','):
+            ids.extend(id_range(token, 200 - len(ids)))
+    except ValueError:
         fail("请选择 1–200 张照片")
-    ids = [int(part) for part in parts]
-    if any(not 0 < identifier <= 9223372036854775807 for identifier in ids):
-        fail("照片编号无效")
     if prepared:
         reads.deadline = time.monotonic()
     files, _ = gallery_download_files(ids, reads)

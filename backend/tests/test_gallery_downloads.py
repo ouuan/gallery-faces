@@ -50,6 +50,15 @@ def test_download_public_representatives_original_fallback_and_deduplication(cli
         assert archive.testzip() is None
 
 
+def test_download_ranges_are_independent_of_selection_order(client):
+    first, second, third = [seed()[1] for _ in range(3)]
+    url = client.post('/api/v1/gallery/downloads', json={'group_ids': [third, first, second, first]}).json()['download_url']
+    assert url == client.post('/api/v1/gallery/downloads', json={'group_ids': [first, second, third]}).json()['download_url']
+    assert url.endswith(f'groups={first}-{third}')
+    with ZipFile(io.BytesIO(client.get(url).content)) as archive:
+        assert [name.partition('-')[0] for name in archive.namelist()] == list(map(str, (first, second, third)))
+
+
 def test_archive_budget_released_after_requests(client, monkeypatch):
     first, group = seed()
     _, other = seed()
@@ -160,7 +169,7 @@ def test_missing_original_uses_display_and_colliding_names_are_unique(client):
         assert all(archive.read(name) == f"display {first}".encode() for name in archive.namelist())
 
 
-@pytest.mark.parametrize("groups", ["", "0", "-1", "1,,2", "abc", "1.1", "9223372036854775808", ",".join(["1"] * 201)])
+@pytest.mark.parametrize("groups", ["", "0", "-1", "1,,2", "abc", "1.1", "3-2", "1-200,202", "9223372036854775808", ",".join(["1"] * 201)])
 def test_invalid_download_query(client, groups):
     assert client.get("/api/v1/gallery/download.zip", params={"groups": groups}).status_code in (400, 422)
 
