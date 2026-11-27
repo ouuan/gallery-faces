@@ -45,7 +45,7 @@ for (const width of [375, 1280]) test(`filtered face game, shared feedback and s
   });
   await page.goto('/?people=1,2&sort=oldest');
   await page.evaluate(() => localStorage.setItem('face-game:cropped', 'false'));
-  if (!admin) await page.getByRole('button', { name: '筛选', exact: true }).click();
+  if (!admin) await page.getByRole('button', { name: '图库菜单' }).click();
   await page.getByRole('link', { name: '认脸游戏' }).click();
   await expect(page).toHaveURL(/face-game\?people=1-2$/);
   const button = (name: string) => page.getByRole('button', { name, exact: true });

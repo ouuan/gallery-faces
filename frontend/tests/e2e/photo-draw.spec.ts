@@ -19,8 +19,12 @@ for (const [mode, label] of [['daily', '每日一图'], ['random', '随机图片
     await page.goto('/?sort=oldest');
     if (width < 600) await page.getByRole('button', { name: '筛选', exact: true }).click();
     await page.getByRole('checkbox', { name: '包含无人脸图片' }).check();
+    if (width < 600) {
+      await page.getByRole('button', { name: '应用筛选' }).click();
+      await page.getByRole('button', { name: '图库菜单' }).click();
+    }
     const entry = page.getByRole('link', { name: label, exact: true });
-    await expect(entry).toHaveText('');
+    await expect(entry).toBeVisible();
     await entry.click();
     await expect(page).toHaveURL(new RegExp(`/${mode}\\?include_no_faces=true$`));
     await expect(page.getByRole('link', { name: '在图库中查看' })).toHaveAttribute('href', `/?include_no_faces=true&photo=${mode === 'random' ? 1 : 7}`);
@@ -33,6 +37,11 @@ for (const [mode, label] of [['daily', '每日一图'], ['random', '随机图片
     await expect(page.getByRole('link', { name: '图片直链' })).toHaveAttribute('href', `/api/v1/gallery/${mode}/image?include_no_faces=true`);
     await expect(page.getByRole('link', { name: '在图库中查看' })).toHaveAttribute('href', `/?include_no_faces=true&photo=${mode === 'random' ? 2 : 7}`);
     expect(requests).toEqual(['?include_no_faces=true', '?include_no_faces=true']);
+    if (width < 600) {
+      await page.getByRole('button', { name: '图库菜单' }).click();
+      await page.getByRole('link', { name: '图库', exact: true }).click();
+    } else await page.locator('.site-header .brand').click();
+    await expect(page).toHaveURL(/\/\?include_no_faces=true$/);
   });
 }
 

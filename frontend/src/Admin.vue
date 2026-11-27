@@ -20,8 +20,8 @@ import {
   NSlider,
   useMessage,
 } from "naive-ui";
-import AdminMenu from './AdminMenu.vue';
-import { adminSections } from './AdminNavigation.vue';
+import NavigationMenu from './NavigationMenu.vue';
+import AdminNavigation, { adminSections } from './AdminNavigation.vue';
 import { api, send } from "./api";
 import { useLibrary } from "./store";
 import { usePageTitle } from "./page-title";
@@ -304,7 +304,9 @@ onUnmounted(() => {
     <router-link to="/">返回照片库</router-link>
   </main>
   <main v-else class="admin-shell" :class="{ 'duplicates-shell': section === 'duplicates' }">
-    <AdminMenu :section="section" :title="sectionTitle" @logout="logout" />
+    <NavigationMenu v-slot="{ drawer, close }" :title="sectionTitle" menu="管理菜单" drawer-title="管理工作台">
+      <AdminNavigation :section="section" :drawer="drawer" @navigate="close" @logout="close(); logout()" />
+    </NavigationMenu>
     <section class="admin-content">
       <h1>{{ sectionTitle }}</h1>
       <Monitors v-if="section === 'monitors'" />

@@ -55,7 +55,7 @@ watch([() => props.mode, suffix], load, { immediate: true });
       </div>
       <nav :aria-label="`${title}链接`">
         <router-link :to="{ path: '/', query: photo ? { ...query, photo: photo.group_id } : query }">
-          <Images :size="17" aria-hidden="true" />{{ photo ? '在图库中查看' : '返回图库' }}
+          <Images v-if="photo" :size="17" aria-hidden="true" />{{ photo ? '在图库中查看' : '返回图库' }}
         </router-link>
         <a :href="`/api/v1/gallery/${mode}/image${suffix}`"><Link :size="17" aria-hidden="true" />图片直链</a>
       </nav>

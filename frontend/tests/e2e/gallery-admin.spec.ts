@@ -61,7 +61,8 @@ test('admin sections share one navigation across viewport changes and history', 
   await navigation.getByRole('link', { name: '图库' }).click();
   await expect(page).toHaveURL('/');
   await expect(page.getByRole('dialog')).toBeHidden();
-  await expect(headerHome).toBeVisible();
+  await expect(headerHome).toBeHidden();
+  await expect(page.getByRole('button', { name: '图库菜单：Gallery Faces' })).toHaveText('Gallery Faces');
 });
 
 test("photo management link requires a session and opens the displayed image", async ({ page }) => {

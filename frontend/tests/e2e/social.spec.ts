@@ -170,8 +170,11 @@ for (const width of [390, 1280]) {
       await expect(page.getByRole('tooltip')).toBeVisible();
       await page.getByRole('button', { name: '筛选', exact: true }).click();
       await expect(page.getByRole('tooltip')).toHaveCount(0);
+      await page.getByRole('button', { name: '应用筛选' }).click();
     }
-    await expect(page.getByRole('link', { name: '订阅图库 RSS' })).toHaveAttribute('href', '/api/v1/gallery/rss.xml?publishers=x%3Aalice');
+    const rss = page.getByRole('banner').getByRole('link', { name: '订阅图库 RSS' });
+    await expect(rss).toBeVisible();
+    await expect(rss).toHaveAttribute('href', '/api/v1/gallery/rss.xml?publishers=x%3Aalice');
     await page.goto('/posts/x:42?people=3');
     await expect(postDialog).toBeVisible();
     await page.keyboard.press('Escape');

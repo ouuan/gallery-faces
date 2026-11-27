@@ -8,12 +8,11 @@ import {
   NRadioButton,
 } from "naive-ui";
 import { useLibrary } from "./store";
-import { CalendarDays, Rss, Shuffle, ScanFace } from "@lucide/vue";
-import { filterOnlyQuery, feedHref, hasFilters, type Filter } from "./filters";
+import { hasFilters, type Filter } from "./filters";
 import DateRangeHint from "./DateRangeHint.vue";
 import PublisherSelect from "./PublisherSelect.vue";
 import PeopleMultiSelect from "./PeopleMultiSelect.vue";
-const props = defineProps<{ modelValue: Filter; hideNoFaces?: boolean; showGalleryLinks?: boolean; contained?: boolean }>(),
+const props = defineProps<{ modelValue: Filter; hideNoFaces?: boolean; contained?: boolean; hideHeading?: boolean }>(),
   emit = defineEmits(["update:modelValue", "clear"]);
 const store = useLibrary();
 const personValues = computed(() =>
@@ -28,9 +27,10 @@ function set(key: keyof Filter, value: any) {
 </script>
 <template>
   <div class="filters" :class="{ 'filters-ja': ja }">
-    <div class="section-heading">
+    <div v-if="!hideHeading" class="section-heading">
       <h2>{{ t("筛选照片") }}</h2>
       <button
+        type="button"
         v-if="hasFilters(modelValue)"
         class="text-button filter-clear"
         @click="emit('clear')"
@@ -71,7 +71,7 @@ function set(key: keyof Filter, value: any) {
       <PublisherSelect include-other :to="contained ? false : undefined" :model-value="modelValue.publishers" @update:model-value="set('publishers', $event)" />
       <p class="hint">{{ t("匹配所选人物的关联账号或其他发布者账号") }}</p>
     </fieldset>
-    <fieldset>
+    <fieldset class="date-bounds">
       <legend>{{ t("发布日期") }}</legend>
       <label class="field-label date-field"
         >{{ t("从") }}<LocalDateTime :contained="contained" :aria-label="t('开始时间')" :model-value="modelValue.start" @update:model-value="set('start', $event)" /></label
@@ -85,19 +85,9 @@ function set(key: keyof Filter, value: any) {
       @update:checked="set('include_no_faces', $event)"
       >{{ t("包含无人脸图片") }}</n-checkbox
     >
-    <div v-if="showGalleryLinks" class="gallery-links">
-      <router-link class="icon-link" :to="{ path: '/daily', query: filterOnlyQuery(modelValue) }" title="每日一图" aria-label="每日一图">
-        <CalendarDays :size="18" aria-hidden="true" />
-      </router-link>
-      <router-link class="icon-link" :to="{ path: '/random', query: filterOnlyQuery(modelValue) }" title="随机图片" aria-label="随机图片">
-        <Shuffle :size="18" aria-hidden="true" />
-      </router-link>
-      <router-link class="icon-link" :to="{ path: '/face-game', query: filterOnlyQuery(modelValue) }" title="认脸游戏" aria-label="认脸游戏"><ScanFace :size="18" aria-hidden="true" /></router-link>
-      <a class="icon-link" :href="feedHref(modelValue)" title="订阅图库 RSS" aria-label="订阅图库 RSS"><Rss :size="18" aria-hidden="true" /></a></div>
   </div>
 </template>
 <style scoped>
-.gallery-links { display: flex; align-items: center; justify-content: center; border-top: 1px solid var(--line); padding-top: 8px; }
 .filters-ja > .section-heading { min-height: 44px; gap: 8px; }
 .filters-ja .filter-clear { position: static; transform: none; flex-shrink: 0; }
 .filters-ja .field-label.date-field { grid-template-columns: 2em minmax(0, 1fr); gap: 8px; }
