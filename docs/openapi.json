@@ -7393,6 +7393,42 @@
         ],
         "title": "GameQuestion"
       },
+      "GridView": {
+        "properties": {
+          "order": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Order"
+          },
+          "elapsed": {
+            "type": "number",
+            "title": "Elapsed"
+          },
+          "wrong_choices": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Wrong Choices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order",
+          "elapsed",
+          "wrong_choices"
+        ],
+        "title": "GridView"
+      },
       "GroupInput": {
         "properties": {
           "name": {
@@ -8577,6 +8613,11 @@
           "wrong": {
             "type": "integer",
             "title": "Wrong"
+          },
+          "correct_cells": {
+            "type": "integer",
+            "title": "Correct Cells",
+            "default": 0
           },
           "unanswered": {
             "type": "integer",
@@ -10152,6 +10193,25 @@
             "type": "boolean",
             "title": "Single Life",
             "default": false
+          },
+          "grid": {
+            "type": "boolean",
+            "title": "Grid",
+            "default": false
+          },
+          "grid_size": {
+            "type": "integer",
+            "maximum": 16.0,
+            "minimum": 2.0,
+            "title": "Grid Size",
+            "default": 5
+          },
+          "grid_seconds": {
+            "type": "number",
+            "maximum": 60.0,
+            "minimum": 0.1,
+            "title": "Grid Seconds",
+            "default": 0.5
           }
         },
         "type": "object",
@@ -10347,6 +10407,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/HistoryStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "grid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GridView"
               },
               {
                 "type": "null"

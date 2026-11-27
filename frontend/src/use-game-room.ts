@@ -17,6 +17,7 @@ export function useGameRoom(history = false) {
   const code = computed(() => String(route.params.code || '').toUpperCase());
   const token = ref(''), room = ref<RoomView | null>(null), busy = ref(false), error = ref(''), syncError = ref('');
   const now = ref(Date.now()), deadline = ref<number | null>(null);
+  const gridStarted = ref<number | null>(null);
   const seconds = computed(() => deadline.value === null ? null : Math.max(0, Math.ceil((deadline.value - now.value) / 1000)));
   const timer = window.setInterval(() => { now.value = Date.now(); }, 250);
   onScopeDispose(() => clearInterval(timer));
@@ -27,6 +28,10 @@ export function useGameRoom(history = false) {
 
   function apply(view: RoomView) {
     if (view.code !== code.value || (room.value && view.version < room.value.version)) return;
+    if (view.grid && room.value?.grid && view.version === room.value.version && view.grid.elapsed < room.value.grid.elapsed) return;
+    const started = view.grid ? performance.now() - view.grid.elapsed * 1000 : null;
+    gridStarted.value = started !== null && gridStarted.value !== null && view.stage === room.value?.stage
+      ? Math.min(started, gridStarted.value) : started;
     room.value = view;
     now.value = Date.now();
     deadline.value = view.remaining === null ? null : now.value + view.remaining * 1000;
@@ -85,5 +90,5 @@ export function useGameRoom(history = false) {
     } catch (cause) { if (view.code === code.value) error.value = (cause as Error).message; }
     finally { busy.value = false; }
   }
-  return { code, token, room, busy, error, syncError, seconds, enter, act };
+  return { code, token, room, busy, error, syncError, seconds, gridStarted, enter, act };
 }

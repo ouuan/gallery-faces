@@ -8,12 +8,12 @@ defineProps<{ history?: boolean }>();
 <template>
   <fieldset class="room-settings"><legend>房间设置</legend>
     <div class="timing">
-    <label>每题答题时间（秒）<n-input-number aria-label="每题答题时间" :value="model.answer_seconds" :min="3" :max="300" @update:value="value => model = { ...model, answer_seconds: value ?? 15 }" /></label>
+    <label v-if="!model.grid">每题答题时间（秒）<n-input-number aria-label="每题答题时间" :value="model.answer_seconds" :min="3" :max="300" @update:value="value => model = { ...model, answer_seconds: value ?? 15 }" /></label>
     <label>自动切题等待（秒，0 为关闭）<n-input-number aria-label="自动切题等待" :value="model.continue_seconds" :min="0" :max="300" @update:value="value => model = { ...model, continue_seconds: value ?? 0 }" /></label>
     </div>
     <div v-if="!history" class="face-options">
-      <FaceDisplayMode :model-value="model.cropped" @update:model-value="value => model = { ...model, cropped: value }" />
-      <label class="display"><span><n-switch aria-label="一命模式" :value="model.single_life" @update:value="value => model = { ...model, single_life: value }" /> 一命模式</span></label>
+      <FaceDisplayMode :model-value="model" @update:model-value="value => model = { ...model, ...value, single_life: !value.grid && model.single_life }" />
+      <label v-if="!model.grid" class="display"><span><n-switch aria-label="一命模式" :value="model.single_life" @update:value="value => model = { ...model, single_life: value }" /> 一命模式</span></label>
     </div>
   </fieldset>
 </template>
@@ -24,4 +24,8 @@ defineProps<{ history?: boolean }>();
 label { display: grid; gap: 4px; }
 .face-options { display: flex; align-items: end; flex-wrap: wrap; gap: 8px 20px; }
 .display span { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+@media (max-width: 599px) {
+  .face-options { column-gap: 8px; }
+  .face-options :deep(.n-radio-button) { padding-inline: 8px; }
+}
 </style>

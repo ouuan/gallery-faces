@@ -63,7 +63,7 @@ def test_history_room_midpoint_timeout_backfill_and_reconnect(client, monkeypatc
         if round_number == 4:
             late = join('丙')
             assert read(late)['history']['total_deviations']['3'] == 9
-            act(late, 'answer', 403, guess_date='2026-01-08')
+            act(late, 'answer', guess_date='2026-01-08')
         act(member, 'answer', 422, guess_date='2026-01-11')
         act(member, 'answer', guess_date='2026-01-07')
         act(member, 'answer', 409, guess_date='2026-01-08')
@@ -73,19 +73,21 @@ def test_history_room_midpoint_timeout_backfill_and_reconnect(client, monkeypatc
         now[0] += 3
         revealed = read(guest)
         assert revealed['history']['settled'] == round_number
-        assert revealed['history']['guesses'] == {'1': '2026-01-07'}
+        assert revealed['history']['guesses'] == ({'1': '2026-01-07', '3': '2026-01-08'} if round_number == 4 else {'1': '2026-01-07'})
         assert revealed['history']['total_deviations']['1'] == round_number
         assert revealed['history']['total_deviations']['2'] == 3 * round_number
         act(guest, 'draft', 409)
         act(member, 'ready'); act(guest, 'ready')
+        if round_number == 4:
+            act(late, 'ready')
     for _ in range(2):
         view = read(late)
         assert view['round'] == 5 and view['players'][2]['playing']
-        assert view['history']['total_deviations']['3'] == 12 and view['players'][2]['unanswered'] == 4
+        assert view['history']['total_deviations']['3'] == 9 and view['players'][2]['unanswered'] == 3
     act(late, 'answer', guess_date='2026-01-05')
     act(member, 'answer', guess_date='2026-01-08')
     result = act(guest, 'answer', guess_date='2026-01-05')
-    assert result['history']['total_deviations'] == {'1': 4, '2': 15, '3': 15}
-    assert result['players'][2]['unanswered'] == 4
+    assert result['history']['total_deviations'] == {'1': 4, '2': 15, '3': 12}
+    assert result['players'][2]['unanswered'] == 3
     act(member, 'finish'); restarted = act(member, 'restart')
     assert restarted['history']['settled'] == 0 and not any(restarted['history']['total_deviations'].values())

@@ -73,11 +73,11 @@ test('three guests share a cropped round, a correction and the final score', asy
     await expect(host.locator('.option-tally')).toHaveCount(0);
     await expect(host.getByRole('switch')).toHaveCount(0);
     await expect(host.getByRole('button', { name: '都不是', exact: true })).toBeInViewport({ ratio: 1 });
-    await join(late, '玩家丙');
-    await expect(late.getByText('你将从下一题起参赛')).toBeVisible();
     await testInfo.attach('手机截脸答题', { body: await host.screenshot(), contentType: 'image/png' });
     await guest.getByRole('button', { name: '都不是', exact: true }).click();
     await expect(host.locator('.target-face')).toBeVisible();
+    await join(late, '玩家丙');
+    await expect(late.getByText('你将从下一题起参赛')).toBeVisible();
     const sources = host.getByRole('region', { name: '图片来源' });
     const options = host.getByRole('group', { name: '框中的是谁？' });
     const nickname = options.getByText(longName, { exact: true });

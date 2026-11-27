@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { average } from './history-quiz';
+import { averageCells } from './face-grid';
 import type { RoomView } from './use-game-room';
 
 const props = defineProps<{ room: RoomView; player: RoomView['players'][number]; rank: number | null; tied: boolean }>();
@@ -22,6 +23,8 @@ onMounted(() => {
         <template v-if="room.history"><strong>平均偏差 {{ average(totalDeviation, room.history.settled) }}</strong>
           <div><span>累计偏差 {{ totalDeviation }} 天</span><span>已答 {{ room.history.settled - player.unanswered }} 题</span><span>未答 {{ player.unanswered }} 题</span></div>
           <small v-if="player.unanswered">未答按居中日期计分</small></template>
+        <template v-else-if="room.settings.grid"><strong>{{ player.correct - player.wrong }} 分</strong>
+          <div><span>正确 {{ player.correct }}</span><span>错误 {{ player.wrong }}</span><span>每边 {{ room.settings.grid_size }} 格</span><span>答对时平均 {{ averageCells(player.correct_cells ?? 0, player.correct) }}</span></div></template>
         <template v-else><strong v-if="room.settings.single_life">已通过 {{ player.correct }} 题 · {{ player.eliminated ? '已淘汰' : '存活' }}</strong>
           <strong v-else>答对 {{ player.correct }} 题</strong>
           <div><span v-if="!room.settings.single_life">正确率 {{ answered ? `${Math.round(100 * player.correct / answered)}%` : '—' }}</span><span>错误 {{ player.wrong }} 题</span><span>未答 {{ player.unanswered }} 题</span></div></template>

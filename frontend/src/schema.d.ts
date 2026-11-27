@@ -2291,6 +2291,15 @@ export interface components {
             /** Choices */
             choices: components["schemas"]["GameChoice"][];
         };
+        /** GridView */
+        GridView: {
+            /** Order */
+            order: number[];
+            /** Elapsed */
+            elapsed: number;
+            /** Wrong Choices */
+            wrong_choices: (number | null)[];
+        };
         /** GroupInput */
         GroupInput: {
             /** Name */
@@ -2753,6 +2762,11 @@ export interface components {
             correct: number;
             /** Wrong */
             wrong: number;
+            /**
+             * Correct Cells
+             * @default 0
+             */
+            correct_cells: number;
             /** Unanswered */
             unanswered: number;
             /** Eliminated */
@@ -3276,6 +3290,21 @@ export interface components {
              * @default false
              */
             single_life: boolean;
+            /**
+             * Grid
+             * @default false
+             */
+            grid: boolean;
+            /**
+             * Grid Size
+             * @default 5
+             */
+            grid_size: number;
+            /**
+             * Grid Seconds
+             * @default 0.5
+             */
+            grid_seconds: number;
         };
         /** RoomView */
         RoomView: {
@@ -3330,6 +3359,7 @@ export interface components {
             /** Message */
             message: string;
             history?: components["schemas"]["HistoryStatus"] | null;
+            grid?: components["schemas"]["GridView"] | null;
         };
         /** SettingsInput */
         SettingsInput: {

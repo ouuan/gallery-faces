@@ -92,17 +92,18 @@ def test_shared_round_feedback_and_reconnect(match):
     join, state, act, now = match
     act('start', 1, status=403)
     question = act('start')
-    assert question['settings'] == {'answer_seconds': 15, 'continue_seconds': 10, 'cropped': True, 'single_life': False}
+    assert question['settings'] == game_rooms.RoomSettings().model_dump()
     assert question['photo'] == state(1)['photo']
     assert set(question['photo']) == {'box', 'width', 'height', 'choices', 'image_url'}
     assert question['answer_name'] is question['correct_choice'] is question['source_photo'] is None
-    join('丙')
-    act('answer', 2, status=403, choice=1)
     act('answer', choice=1)
     pending = state(1)
     assert pending['players'][0]['correct'] == 0 and pending['tallies'] is None
     act('answer', status=409, choice=2)
     result = act('answer', 1, choice=2)
+    join('丙')
+    act('answer', 2, status=403, choice=1)
+    result = state()
     assert result['phase'] == 'reveal' and result['correct_choice'] == 1
     assert result['source_photo'] == {'group_id': 1, 'image_id': 1}
     assert [player['correct'] for player in result['players']] == [1, 0, 0]
@@ -220,6 +221,88 @@ def test_tallies_exclude_unanswered_but_include_none(match):
     now[0] += 15
     counts = {item['choice']: (item['count'], item['nickname']) for item in state(3)['tallies']}
     assert counts == {2: (1, '丙'), None: (2, None)}
+
+
+def test_late_join_can_answer_without_extending_deadline(match):
+    join, state, act, now = match
+    act('start'); now[0] += 4
+    join('丙')
+    assert state(2)['remaining'] == 11
+    assert act('answer', 2, choice=1)['choice'] == 1
+
+
+def test_grid_round_privacy_timing_and_rescore(match):
+    join, state, act, now = match
+    act('settings', settings={'grid': True, 'single_life': True, 'continue_seconds': 0})
+    first = act('start')
+    assert not first['settings']['single_life'] and first['remaining'] is None
+    assert sorted(first['grid']['order']) == list(range(25))
+    now[0] += 0.499
+    for choice in (None, 1):
+        assert act('answer', status=409, choice=choice)['detail'] == '首格揭示后才能作答'
+    assert state()['players'] == first['players'] and not state()['grid']['wrong_choices']
+    now[0] += 0.001
+    wrong = act('answer', choice=None)
+    assert wrong['grid']['wrong_choices'] == [None] and wrong['players'][0]['wrong'] == 1
+    assert state()['grid'] == wrong['grid']
+    other = state(1)
+    assert other['version'] == first['version'] and other['players'] == first['players']
+    assert not other['grid']['wrong_choices'] and other['tallies'] is None
+    act('answer', status=409, choice=None)
+    now[0] += 0.5
+    join('丙'); assert state(2)['grid']['order'] == first['grid']['order']
+    act('answer', 2, choice=2); act('answer', 1, choice=2)
+    now[0] += 20
+    assert state()['phase'] == 'answer'
+    result = act('answer', choice=1)
+    def scores(view):
+        return [(player['correct'], player['wrong'], player['correct_cells']) for player in view['players']]
+    assert scores(result) == [(1, 1, 25), (0, 1, 0), (0, 1, 0)]
+    assert {item['choice']: (item['count'], item['nickname']) for item in result['tallies']} == {
+        None: (1, '甲'), 2: (2, None), 1: (1, '甲')}
+    act('answer', 1, stage=first['stage'], status=409, choice=1)
+    act('draft'); act('submit', suggested_person_id=2); act('vote', 1, support=True)
+    corrected = act('vote', 2, support=True)
+    assert corrected['tallies'] == result['tallies'] and not corrected['void']
+    assert scores(corrected) == [(0, 1, 0), (0, 0, 0), (1, 0, 2)]
+    act('ready'); act('ready', 1); act('ready', 2)
+    now[0] += 0.5
+    act('answer', choice=None)
+    assert scores(act('finish')) == scores(corrected)
+    assert scores(act('restart')) == [(0, 0, 0)] * 3
+
+
+@pytest.mark.parametrize('proposal', [{'suggested_person_id': 2}, {'not_face': True}])
+def test_grid_void_round_restores_all_previous_statistics(match, proposal):
+    _, _, act, now = match
+    act('settings', settings={'grid': True, 'continue_seconds': 0})
+    act('start'); now[0] += 0.5
+    act('answer', 1, choice=2); previous = act('answer', choice=1)
+    act('ready'); act('ready', 1)
+    now[0] += 0.5
+    act('answer', choice=None); original = act('answer', 1, choice=1)
+    act('draft'); act('submit', **proposal); corrected = act('vote', 1, support=True)
+    assert corrected['void'] and corrected['tallies'] == original['tallies']
+    for before, after in zip(previous['players'], corrected['players'], strict=True):
+        assert all(before[key] == after[key] for key in ('correct', 'wrong', 'correct_cells'))
+
+
+def test_grid_competing_correct_answers_score_once(match):
+    _, _, act, now = match
+    act('settings', settings={'grid': True})
+    start = act('start')
+    now[0] += 0.5
+    def submit(who):
+        try:
+            return act('answer', who, stage=start['stage'], choice=1)['phase']
+        except AssertionError as error:
+            assert '房间状态已更新' in str(error)
+            return 'stale'
+    with ThreadPoolExecutor(2) as pool:
+        assert sorted(pool.map(submit, (0, 1))) == ['reveal', 'stale']
+    players = act('finish')['players']
+    assert sum(player['correct'] for player in players) == 1
+    assert all(player['correct_cells'] == player['correct'] for player in players)
 
 
 def test_single_life_spectators_and_locked_roster(client, match):

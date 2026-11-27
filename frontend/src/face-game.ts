@@ -1,17 +1,28 @@
 import { reactive } from 'vue';
 import type { components } from './schema';
+import { faceDisplay, gridOrder, type FaceDisplay } from './face-grid';
 
 export type Question = components['schemas']['GameQuestion'];
 export type Outcome = 'correct' | 'wrong' | 'disputed';
-export type Round = { question: Question; choice?: number | null; index: number; key: number };
-export const game = reactive<{ filter: string | null; round: Round | null; outcomes: Outcome[]; cropped: boolean }>({
-  filter: null, round: null, outcomes: [], cropped: true,
+export type Round = { question: Question; choice?: number | null; index: number; key: number; order?: number[]; started?: number };
+export const game = reactive<{ filter: string | null; round: Round | null; outcomes: Outcome[]; display: FaceDisplay; correctCells: number }>({
+  filter: null, round: null, outcomes: [], display: faceDisplay(), correctCells: 0,
 });
 
 export function faceZoom(box: number[], width: number, height: number) {
   const scale = Math.max(1, Math.min(width / (2 * box[2]!), height / (2 * box[3]!)));
   const offset = (center: number) => Math.max(1 - scale, Math.min(0, 0.5 - center * scale));
   return { scale, left: offset((box[0]! + box[2]! / 2) / width), top: offset((box[1]! + box[3]! / 2) / height) };
+}
+
+export function gridViewport(box: number[], width: number, height: number) {
+  const { scale } = faceZoom(box, width, height);
+  const short = Math.min(width, height) / scale;
+  const viewWidth = Math.min(width / scale, Math.max(short, 2 * box[2]!));
+  const viewHeight = Math.min(height / scale, Math.max(short, 2 * box[3]!));
+  const left = Math.max(0, Math.min(width - viewWidth, box[0]! + box[2]! / 2 - viewWidth / 2));
+  const top = Math.max(0, Math.min(height - viewHeight, box[1]! + box[3]! / 2 - viewHeight / 2));
+  return [left, top, viewWidth, viewHeight] as const;
 }
 
 export function score(outcomes: Outcome[]) {
@@ -32,18 +43,20 @@ export function cropBox(box: number[], width: number, height: number) {
 
 let sequence = 0;
 export function openRound(question: Question) {
-  game.round = { question, index: game.outcomes.length, key: ++sequence };
+  game.round = { question, index: game.outcomes.length, key: ++sequence, order: game.display.grid ? gridOrder(game.display.grid_size) : undefined };
 }
 
 export function correctChoice(question: Question) {
   return question.choices.find(choice => choice.id === question.face.person_id)?.id ?? null;
 }
 
-export function answer(choice: number | null) {
+export function answer(choice: number | null, cells = 0) {
   const round = game.round;
   if (!round || round.choice !== undefined) return;
   round.choice = choice;
-  game.outcomes.push(choice === correctChoice(round.question) ? 'correct' : 'wrong');
+  const correct = choice === correctChoice(round.question);
+  if (correct) game.correctCells += cells;
+  game.outcomes.push(correct ? 'correct' : 'wrong');
 }
 
 export function feedbackReceipt(round: Round, outcomes: Outcome[]) {

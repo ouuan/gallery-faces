@@ -108,20 +108,20 @@ test('history room shares a full photo and scores missing and submitted midpoint
       await host.getByRole('button', { name: '开始对战' }).click();
     }
   }
-  await expect(late.getByText('你将从下一题起参赛')).toBeVisible();
+  await expect(late.getByRole('button', { name: '提交日期' })).toBeEnabled();
   await expect(host.getByRole('slider')).toBeDisabled();
   await host.getByRole('button', { name: '提交日期' }).click();
   await expect(guest.getByText(/最早来源：/)).toHaveCount(0);
   await guest.getByRole('button', { name: '提交日期' }).click();
-  await expect(host.getByRole('table').getByRole('row', { name: /丙/ })).toContainText('未答（按居中日期计）');
+  await late.getByRole('button', { name: '提交日期' }).click();
+  await expect(host.getByRole('table').getByRole('columnheader', { name: '本题猜测' })).toBeVisible();
   await late.reload();
-  await expect(late.getByRole('group', { name: '我的战绩' })).toContainText('已结算 1 题 · 未答 1');
+  await expect(late.getByRole('group', { name: '我的战绩' })).toContainText('已结算 1 题 · 未答 0');
   await host.getByRole('button', { name: '结束对战' }).click();
   await expect(guest.getByRole('heading', { name: '最终排名' })).toBeVisible();
   const finalRecord = late.getByRole('group', { name: '我的战绩' });
-  await expect(finalRecord).toContainText('已答 0 题');
-  await expect(finalRecord).toContainText('未答 1 题');
-  await expect(finalRecord).toContainText('未答按居中日期计分');
+  await expect(finalRecord).toContainText('已答 1 题');
+  await expect(finalRecord).toContainText('未答 0 题');
   await expect(late.getByRole('table').getByRole('columnheader')).toHaveText(['名次', '玩家', '平均偏差', '未答']);
   await expect(guest.getByRole('region', { name: '出题筛选' })).toContainText('未设置筛选');
 });

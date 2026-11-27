@@ -9,6 +9,7 @@ import { useSoloSetup } from './use-solo-setup';
 import SoloGameSetup from './SoloGameSetup.vue';
 import SoloGameResult from './SoloGameResult.vue';
 import FaceDisplayMode from './FaceDisplayMode.vue';
+import { averageCells, faceDisplay } from './face-grid';
 import { answer, correctChoice, feedbackReceipt, game, openRound, score, type Question } from './face-game';
 import { useLibrary } from './store';
 import { useLatestRequest } from './use-latest-request';
@@ -30,7 +31,13 @@ const correctId = computed(() => question.value && correctChoice(question.value)
 const submitted = computed(() => game.round ? feedbackReceipt(game.round, game.outcomes) : undefined);
 const latest = useLatestRequest(), details = useLatestRequest();
 const loading = ref(false), error = ref(''), empty = ref(false);
-const cropped = ref(localStorage.getItem('face-game:cropped') !== 'false');
+function loadDisplay() {
+  const cropped = localStorage.getItem('face-game:cropped') !== 'false';
+  try { return faceDisplay(JSON.parse(localStorage.getItem('face-game:display') ?? 'null'), cropped); }
+  catch { return faceDisplay(null, cropped); }
+}
+const display = ref(loadDisplay());
+const cellAverage = computed(() => averageCells(game.correctCells, stats.value.correct));
 const photo = computed(() => !loading.value && !error.value && question.value ? { ...question.value, box: question.value.face.box } : null);
 const detail = ref<Photo | null>(null), detailError = ref(''), authenticated = ref(false);
 const answerName = computed(() => {
@@ -69,18 +76,22 @@ async function loadDetail() {
   } catch (cause) { if (!signal.aborted) detailError.value = (cause as Error).message; }
 }
 
-function choose(person: number | null) {
+function startGrid() {
+  if (game.round?.order && game.round.started === undefined) game.round.started = performance.now();
+}
+function choose(person: number | null, cells: number) {
   if (answered.value) return;
-  answer(person);
+  answer(person, cells);
   void loadDetail();
 }
 const { draft, query, playing, result, start, end } = useSoloSetup(toRef(game, 'filter'), () => {
-  latest.cancel(); details.cancel(); game.round = null; game.outcomes = [];
-}, () => ({ ...stats.value, count: game.outcomes.length }));
+  latest.cancel(); details.cancel(); game.round = null; game.outcomes = []; game.correctCells = 0;
+}, () => ({ ...stats.value, count: game.outcomes.length,
+  grid: game.display.grid ? { size: game.display.grid_size, average: cellAverage.value } : null }));
 async function begin() {
   if (!await start()) return;
-  game.cropped = cropped.value;
-  localStorage.setItem('face-game:cropped', String(cropped.value));
+  game.display = { ...display.value };
+  localStorage.setItem('face-game:display', JSON.stringify(display.value));
   void next();
 }
 onMounted(() => {
@@ -93,14 +104,15 @@ onMounted(() => {
 <template>
   <main class="game-page" :class="{ 'game-start': !playing }">
     <header class="game-header"><h1>认脸游戏</h1><SoloGameNav rooms-path="/face-game/rooms" :query="query"><n-button v-if="playing" text @click="end">结束本局</n-button></SoloGameNav></header>
-    <SoloGameResult v-if="result" :filter="result.filter" :count="result.count" label="正确率" :value="result.accuracy" :detail="`结束时连对 ${result.streak} 题`"
+    <SoloGameResult v-if="result" :filter="result.filter" :count="result.count" label="正确率" :value="result.accuracy" :detail="`结束时连对 ${result.streak} 题${result.grid ? ` · 每边 ${result.grid.size} 格 · 答对时平均 ${result.grid.average}` : ''}`"
       :breakdown="[{ label: '正确', count: result.correct, tone: 'success' }, { label: '错误', count: result.wrong, tone: 'error' }, { label: '存疑', count: result.disputed, tone: 'muted' }]" @setup="result = undefined" />
     <SoloGameSetup v-else-if="!playing" v-model="draft" face @start="begin">
-      <FaceDisplayMode v-model="cropped" />
+      <FaceDisplayMode v-model="display" />
     </SoloGameSetup>
     <template v-else>
-    <div class="game-score" aria-label="本局统计"><strong>正确率 {{ stats.accuracy }}</strong><span>正确 {{ stats.correct }}</span><span>错误 {{ stats.wrong }}</span><span>存疑 {{ stats.disputed }}</span><span>连对 {{ stats.streak }}</span></div>
-    <GameBoard :key="game.round?.key" :photo="photo" :cropped="game.cropped" :revealed="answered" :locked="answered" :selected="game.round?.choice" :correct-id="correctId" :answer-name="answerName" @choose="choose">
+    <div class="game-score" aria-label="本局统计"><strong>正确率 {{ stats.accuracy }}</strong><span>正确 {{ stats.correct }}</span><span>错误 {{ stats.wrong }}</span><span>存疑 {{ stats.disputed }}</span><span>连对 {{ stats.streak }}</span><span v-if="game.display.grid">答对时平均 {{ cellAverage }}</span></div>
+    <GameBoard :key="game.round?.key" :photo="photo" :cropped="game.display.cropped" :revealed="answered" :locked="answered" :selected="game.round?.choice" :correct-id="correctId" :answer-name="answerName" @choose="choose"
+      :order="game.round?.order" :started="game.round?.started" :interval="game.display.grid_seconds" @loaded="startGrid">
       <template #placeholder>
         <div v-if="error" role="status"><p>{{ error }}</p><n-button v-if="!empty" @click="next">重试</n-button></div>
         <LoadingOverlay v-else show center label="正在出题…" />

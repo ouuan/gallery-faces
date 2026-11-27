@@ -9,6 +9,7 @@ import { useGameRoom, type Settings } from './use-game-room';
 import { useLibrary } from './store';
 import { usePageTitle } from './page-title';
 import GameBoard from './GameBoard.vue';
+import { averageCells, compareGrid, faceDisplay } from './face-grid';
 import GameRoomSettings from './GameRoomSettings.vue';
 import RoomPersonalResult from './RoomPersonalResult.vue';
 import GameFilterEditor from './GameFilterEditor.vue';
@@ -21,7 +22,7 @@ import { average, dayLabel, difference, middleDay } from './history-quiz';
 const props = defineProps<{ history?: boolean }>();
 const gamePath = props.history ? '/history-quiz' : '/face-game';
 const route = useRoute(), toast = useMessage(), library = useLibrary();
-const { code, token, room, busy, error, syncError, seconds, enter, act } = useGameRoom(props.history);
+const { code, token, room, busy, error, syncError, seconds, gridStarted, enter, act } = useGameRoom(props.history);
 usePageTitle(() => code.value ? `对战房间 ${code.value}` : '多人对战');
 const filters = ref(fromQuery(route.query)), draftFilters = ref(filters.value);
 watch(() => route.query, value => { filters.value = fromQuery(value); });
@@ -31,12 +32,13 @@ const roomFilters = (value: Filter) => ({ ...filterOnlyQuery(value), include_no_
 const nickname = ref(sessionStorage.getItem('face-room:name') || ''), joinCode = ref(''), joining = ref(false);
 const settingsKey = props.history ? 'history-room:settings' : 'face-room:settings';
 function loadSettings(): Settings {
-  const defaults = { cropped: !props.history, single_life: false, answer_seconds: 15, continue_seconds: 10 };
+  const defaults = { ...faceDisplay(null, !props.history), single_life: false, answer_seconds: 15, continue_seconds: 10 };
   try {
     const saved = JSON.parse(localStorage.getItem(settingsKey) ?? 'null');
     if (!saved || typeof saved !== 'object') return defaults;
-    for (const key of ['cropped', 'single_life'] as const) {
-      if (typeof saved[key] === 'boolean') defaults[key] = saved[key];
+    if (!props.history) {
+      Object.assign(defaults, faceDisplay(saved));
+      defaults.single_life = !defaults.grid && saved.single_life === true;
     }
     for (const [key, minimum] of [['answer_seconds', 3], ['continue_seconds', 0]] as const) {
       if (Number.isInteger(saved[key]) && saved[key] >= minimum && saved[key] <= 300) defaults[key] = saved[key];
@@ -54,9 +56,15 @@ const host = computed(() => me.value?.id === room.value?.host);
 const online = computed(() => room.value?.players.filter(player => player.online).length ?? 0);
 const record = computed(() => room.value?.history);
 const deviation = (id: number) => record.value?.total_deviations[id] ?? 0;
-const ranking = computed(() => [...(room.value?.players ?? [])].sort((first, second) => (record.value ? deviation(first.id) - deviation(second.id) : Number(first.eliminated) - Number(second.eliminated) || second.correct - first.correct) || first.id - second.id));
+type Player = NonNullable<typeof room.value>['players'][number];
+function compare(first: Player, second: Player) {
+  if (record.value) return deviation(first.id) - deviation(second.id);
+  if (room.value?.settings.grid) return compareGrid(first, second);
+  return Number(first.eliminated) - Number(second.eliminated) || second.correct - first.correct;
+}
+const ranking = computed(() => [...(room.value?.players ?? [])].sort((first, second) => compare(first, second) || first.id - second.id));
 function rank(player: (typeof ranking.value)[number]) {
-  return ranking.value.findIndex(item => record.value ? deviation(item.id) === deviation(player.id) : item.eliminated === player.eliminated && item.correct === player.correct) + 1;
+  return ranking.value.findIndex(item => compare(item, player) === 0) + 1;
 }
 const myRank = computed(() => me.value ? rank(me.value) : 0);
 const tied = computed(() => ranking.value.some(player => player.id !== me.value?.id && rank(player) === myRank.value));
@@ -121,13 +129,14 @@ async function saveSettings() {
     <template v-else>
       <div v-if="me && inRound" class="my-record" role="group" aria-label="我的战绩"><strong>我的战绩</strong>
         <template v-if="record"><span>平均偏差 {{ average(deviation(me.id), record.settled) }}</span><span>已结算 {{ record.settled }} 题 · 未答 {{ me.unanswered }}</span></template>
+        <template v-else-if="room.settings.grid"><strong>{{ me.correct - me.wrong }} 分</strong><span>正确 {{ me.correct }}</span><span>错误 {{ me.wrong }}</span><span>答对时平均 {{ averageCells(me.correct_cells ?? 0, me.correct) }}</span></template>
         <template v-else-if="room.settings.single_life"><span>已通过 {{ me.correct }} 题</span><small>{{ me.eliminated ? '已淘汰' : '存活' }} · 剩余 {{ survivors.length }} 人</small></template>
         <template v-else><span>正确 {{ me.correct }}</span><span>错误 {{ me.wrong }}</span><span>未答 {{ me.unanswered }}</span></template>
       </div>
       <section v-if="room.phase === 'lobby'" class="entry" :class="{ 'setup-entry': editing }">
         <h2>等待开局 · {{ online }}/12 人</h2>
         <template v-if="editing"><div class="setup-columns"><GameRoomSettings v-model="draftSettings" :history="history" /><GameFilterEditor v-model="draftFilters" :face="!history" /></div><div class="actions"><n-button type="primary" :disabled="busy || !!rangeError(draftFilters.start, draftFilters.end)" @click="saveSettings">保存设置</n-button><n-button quaternary @click="editing = false">取消</n-button></div></template>
-        <template v-else><p>{{ room.settings.cropped ? '截取人脸' : '显示全图' }} · 每题 {{ room.settings.answer_seconds }} 秒 · {{ room.settings.continue_seconds ? `${room.settings.continue_seconds} 秒后切题` : '全员继续后切题' }}</p>
+        <template v-else><p>{{ room.settings.grid ? `逐格显示 · ${room.settings.grid_size}×${room.settings.grid_size} · 每格 ${room.settings.grid_seconds} 秒 · 不限时抢答` : `${room.settings.cropped ? '截取人脸' : '显示全图'} · 每题 ${room.settings.answer_seconds} 秒` }} · {{ room.settings.continue_seconds ? `${room.settings.continue_seconds} 秒后切题` : '全员继续后切题' }}</p>
           <p v-if="room.settings.single_life">一命模式 · 答错或未答即淘汰，开局后不可加入</p>
           <div v-if="host" class="actions"><n-button type="primary" :disabled="busy || online < 2" @click="act('start')">开始对战</n-button><n-button :disabled="busy" @click="editSettings">修改设置</n-button></div>
           <p v-else>等待房主开始对战</p></template>
@@ -143,9 +152,11 @@ async function saveSettings() {
           <GameRoomSources v-if="room.source_photo" :group-id="room.source_photo.group_id" :image-id="room.source_photo.image_id" :query="query" />
         </HistoryBoard>
         <GameBoard v-else-if="room.photo" :key="room.round" :photo="room.photo" :cropped="room.settings.cropped" :revealed="room.phase !== 'answer'"
+          :order="room.grid?.order" :started="gridStarted" :interval="room.settings.grid_seconds" :wrong-choices="room.grid?.wrong_choices"
           :locked="busy || room.phase !== 'answer' || !me?.playing || me.answered" :selected="me?.answered ? room.choice : undefined"
           :correct-id="room.correct_choice" :voided="room.void" :tallies="room.tallies" :answer-name="room.accepted ? room.proposal?.suggested_name : room.answer_name" @choose="choice => act('answer', { choice })">
           <p v-if="!me?.playing" role="status">{{ me?.eliminated ? '已淘汰，正在观战' : '你将从下一题起参赛' }}</p>
+          <p v-else-if="room.grid && room.phase === 'answer'" role="status">答对 +1 分，答错 −1 分，可继续抢答</p>
           <p v-else-if="room.phase === 'answer'" role="status">{{ me.answered ? '已提交，等待揭晓' : '请选择答案' }} · {{ room.players.filter(player => player.answered).length }}/{{ room.players.filter(player => player.playing).length }} 人已答</p>
           <div v-if="room.phase === 'reveal' && me?.playing" class="actions round-actions"><n-button type="primary" :disabled="busy || me.ready" @click="act('ready')">{{ me.ready ? '已准备继续' : lastRound ? '确认结算' : '继续' }}</n-button><n-button v-if="room.accepted === null" :disabled="busy" @click="act('draft')">我要反馈</n-button></div>
           <p v-if="room.phase !== 'answer'" role="status">图库答案：{{ room.answer_name }}<template v-if="room.accepted !== null"> · {{ room.accepted ? (room.void ? '反馈已采纳，本题不计分' : `反馈已采纳，按${voteName}计分`) : '反馈未通过，保留原判' }}</template></p>
@@ -171,11 +182,11 @@ async function saveSettings() {
       <section class="standings"><div class="standings-heading"><h2>{{ room.phase === 'finished' ? '最终排名' : room.phase === 'lobby' ? '房间成员' : '排行榜' }}</h2>
         <n-button v-if="host && room.phase === 'finished'" type="primary" :disabled="busy" @click="act('restart')"><RotateCcw :size="16" aria-hidden="true" />再来一局</n-button></div>
         <p v-if="room.phase === 'finished' && lastRound">{{ survivors.length ? `获胜：${survivors[0]!.name}` : '无人存活' }}</p>
-        <table aria-label="房间排行榜"><thead><tr><th v-if="showRank" class="place-col" scope="col">名次</th><th class="player-col" scope="col">玩家</th><template v-if="record"><th v-if="showGuess" scope="col">本题猜测</th><th scope="col">平均偏差</th><th scope="col">未答</th></template><th v-else-if="room.settings.single_life" scope="col">通过题数</th><template v-else><th scope="col">正确</th><th scope="col">错误</th><th scope="col">未答</th></template></tr></thead>
+        <table aria-label="房间排行榜"><thead><tr><th v-if="showRank" class="place-col" scope="col">名次</th><th class="player-col" scope="col">玩家</th><template v-if="record"><th v-if="showGuess" scope="col">本题猜测</th><th scope="col">平均偏差</th><th scope="col">未答</th></template><th v-else-if="room.settings.single_life" scope="col">通过题数</th><template v-else><th v-if="room.settings.grid" scope="col">分数</th><th scope="col">正确</th><th scope="col">错误</th><th scope="col">{{ room.settings.grid ? '平均格数' : '未答' }}</th></template></tr></thead>
           <tbody><tr v-for="player in ranking" :key="player.id" :class="{ 'own-row': player.id === room.me }"><td v-if="showRank" class="place-col">{{ rank(player) }}</td><th scope="row" class="player-col">{{ player.name }}
             <small>{{ [player.id === room.me ? '你' : '', player.id === room.host ? '房主' : '', player.eliminated ? '已淘汰' : '', !player.online ? '离线' : '', player.ready && room.phase === 'reveal' ? '已准备' : ''].filter(Boolean).join(' · ') }}</small></th>
             <template v-if="record"><td v-if="showGuess && record.photo && record.correct_date"><span>{{ record.guesses?.[player.id] ?? '未答（按居中日期计）' }}</span><small>{{ difference(record.guesses?.[player.id] ?? dayLabel(middleDay(record.photo)), record.correct_date) }}</small></td><td>{{ average(deviation(player.id), record.settled) }}</td><td>{{ player.unanswered }}</td></template>
-            <template v-else><td>{{ player.correct }}</td><template v-if="!room.settings.single_life"><td>{{ player.wrong }}</td><td>{{ player.unanswered }}</td></template></template></tr></tbody></table>
+            <template v-else><td v-if="room.settings.grid">{{ player.correct - player.wrong }}</td><td>{{ player.correct }}</td><template v-if="!room.settings.single_life"><td>{{ player.wrong }}</td><td>{{ room.settings.grid ? averageCells(player.correct_cells ?? 0, player.correct) : player.unanswered }}</td></template></template></tr></tbody></table>
         <n-button v-if="host && inRound" :disabled="busy || room.ending" @click="act('finish')">{{ room.ending ? '投票结束后结算' : '结束对战' }}</n-button>
         <GameFilterSummary v-if="room.phase === 'finished'" :filter="activeFilter" />
       </section>
