@@ -2,14 +2,16 @@
 import { NInputNumber, NSwitch } from 'naive-ui';
 import type { Settings } from './use-game-room';
 import FaceDisplayMode from './FaceDisplayMode.vue';
+import GameRoundLimit from './GameRoundLimit.vue';
 const model = defineModel<Settings>({ required: true });
 defineProps<{ history?: boolean }>();
 </script>
 <template>
   <fieldset class="room-settings"><legend>房间设置</legend>
+    <GameRoundLimit :model-value="model.round_limit" @update:model-value="round_limit => model = { ...model, round_limit }" />
     <div class="timing">
     <label v-if="!model.grid">每题答题时间（秒）<n-input-number aria-label="每题答题时间" :value="model.answer_seconds" :min="3" :max="300" @update:value="value => model = { ...model, answer_seconds: value ?? 15 }" /></label>
-    <label>自动切题等待（秒，0 为关闭）<n-input-number aria-label="自动切题等待" :value="model.continue_seconds" :min="0" :max="300" @update:value="value => model = { ...model, continue_seconds: value ?? 0 }" /></label>
+    <label>切题秒数（0 关闭）<n-input-number aria-label="自动切题等待" :value="model.continue_seconds" :min="0" :max="300" @update:value="value => model = { ...model, continue_seconds: value ?? 0 }" /></label>
     </div>
     <div class="face-options">
       <FaceDisplayMode v-if="!history" :model-value="model" @update:model-value="value => model = { ...model, ...value, single_life: !value.grid && model.single_life }" />
@@ -26,6 +28,7 @@ label { display: grid; gap: 4px; }
 .face-options { display: flex; align-items: end; flex-wrap: wrap; gap: 8px 20px; }
 .display span { display: flex; align-items: center; gap: 8px; min-height: 44px; }
 @media (max-width: 599px) {
+  .room-settings { gap: 8px; }
   .face-options { column-gap: 8px; }
   .face-options :deep(.n-radio-button) { padding-inline: 8px; }
 }

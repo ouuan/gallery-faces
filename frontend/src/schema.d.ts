@@ -3350,6 +3350,11 @@ export interface components {
         /** RoomSettings */
         RoomSettings: {
             /**
+             * Round Limit
+             * @default 0
+             */
+            round_limit: number;
+            /**
              * Answer Seconds
              * @default 15
              */

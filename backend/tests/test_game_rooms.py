@@ -79,6 +79,29 @@ def test_host_restarts_finished_room(match, single_life):
     act('answer', 1, choice=1)
 
 
+@pytest.mark.parametrize('automatic', [False, True])
+def test_round_limit_finishes_after_last_reveal(match, automatic):
+    _, state, act, now = match
+    act('settings', status=422, settings={'round_limit': -1})
+    act('settings', settings={'round_limit': 2, 'continue_seconds': 5 if automatic else 0})
+    assert act('start')['round'] == 1
+    for number in (1, 2):
+        act('answer', choice=1)
+        assert act('answer', 1, choice=2)['phase'] == 'reveal'
+        if number == 2:
+            act('draft'); act('submit', suggested_person_id=2)
+            assert act('vote', 1, support=True)['accepted']
+        if automatic:
+            now[0] += 5
+            after = state()
+        else:
+            act('ready'); after = act('ready', 1)
+        assert after['phase'] == ('answer' if number == 1 else 'finished')
+        assert after['round'] == 2
+    new = act('restart')
+    assert new['round'] == 1 and new['settings']['round_limit'] == 2
+
+
 def test_restart_alone_reopens_lobby(match):
     join, state, act, _ = match
     act('start'); act('finish'); act('leave', 1)

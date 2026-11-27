@@ -6,6 +6,7 @@ defineProps<{ settings: Settings; history?: boolean }>();
 <template>
   <section aria-label="对战规则" class="room-rules">
     <h3>对战规则</h3>
+    <p>{{ settings.round_limit ? `固定局数 · 共 ${settings.round_limit} 题` : '无尽模式' }}</p>
     <p v-if="settings.grid">逐格显示 · {{ settings.grid_size }}×{{ settings.grid_size }} · 每格 {{ settings.grid_seconds }} 秒 · 不限时抢答</p>
     <p v-else>{{ history ? '史官测验' : settings.cropped ? '截取人脸' : '显示全图' }} · 每题 {{ settings.answer_seconds }} 秒</p>
     <p v-if="settings.grid">全员加载照片后开始，最多等 5 秒。答对 +1 分，答错 −1 分，可继续抢答。</p>

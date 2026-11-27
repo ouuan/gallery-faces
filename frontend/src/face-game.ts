@@ -5,8 +5,8 @@ import { faceDisplay, gridOrder, type FaceDisplay } from './face-grid';
 export type Question = components['schemas']['GameQuestion'];
 export type Outcome = 'correct' | 'wrong' | 'disputed';
 export type Round = { question: Question; choice?: number | null; index: number; key: number; order?: number[]; started?: number; correctCells?: number };
-export const game = reactive<{ filter: string | null; round: Round | null; outcomes: Outcome[]; display: FaceDisplay; correctCells: number }>({
-  filter: null, round: null, outcomes: [], display: faceDisplay(), correctCells: 0,
+export const game = reactive<{ filter: string | null; roundLimit: number; round: Round | null; outcomes: Outcome[]; display: FaceDisplay; correctCells: number }>({
+  filter: null, roundLimit: 0, round: null, outcomes: [], display: faceDisplay(), correctCells: 0,
 });
 
 export function faceZoom(box: number[], width: number, height: number) {

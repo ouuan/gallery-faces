@@ -13,7 +13,7 @@ export function difference(guess: string, correct: string) {
   return days ? `${days < 0 ? '早' : '晚'}了 ${Math.abs(days)} 天` : '正好';
 }
 
-export const session = reactive({ scope: null as string | null, question: null as Question | null, guess: '', submitted: false, total: 0, count: 0, early: 0, late: 0 });
+export const session = reactive({ scope: null as string | null, roundLimit: 0, question: null as Question | null, guess: '', submitted: false, total: 0, count: 0, early: 0, late: 0 });
 export function submit(guess: string) {
   if (!session.question || session.submitted) return;
   session.guess = guess;

@@ -10435,6 +10435,13 @@
       },
       "RoomSettings": {
         "properties": {
+          "round_limit": {
+            "type": "integer",
+            "maximum": 999.0,
+            "minimum": 0.0,
+            "title": "Round Limit",
+            "default": 0
+          },
           "answer_seconds": {
             "type": "integer",
             "maximum": 300.0,

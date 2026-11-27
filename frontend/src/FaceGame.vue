@@ -25,6 +25,7 @@ usePageTitle(() => postKey.value ? '帖子详情' : '认脸游戏');
 const stats = computed(() => score(game.outcomes));
 const question = computed(() => game.round?.question);
 const answered = computed(() => game.round?.choice !== undefined);
+const complete = computed(() => game.roundLimit > 0 && game.outcomes.length >= game.roundLimit);
 const outcome = computed(() => game.round && game.outcomes[game.round.index]);
 const choices = computed(() => [...(question.value?.choices ?? []), { id: null, name: '都不是' }]);
 const correctId = computed(() => question.value && correctChoice(question.value));
@@ -48,6 +49,7 @@ const answerName = computed(() => {
 });
 
 async function next() {
+  if (complete.value) return end();
   const signal = latest.start();
   details.cancel();
   const params = new URLSearchParams(query.value);
@@ -106,11 +108,11 @@ onMounted(() => {
     <header class="game-header"><h1>认脸游戏</h1><SoloGameNav rooms-path="/face-game/rooms" :query="query"><n-button v-if="playing" text @click="end">结束本局</n-button></SoloGameNav></header>
     <SoloGameResult v-if="result" :filter="result.filter" :count="result.count" label="正确率" :value="result.accuracy" :detail="`结束时连对 ${result.streak} 题${result.grid ? ` · 每边 ${result.grid.size} 格 · 答对时平均 ${result.grid.average}` : ''}`"
       :breakdown="[{ label: '正确', count: result.correct, tone: 'success' }, { label: '错误', count: result.wrong, tone: 'error' }, { label: '存疑', count: result.disputed, tone: 'muted' }]" @setup="result = undefined" />
-    <SoloGameSetup v-else-if="!playing" v-model="draft" face @start="begin">
+    <SoloGameSetup v-else-if="!playing" v-model="draft" v-model:round-limit="game.roundLimit" face @start="begin">
       <FaceDisplayMode v-model="display" />
     </SoloGameSetup>
     <template v-else>
-    <div class="game-score" aria-label="本局统计"><strong>正确率 {{ stats.accuracy }}</strong><span>正确 {{ stats.correct }}</span><span>错误 {{ stats.wrong }}</span><span>存疑 {{ stats.disputed }}</span><span>连对 {{ stats.streak }}</span><span v-if="game.display.grid">答对时平均 {{ cellAverage }}</span></div>
+    <div class="game-score" aria-label="本局统计"><strong>正确率 {{ stats.accuracy }}</strong><span v-if="game.roundLimit">已答 {{ game.outcomes.length }}/{{ game.roundLimit }} 题</span><span>正确 {{ stats.correct }}</span><span>错误 {{ stats.wrong }}</span><span>存疑 {{ stats.disputed }}</span><span>连对 {{ stats.streak }}</span><span v-if="game.display.grid">答对时平均 {{ cellAverage }}</span></div>
     <GameBoard :key="game.round?.key" :photo="photo" :pending-choices="error ? undefined : question?.choices.length ?? Math.min(4, draft.people.length || store.people.length || 4)" :cropped="game.display.cropped" :revealed="!!photo && answered" :locked="answered" :selected="game.round?.choice" :correct-id="correctId" :answer-name="answerName" @choose="choose"
       :order="game.round?.order" :started="game.round?.started" :interval="game.display.grid_seconds" :correct-cells="game.round?.correctCells" @loaded="startGrid">
       <template #placeholder>
@@ -119,7 +121,7 @@ onMounted(() => {
       </template>
       <template v-if="question && game.round">
         <div class="game-actions">
-          <n-button v-if="answered" type="primary" @click="next">下一题 <ArrowRight :size="16" /></n-button>
+          <n-button v-if="answered" type="primary" @click="next">{{ complete ? '查看结果' : '下一题' }} <ArrowRight :size="16" /></n-button>
           <p role="status" :class="{ 'sr-only': outcome !== 'disputed' }">
             <template v-if="outcome === 'disputed'">本题已记为存疑</template>
             <template v-else-if="answered">{{ outcome === 'correct' ? '答对了' : `答错了，你选了${choices.find(choice => choice.id === game.round?.choice)?.name}` }}。图库答案：{{ answerName ?? '都不是' }}</template>

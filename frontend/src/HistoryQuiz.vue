@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, toRef } from 'vue';
+import { computed, onMounted, ref, toRef } from 'vue';
 import { NButton } from 'naive-ui';
 import { api, ApiError } from './api';
 import { useSoloSetup } from './use-solo-setup';
@@ -15,7 +15,9 @@ import GameRoomSources from './GameRoomSources.vue';
 const latest = useLatestRequest();
 usePageTitle(() => '史官测验');
 const loading = ref(false), error = ref(''), empty = ref(false);
+const complete = computed(() => session.roundLimit > 0 && session.count >= session.roundLimit);
 async function next() {
+  if (complete.value) return end();
   const signal = latest.start(), params = new URLSearchParams(query.value);
   if (session.question) params.set('last_group', String(session.question.group_id));
   loading.value = true; error.value = ''; empty.value = false;
@@ -38,13 +40,13 @@ onMounted(() => { if (playing.value && !session.question) void next(); });
     <header><h1>史官测验</h1><SoloGameNav rooms-path="/history-quiz/rooms" :query="query" /></header>
     <SoloGameResult v-if="result" :filter="result.filter" :count="result.count" label="平均偏差" :value="result.count ? (result.total / result.count).toFixed(1) : '—'" :unit="result.count ? '天' : undefined" :detail="`累计偏差 ${result.total} 天`"
       :breakdown="[{ label: '猜早', count: result.early, tone: 'amber' }, { label: '正好', count: result.count - result.early - result.late, tone: 'success' }, { label: '猜晚', count: result.late, tone: 'accent' }]" @setup="result = undefined" />
-    <SoloGameSetup v-else-if="!playing" v-model="draft" @start="begin" />
+    <SoloGameSetup v-else-if="!playing" v-model="draft" v-model:round-limit="session.roundLimit" @start="begin" />
     <template v-else>
-    <div class="score" aria-label="本局统计"><strong>平均偏差 {{ average(session.total, session.count) }}</strong><span>已答 {{ session.count }} 题</span><n-button text @click="end">结束本局</n-button></div>
+    <div class="score" aria-label="本局统计"><strong>平均偏差 {{ average(session.total, session.count) }}</strong><span>已答 {{ session.count }}<template v-if="session.roundLimit">/{{ session.roundLimit }}</template> 题</span><n-button text @click="end">结束本局</n-button></div>
     <div v-if="error" role="alert">{{ error }} <n-button v-if="!empty" @click="next">重试</n-button></div>
     <HistoryBoard v-else :key="loading ? 'pending' : session.question?.group_id" :photo="loading ? null : session.question" :selected="loading ? null : session.guess" :correct="!loading && session.submitted ? session.question?.correct_date : null"
       @change="session.guess = $event" @choose="submit">
-      <template v-if="!loading && session.submitted && session.question"><n-button type="primary" @click="next">下一题</n-button>
+      <template v-if="!loading && session.submitted && session.question"><n-button type="primary" @click="next">{{ complete ? '查看结果' : '下一题' }}</n-button>
         <GameRoomSources :group-id="session.question.group_id" :image-id="session.question.image_id" :query="query" /></template>
     </HistoryBoard>
     </template>

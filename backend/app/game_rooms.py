@@ -18,6 +18,7 @@ clock = time.monotonic
 
 
 class RoomSettings(BaseModel):
+    round_limit: int = Field(default=0, ge=0, le=999)
     answer_seconds: int = Field(default=15, ge=3, le=300)
     continue_seconds: int = Field(default=10, ge=0, le=300)
     cropped: bool = True
@@ -319,7 +320,8 @@ class Room:
 
     async def next_question(self):
         participants = self.survivors() if self.settings.single_life else self.online()
-        if self.settings.single_life and self.round and len(participants) <= 1:
+        if (self.settings.round_limit and self.round >= self.settings.round_limit) or (
+                self.settings.single_life and self.round and len(participants) <= 1):
             self.enter('finished')
             return
         if len(participants) < 2:

@@ -88,11 +88,15 @@ test('history room shares a full photo and scores missing and submitted midpoint
   await host.getByRole('checkbox', { name: '包含无人脸图片' }).check();
   const wait = host.locator('.n-input-number input').nth(1);
   await wait.fill('0'); await wait.press('Tab');
+  await host.getByText('固定局数', { exact: true }).click();
+  const count = host.getByLabel('题数', { exact: true });
+  await count.fill('1'); await count.press('Tab');
   await host.getByRole('button', { name: '创建并进入' }).click();
   await expect(host.getByRole('heading', { name: /等待开局/ })).toBeVisible();
   const path = new URL(host.url()).pathname;
   for (const [player, name] of [[guest, '乙'], [late, '丙']] as const) {
     await player.goto(path);
+    await expect(player.getByRole('region', { name: '对战规则' })).toContainText('共 1 题');
     await player.getByRole('textbox', { name: '昵称' }).fill(name);
     await player.getByRole('button', { name: '进入房间' }).click();
     await expect(player.getByRole('table')).toContainText(name);
@@ -116,7 +120,7 @@ test('history room shares a full photo and scores missing and submitted midpoint
   await expect(host.getByRole('table').getByRole('columnheader', { name: '本题猜测' })).toBeVisible();
   await late.reload();
   await expect(late.getByRole('group', { name: '我的战绩' })).toContainText('已结算 1 题 · 未答 0');
-  await host.getByRole('button', { name: '结束对战' }).click();
+  for (const player of [host, guest, late]) await player.getByRole('button', { name: '确认结算' }).click();
   await expect(guest.getByRole('heading', { name: '最终排名' })).toBeVisible();
   const finalRecord = late.getByRole('group', { name: '我的战绩' });
   await expect(finalRecord).toContainText('已答 1 题');

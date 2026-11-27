@@ -35,11 +35,12 @@ const roomFilters = (value: Filter) => ({ ...filterOnlyQuery(value), include_no_
 const nickname = ref(sessionStorage.getItem('face-room:name') || ''), joinCode = ref(''), joining = ref(false);
 const settingsKey = props.history ? 'history-room:settings' : 'face-room:settings';
 function loadSettings(): Settings {
-  const defaults = { ...faceDisplay(null, !props.history), single_life: false, allow_late_join: true, answer_seconds: 15, continue_seconds: 10 };
+  const defaults = { ...faceDisplay(null, !props.history), single_life: false, allow_late_join: true, answer_seconds: 15, continue_seconds: 10, round_limit: 0 };
   try {
     const saved = JSON.parse(localStorage.getItem(settingsKey) ?? 'null');
     if (!saved || typeof saved !== 'object') return defaults;
     defaults.allow_late_join = saved.allow_late_join !== false;
+    if (Number.isInteger(saved.round_limit) && saved.round_limit >= 0 && saved.round_limit <= 999) defaults.round_limit = saved.round_limit;
     if (!props.history) {
       Object.assign(defaults, faceDisplay(saved));
       defaults.single_life = !defaults.grid && saved.single_life === true;
@@ -73,7 +74,9 @@ function rank(player: (typeof ranking.value)[number]) {
 const myRank = computed(() => me.value ? rank(me.value) : 0);
 const tied = computed(() => ranking.value.some(player => player.id !== me.value?.id && rank(player) === myRank.value));
 const survivors = computed(() => ranking.value.filter(player => !player.eliminated));
-const lastRound = computed(() => room.value?.settings.single_life && survivors.value.length <= 1);
+const eliminationOver = computed(() => room.value?.settings.single_life && survivors.value.length <= 1);
+const lastRound = computed(() => eliminationOver.value || (room.value && room.value.settings.round_limit > 0 && room.value.round >= room.value.settings.round_limit));
+const readyLabel = computed(() => lastRound.value ? (me.value?.ready ? '等待结算' : '确认结算') : (me.value?.ready ? '已准备继续' : '继续'));
 const voteName = computed(() => room.value?.proposal?.suggested_name || (room.value?.proposal?.not_face ? '不是人脸' : '无法确定人物'));
 const proposer = computed(() => room.value?.players.find(player => player.id === room.value?.proposer)?.name);
 const invite = computed(() => `${location.origin}${gamePath}/rooms/${code.value}`);
@@ -128,7 +131,7 @@ async function saveSettings() {
 
 <template>
   <main class="room-page" :class="{ 'game-start': !token || !inRound }">
-    <header v-if="inRound && room" class="round-bar"><h1>{{ room.round ? `第 ${room.round} 题 · ` : '' }}{{ phaseName[room.phase] }}</h1><strong v-if="seconds !== null" role="timer">{{ seconds }} 秒</strong></header>
+    <header v-if="inRound && room" class="round-bar"><h1><template v-if="room.round">第 {{ room.round }}<template v-if="room.settings.round_limit">/{{ room.settings.round_limit }}</template> 题 · </template>{{ phaseName[room.phase] }}</h1><strong v-if="seconds !== null" role="timer">{{ seconds }} 秒</strong></header>
     <header v-else><h1>{{ history ? '史官测验 · 多人对战' : '多人对战' }}</h1><router-link :to="{ path: gamePath, query }"><ArrowLeft :size="16" />单人游戏</router-link></header>
     <n-alert v-if="error" type="error" role="alert" closable @close="error = ''">{{ error }}</n-alert>
     <p v-if="syncError" role="status">{{ syncError }}</p>
@@ -170,7 +173,7 @@ async function saveSettings() {
           :unanswered="!!record.correct_date && !me?.answered" :locked="busy || room.phase !== 'answer' || !me?.playing || me.answered" @choose="guess_date => act('answer', { guess_date })">
           <p v-if="!me?.playing" role="status">你将从下一题起参赛</p>
           <p v-else-if="room.phase === 'answer' && me.answered" role="status">已提交，等待揭晓</p>
-          <n-button v-if="room.phase === 'reveal' && me?.playing" type="primary" :disabled="busy || me.ready" @click="act('ready')">{{ me.ready ? '已准备继续' : '继续' }}</n-button>
+          <n-button v-if="room.phase === 'reveal' && me?.playing" type="primary" :disabled="busy || me.ready" @click="act('ready')">{{ readyLabel }}</n-button>
           <GameRoomSources v-if="room.source_photo" :group-id="room.source_photo.group_id" :image-id="room.source_photo.image_id" :query="query" />
         </HistoryBoard>
         <GameBoard v-else-if="room.photo" v-slot="{ gridComplete }" :key="room.round" :photo="room.photo" :cropped="room.settings.cropped" :revealed="room.phase !== 'loading' && room.phase !== 'answer'" @loaded="act('image_loaded')"
@@ -183,7 +186,7 @@ async function saveSettings() {
             <n-button v-if="gridComplete && !room.grid.gave_up" :disabled="busy" @click="act('give_up')">放弃作答</n-button>
           </div>
           <p v-else-if="room.phase === 'answer'" role="status">{{ me.answered ? '已提交，等待揭晓' : '请选择答案' }} · {{ room.players.filter(player => player.answered).length }}/{{ room.players.filter(player => player.playing).length }} 人已答</p>
-          <div v-if="room.phase === 'reveal' && me?.playing" class="actions round-actions"><n-button type="primary" :disabled="busy || me.ready" @click="act('ready')">{{ me.ready ? '已准备继续' : lastRound ? '确认结算' : '继续' }}</n-button><n-button v-if="room.accepted === null" :disabled="busy" @click="act('draft')">我要反馈</n-button></div>
+          <div v-if="room.phase === 'reveal' && me?.playing" class="actions round-actions"><n-button type="primary" :disabled="busy || me.ready" @click="act('ready')">{{ readyLabel }}</n-button><n-button v-if="room.accepted === null" :disabled="busy" @click="act('draft')">我要反馈</n-button></div>
           <p v-if="room.phase !== 'loading' && room.phase !== 'answer'" role="status">图库答案：{{ room.answer_name }}<template v-if="room.accepted !== null"> · {{ room.accepted ? (room.void ? '反馈已采纳，本题不计分' : `反馈已采纳，按${voteName}计分`) : '反馈未通过，保留原判' }}</template></p>
           <p v-if="lastRound && room.phase === 'reveal'" role="status">本题结算后结束对战</p>
           <template v-if="room.phase === 'draft'"><p role="status">{{ proposer }} 正在填写反馈，已暂停切题</p>
@@ -206,7 +209,7 @@ async function saveSettings() {
       <RoomPersonalResult v-if="me && room.phase === 'finished'" :room="room" :player="me" :rank="showRank ? myRank : null" :tied="tied" />
       <section class="standings"><div class="standings-heading"><h2>{{ room.phase === 'finished' ? '最终排名' : room.phase === 'lobby' ? '房间成员' : '排行榜' }}</h2>
         <n-button v-if="host && room.phase === 'finished'" type="primary" :disabled="busy" @click="act('restart')"><RotateCcw :size="16" aria-hidden="true" />再来一局</n-button></div>
-        <p v-if="room.phase === 'finished' && lastRound">{{ survivors.length ? `获胜：${survivors[0]!.name}` : '无人存活' }}</p>
+        <p v-if="room.phase === 'finished' && eliminationOver">{{ survivors.length ? `获胜：${survivors[0]!.name}` : '无人存活' }}</p>
         <table aria-label="房间排行榜"><thead><tr><th v-if="showRank" class="place-col" scope="col">名次</th><th class="player-col" scope="col">玩家</th><template v-if="record"><th v-if="showGuess" scope="col">本题猜测</th><th scope="col">平均偏差</th><th scope="col">未答</th></template><th v-else-if="room.settings.single_life" scope="col">通过题数</th><template v-else><th v-if="room.settings.grid" scope="col">分数</th><th scope="col">正确</th><th scope="col">错误</th><th scope="col">{{ room.settings.grid ? '平均格数' : '未答' }}</th></template></tr></thead>
           <tbody><tr v-for="player in ranking" :key="player.id" :class="{ 'own-row': player.id === room.me }"><td v-if="showRank" class="place-col">{{ rank(player) }}</td><th scope="row" class="player-col">{{ player.name }}
             <small>{{ [player.id === room.me ? '你' : '', player.id === room.host ? '房主' : '', player.eliminated ? '已淘汰' : '', !player.online ? '离线' : '', player.ready && room.phase === 'reveal' ? '已准备' : ''].filter(Boolean).join(' · ') }}</small></th>
@@ -238,7 +241,8 @@ header a, .room-bar button, .actions button, .entry > button, .standings > butto
 .entry > button { justify-self: start; }
 .setup-entry > button { min-width: 8rem; }
 @media (max-width: 599px) {
-  .setup-entry, .setup-columns, .setup-fields { gap: 12px; }
+  .setup-entry, .setup-columns, .setup-fields { gap: 10px; }
+  .setup-entry { margin-top: 12px; }
   .setup-entry > button { justify-self: stretch; }
 }
 .tabs { border-bottom: 1px solid var(--line); }
