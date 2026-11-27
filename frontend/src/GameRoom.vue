@@ -3,24 +3,35 @@ import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { ArrowLeft, Copy, RotateCcw } from '@lucide/vue';
 import { NAlert, NButton, NCheckbox, NInput, useMessage } from 'naive-ui';
-import { filterOnlyQuery, fromQuery } from './filters';
+import { filterOnlyQuery, fromQuery, type Filter } from './filters';
+import { rangeError } from './date-range';
 import { useGameRoom, type Settings } from './use-game-room';
 import { useLibrary } from './store';
 import { usePageTitle } from './page-title';
 import GameBoard from './GameBoard.vue';
 import GameRoomSettings from './GameRoomSettings.vue';
-import GameRoomFilters from './GameRoomFilters.vue';
+import RoomPersonalResult from './RoomPersonalResult.vue';
+import GameFilterEditor from './GameFilterEditor.vue';
+import GameFilterSummary from './GameFilterSummary.vue';
 import GameRoomSources from './GameRoomSources.vue';
 import PersonSelect from './PersonSelect.vue';
+import HistoryBoard from './HistoryBoard.vue';
+import { average, dayLabel, difference, middleDay } from './history-quiz';
 
+const props = defineProps<{ history?: boolean }>();
+const gamePath = props.history ? '/history-quiz' : '/face-game';
 const route = useRoute(), toast = useMessage(), library = useLibrary();
-const { code, token, room, busy, error, syncError, seconds, enter, act } = useGameRoom();
+const { code, token, room, busy, error, syncError, seconds, enter, act } = useGameRoom(props.history);
 usePageTitle(() => code.value ? `对战房间 ${code.value}` : '多人对战');
-const query = computed(() => filterOnlyQuery(fromQuery(route.query)));
+const filters = ref(fromQuery(route.query)), draftFilters = ref(filters.value);
+watch(() => route.query, value => { filters.value = fromQuery(value); });
+const activeFilter = computed(() => room.value ? fromQuery(room.value.filters) : filters.value);
+const query = computed(() => filterOnlyQuery(activeFilter.value));
+const roomFilters = (value: Filter) => ({ ...filterOnlyQuery(value), include_no_faces: value.include_no_faces });
 const nickname = ref(sessionStorage.getItem('face-room:name') || ''), joinCode = ref(''), joining = ref(false);
-const settingsKey = 'face-room:settings';
+const settingsKey = props.history ? 'history-room:settings' : 'face-room:settings';
 function loadSettings(): Settings {
-  const defaults = { cropped: true, single_life: false, answer_seconds: 15, continue_seconds: 10 };
+  const defaults = { cropped: !props.history, single_life: false, answer_seconds: 15, continue_seconds: 10 };
   try {
     const saved = JSON.parse(localStorage.getItem(settingsKey) ?? 'null');
     if (!saved || typeof saved !== 'object') return defaults;
@@ -41,14 +52,23 @@ const person = ref<number | null>(null), notFace = ref(false), content = ref('')
 const me = computed(() => room.value?.players.find(player => player.id === room.value?.me));
 const host = computed(() => me.value?.id === room.value?.host);
 const online = computed(() => room.value?.players.filter(player => player.online).length ?? 0);
-const ranking = computed(() => [...(room.value?.players ?? [])].sort((first, second) => Number(first.eliminated) - Number(second.eliminated) || second.correct - first.correct || first.id - second.id));
+const record = computed(() => room.value?.history);
+const deviation = (id: number) => record.value?.total_deviations[id] ?? 0;
+const ranking = computed(() => [...(room.value?.players ?? [])].sort((first, second) => (record.value ? deviation(first.id) - deviation(second.id) : Number(first.eliminated) - Number(second.eliminated) || second.correct - first.correct) || first.id - second.id));
+function rank(player: (typeof ranking.value)[number]) {
+  return ranking.value.findIndex(item => record.value ? deviation(item.id) === deviation(player.id) : item.eliminated === player.eliminated && item.correct === player.correct) + 1;
+}
+const myRank = computed(() => me.value ? rank(me.value) : 0);
+const tied = computed(() => ranking.value.some(player => player.id !== me.value?.id && rank(player) === myRank.value));
 const survivors = computed(() => ranking.value.filter(player => !player.eliminated));
 const lastRound = computed(() => room.value?.settings.single_life && survivors.value.length <= 1);
 const voteName = computed(() => room.value?.proposal?.suggested_name || (room.value?.proposal?.not_face ? '不是人脸' : '无法确定人物'));
 const proposer = computed(() => room.value?.players.find(player => player.id === room.value?.proposer)?.name);
-const invite = computed(() => `${location.origin}/face-game/rooms/${code.value}`);
+const invite = computed(() => `${location.origin}${gamePath}/rooms/${code.value}`);
 const phaseName = { lobby: '等待开局', answer: '答题中', reveal: '答案揭晓', draft: '填写反馈', vote: '反馈投票', waiting: '等待出题', finished: '最终排名' };
 const inRound = computed(() => room.value && !['lobby', 'finished'].includes(room.value.phase));
+const showGuess = computed(() => room.value?.phase !== 'finished' && !!record.value?.correct_date);
+const showRank = computed(() => room.value?.phase !== 'lobby' && (!record.value || record.value.settled > 0));
 const isJoin = computed(() => Boolean(code.value) || joining.value);
 watch(() => room.value?.phase, phase => {
   editing.value = false;
@@ -62,7 +82,7 @@ function enterRoom() {
   if (!name) return;
   sessionStorage.setItem('face-room:name', name);
   if (isJoin.value) void enter(name, code.value || joinCode.value.trim().toUpperCase());
-  else void enter(name, '', { settings: settings.value, filters: { ...query.value, include_no_faces: query.value.include_no_faces === 'true' } });
+  else if (!rangeError(filters.value.start, filters.value.end)) void enter(name, '', { settings: settings.value, filters: roomFilters(filters.value) });
 }
 async function copyInvite() {
   try { await navigator.clipboard.writeText(invite.value); toast.success('已复制邀请链接'); }
@@ -70,10 +90,10 @@ async function copyInvite() {
 }
 function editSettings() {
   if (!room.value) return;
-  draftSettings.value = { ...room.value.settings }; editing.value = true;
+  draftSettings.value = { ...room.value.settings }; draftFilters.value = fromQuery(room.value.filters); editing.value = true;
 }
 async function saveSettings() {
-  await act('settings', { settings: draftSettings.value });
+  await act('settings', { settings: draftSettings.value, filters: roomFilters(draftFilters.value) });
   if (!error.value && room.value) {
     settings.value = { ...room.value.settings };
     editing.value = false;
@@ -82,36 +102,46 @@ async function saveSettings() {
 </script>
 
 <template>
-  <main class="room-page">
+  <main class="room-page" :class="{ 'game-start': !token || !inRound }">
     <header v-if="inRound && room" class="round-bar"><h1>{{ room.round ? `第 ${room.round} 题 · ` : '' }}{{ phaseName[room.phase] }}</h1><strong v-if="seconds !== null" role="timer">{{ seconds }} 秒</strong></header>
-    <header v-else><h1>多人对战</h1><router-link :to="{ path: '/face-game', query }"><ArrowLeft :size="16" />单人游戏</router-link></header>
+    <header v-else><h1>{{ history ? '史官测验 · 多人对战' : '多人对战' }}</h1><router-link :to="{ path: gamePath, query }"><ArrowLeft :size="16" />单人游戏</router-link></header>
     <n-alert v-if="error" type="error" role="alert" closable @close="error = ''">{{ error }}</n-alert>
     <p v-if="syncError" role="status">{{ syncError }}</p>
-    <form v-if="!token" class="entry" @submit.prevent="enterRoom">
+    <form v-if="!token" class="entry setup-entry" @submit.prevent="enterRoom">
       <h2 v-if="code">加入房间 {{ code }}</h2>
       <div v-else class="tabs" aria-label="对战入口"><button type="button" :aria-pressed="!joining" @click="joining = false">创建房间</button><button type="button" :aria-pressed="joining" @click="joining = true">加入房间</button></div>
+      <div class="setup-columns"><div class="setup-fields">
       <label>昵称<n-input v-model:value="nickname" :maxlength="24" placeholder="你的昵称" :input-props="{ 'aria-label': '昵称', autocomplete: 'nickname' }" /></label>
       <label v-if="joining && !code">房间码<n-input v-model:value="joinCode" :maxlength="6" placeholder="6 位房间码" :input-props="{ 'aria-label': '房间码', autocapitalize: 'characters' }" /></label>
-      <GameRoomSettings v-if="!isJoin" v-model="settings" />
-      <n-button type="primary" attr-type="submit" :loading="busy" :disabled="!nickname.trim() || (isJoin && !code && joinCode.trim().length !== 6)">{{ isJoin ? '进入房间' : '创建并进入' }}</n-button>
+      <GameRoomSettings v-if="!isJoin" v-model="settings" :history="history" />
+      </div><GameFilterEditor v-if="!isJoin" v-model="filters" :face="!history" /></div>
+      <n-button type="primary" attr-type="submit" :loading="busy" :disabled="!nickname.trim() || (isJoin ? !code && joinCode.trim().length !== 6 : !!rangeError(filters.start, filters.end))">{{ isJoin ? '进入房间' : '创建并进入' }}</n-button>
     </form>
     <p v-else-if="!room" role="status">正在连接房间…</p>
     <template v-else>
-      <div v-if="me && room.phase !== 'lobby'" class="my-record" role="group" aria-label="我的战绩"><strong>我的战绩</strong>
-        <template v-if="room.settings.single_life"><span>已通过 {{ me.correct }} 题</span><small>{{ me.eliminated ? '已淘汰' : '存活' }} · 剩余 {{ survivors.length }} 人</small></template>
+      <div v-if="me && inRound" class="my-record" role="group" aria-label="我的战绩"><strong>我的战绩</strong>
+        <template v-if="record"><span>平均偏差 {{ average(deviation(me.id), record.settled) }}</span><span>已结算 {{ record.settled }} 题 · 未答 {{ me.unanswered }}</span></template>
+        <template v-else-if="room.settings.single_life"><span>已通过 {{ me.correct }} 题</span><small>{{ me.eliminated ? '已淘汰' : '存活' }} · 剩余 {{ survivors.length }} 人</small></template>
         <template v-else><span>正确 {{ me.correct }}</span><span>错误 {{ me.wrong }}</span><span>未答 {{ me.unanswered }}</span></template>
       </div>
-      <section v-if="room.phase === 'lobby'" class="entry">
+      <section v-if="room.phase === 'lobby'" class="entry" :class="{ 'setup-entry': editing }">
         <h2>等待开局 · {{ online }}/12 人</h2>
-        <template v-if="editing"><GameRoomSettings v-model="draftSettings" /><div class="actions"><n-button :disabled="busy" @click="saveSettings">保存设置</n-button><n-button quaternary @click="editing = false">取消</n-button></div></template>
+        <template v-if="editing"><div class="setup-columns"><GameRoomSettings v-model="draftSettings" :history="history" /><GameFilterEditor v-model="draftFilters" :face="!history" /></div><div class="actions"><n-button type="primary" :disabled="busy || !!rangeError(draftFilters.start, draftFilters.end)" @click="saveSettings">保存设置</n-button><n-button quaternary @click="editing = false">取消</n-button></div></template>
         <template v-else><p>{{ room.settings.cropped ? '截取人脸' : '显示全图' }} · 每题 {{ room.settings.answer_seconds }} 秒 · {{ room.settings.continue_seconds ? `${room.settings.continue_seconds} 秒后切题` : '全员继续后切题' }}</p>
           <p v-if="room.settings.single_life">一命模式 · 答错或未答即淘汰，开局后不可加入</p>
           <div v-if="host" class="actions"><n-button type="primary" :disabled="busy || online < 2" @click="act('start')">开始对战</n-button><n-button :disabled="busy" @click="editSettings">修改设置</n-button></div>
           <p v-else>等待房主开始对战</p></template>
-        <GameRoomFilters :filters="room.filters" />
+        <GameFilterSummary v-if="!editing" :filter="activeFilter" />
       </section>
       <template v-else-if="room.phase !== 'finished'">
         <div v-if="room.phase === 'waiting'" class="actions"><p role="status">{{ room.message }}</p><n-button v-if="host" :disabled="busy || online < 2" @click="act('start')">重新出题</n-button></div>
+        <HistoryBoard v-else-if="record?.photo" :key="room.round" :photo="record.photo" :selected="record.my_guess" :correct="record.correct_date"
+          :unanswered="!!record.correct_date && !me?.answered" :locked="busy || room.phase !== 'answer' || !me?.playing || me.answered" @choose="guess_date => act('answer', { guess_date })">
+          <p v-if="!me?.playing" role="status">你将从下一题起参赛</p>
+          <p v-else-if="room.phase === 'answer' && me.answered" role="status">已提交，等待揭晓</p>
+          <n-button v-if="room.phase === 'reveal' && me?.playing" type="primary" :disabled="busy || me.ready" @click="act('ready')">{{ me.ready ? '已准备继续' : '继续' }}</n-button>
+          <GameRoomSources v-if="room.source_photo" :group-id="room.source_photo.group_id" :image-id="room.source_photo.image_id" :query="query" />
+        </HistoryBoard>
         <GameBoard v-else-if="room.photo" :key="room.round" :photo="room.photo" :cropped="room.settings.cropped" :revealed="room.phase !== 'answer'"
           :locked="busy || room.phase !== 'answer' || !me?.playing || me.answered" :selected="me?.answered ? room.choice : undefined"
           :correct-id="room.correct_choice" :voided="room.void" :tallies="room.tallies" :answer-name="room.accepted ? room.proposal?.suggested_name : room.answer_name" @choose="choice => act('answer', { choice })">
@@ -135,16 +165,19 @@ async function saveSettings() {
       </template>
       <div class="room-bar"><strong>房间 <span class="code">{{ room.code }}</span></strong>
         <n-button v-if="room.phase !== 'finished' && !(room.settings.single_life && room.round)" quaternary @click="copyInvite"><Copy :size="15" />复制邀请链接</n-button>
-        <span class="spacer" /><router-link v-if="inRound" :to="{ path: '/face-game', query }">单人游戏</router-link><n-button quaternary :disabled="busy" @click="act('leave')">离开房间</n-button></div>
+        <span class="spacer" /><router-link v-if="inRound" :to="{ path: gamePath, query }">单人游戏</router-link><n-button quaternary :disabled="busy" @click="act('leave')">离开房间</n-button></div>
       <n-input v-if="showLink" readonly :value="invite" :input-props="{ 'aria-label': '邀请链接' }" />
+      <RoomPersonalResult v-if="me && room.phase === 'finished'" :room="room" :player="me" :rank="showRank ? myRank : null" :tied="tied" />
       <section class="standings"><div class="standings-heading"><h2>{{ room.phase === 'finished' ? '最终排名' : room.phase === 'lobby' ? '房间成员' : '排行榜' }}</h2>
-        <n-button v-if="host && room.phase === 'finished'" type="primary" :disabled="busy" @click="act('restart')"><RotateCcw :size="16" aria-hidden="true" />重新开始</n-button></div>
+        <n-button v-if="host && room.phase === 'finished'" type="primary" :disabled="busy" @click="act('restart')"><RotateCcw :size="16" aria-hidden="true" />再来一局</n-button></div>
         <p v-if="room.phase === 'finished' && lastRound">{{ survivors.length ? `获胜：${survivors[0]!.name}` : '无人存活' }}</p>
-        <table aria-label="房间排行榜"><thead><tr><th scope="col">玩家</th><th v-if="room.settings.single_life" scope="col">通过题数</th><template v-else><th scope="col">正确</th><th scope="col">错误</th><th scope="col">未答</th></template></tr></thead>
-          <tbody><tr v-for="player in ranking" :key="player.id"><th scope="row"><span v-if="room.phase !== 'lobby'" class="rank">{{ ranking.findIndex(item => item.eliminated === player.eliminated && item.correct === player.correct) + 1 }}.</span> {{ player.name }}
+        <table aria-label="房间排行榜"><thead><tr><th v-if="showRank" class="place-col" scope="col">名次</th><th class="player-col" scope="col">玩家</th><template v-if="record"><th v-if="showGuess" scope="col">本题猜测</th><th scope="col">平均偏差</th><th scope="col">未答</th></template><th v-else-if="room.settings.single_life" scope="col">通过题数</th><template v-else><th scope="col">正确</th><th scope="col">错误</th><th scope="col">未答</th></template></tr></thead>
+          <tbody><tr v-for="player in ranking" :key="player.id" :class="{ 'own-row': player.id === room.me }"><td v-if="showRank" class="place-col">{{ rank(player) }}</td><th scope="row" class="player-col">{{ player.name }}
             <small>{{ [player.id === room.me ? '你' : '', player.id === room.host ? '房主' : '', player.eliminated ? '已淘汰' : '', !player.online ? '离线' : '', player.ready && room.phase === 'reveal' ? '已准备' : ''].filter(Boolean).join(' · ') }}</small></th>
-            <td>{{ player.correct }}</td><template v-if="!room.settings.single_life"><td>{{ player.wrong }}</td><td>{{ player.unanswered }}</td></template></tr></tbody></table>
+            <template v-if="record"><td v-if="showGuess && record.photo && record.correct_date"><span>{{ record.guesses?.[player.id] ?? '未答（按居中日期计）' }}</span><small>{{ difference(record.guesses?.[player.id] ?? dayLabel(middleDay(record.photo)), record.correct_date) }}</small></td><td>{{ average(deviation(player.id), record.settled) }}</td><td>{{ player.unanswered }}</td></template>
+            <template v-else><td>{{ player.correct }}</td><template v-if="!room.settings.single_life"><td>{{ player.wrong }}</td><td>{{ player.unanswered }}</td></template></template></tr></tbody></table>
         <n-button v-if="host && inRound" :disabled="busy || room.ending" @click="act('finish')">{{ room.ending ? '投票结束后结算' : '结束对战' }}</n-button>
+        <GameFilterSummary v-if="room.phase === 'finished'" :filter="activeFilter" />
       </section>
     </template>
   </main>
@@ -159,8 +192,16 @@ header a, .room-bar button, .actions button, .entry > button, .standings > butto
 .code { font-variant-numeric: tabular-nums; user-select: all; }
 .spacer { flex: 1; }
 .entry, .feedback { display: grid; gap: 16px; max-width: 420px; margin: 20px 0; }
-.entry > label { display: grid; gap: 4px; }
+.setup-entry { max-width: none; gap: 20px; }
+.setup-columns, .setup-fields { display: grid; gap: 20px; align-content: start; min-width: 0; }
+.setup-fields > label { display: grid; gap: 6px; }
+@media (min-width: 760px) {
+  .setup-columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); align-items: start; gap: 48px; }
+  .setup-columns > .game-filters { border-block: 0; }
+}
 .entry > button { justify-self: start; }
+.setup-entry > button { min-width: 8rem; }
+@media (max-width: 599px) { .setup-entry > button { justify-self: stretch; } }
 .tabs { border-bottom: 1px solid var(--line); }
 .tabs button { min-height: 44px; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 0 8px; }
 .tabs button[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
@@ -171,15 +212,20 @@ header a, .room-bar button, .actions button, .entry > button, .standings > butto
 .actions { flex-wrap: wrap; }
 .feedback p, .entry p, small, .rank { color: var(--muted); }
 .proposal { white-space: pre-wrap; overflow-wrap: anywhere; }
-.standings { padding-top: 16px; }
-.standings-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 520px; }
+.standings { padding-top: 20px; max-width: 960px; }
+.standings-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .my-record { flex-wrap: wrap; margin-top: 12px; font-variant-numeric: tabular-nums; }
-.standings table { width: min(520px, 100%); border-collapse: collapse; margin: 8px 0 16px; font-variant-numeric: tabular-nums; }
-.standings th, .standings td { padding: 8px 4px; border-bottom: 1px solid var(--line); text-align: end; }
-.standings th:first-child { text-align: start; overflow-wrap: anywhere; } .standings th:not(:first-child) { width: 3.5em; white-space: nowrap; }
+.standings table { width: 100%; border-collapse: collapse; margin: 8px 0 20px; font-variant-numeric: tabular-nums; }
+.standings th, .standings td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: end; }
+.standings thead th { font-size: .875rem; color: var(--muted); white-space: nowrap; }
+.standings .player-col { text-align: start; overflow-wrap: anywhere; }
+.standings .place-col { width: 4em; text-align: center; }
+.standings .own-row { background: var(--selection); }
 .standings small { display: block; font-weight: normal; }
 @media (max-width: 768px) {
   .room-page { --game-control-reserve: 31rem; padding: 4px 16px 28px; }
+  .standings th, .standings td { padding: 8px 6px; }
+  .standings .place-col { width: 3em; }
   .round-actions button { flex: 1; }
 }
 </style>

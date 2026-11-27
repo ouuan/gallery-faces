@@ -58,7 +58,7 @@ export function fromQuery(q: Record<string, any>): Filter {
     publishers: [...expandIds(publishers.people).map(id => `person:${id}`), ...publishers.accounts],
     start: String(q.start || ""),
     end: String(q.end || ""),
-    include_no_faces: q.include_no_faces === "true",
+    include_no_faces: q.include_no_faces === true || q.include_no_faces === "true",
     sort: q.sort === "oldest" ? "oldest" : "newest",
   };
 }

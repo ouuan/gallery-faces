@@ -1,16 +1,18 @@
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, ApiError } from './api';
+import { filterOnlyQuery, fromQuery } from './filters';
 import type { components } from './schema';
 
 type Schema = components['schemas'];
 export type RoomView = Schema['RoomView'];
-export type RoomAction = Schema['RoomAction'];
+type FilterInput = Partial<Schema['GameFilters']>;
+type RoomAction = Omit<Schema['RoomAction'], 'filters'> & { filters?: FilterInput };
 export type Settings = Required<Schema['RoomSettings']>;
-const base = '/face-game/rooms';
-const key = (code: string) => `face-room:${code}`;
 
-export function useGameRoom() {
+export function useGameRoom(history = false) {
+  const base = history ? '/history-quiz/rooms' : '/face-game/rooms';
+  const key = (code: string) => `${history ? 'history' : 'face'}-room:${code}`;
   const route = useRoute(), router = useRouter();
   const code = computed(() => String(route.params.code || '').toUpperCase());
   const token = ref(''), room = ref<RoomView | null>(null), busy = ref(false), error = ref(''), syncError = ref('');
@@ -54,7 +56,7 @@ export function useGameRoom() {
     void sync();
   }, { immediate: true });
 
-  async function enter(nickname: string, target: string, create?: { settings: Settings; filters: Partial<Schema['GameFilters']> }) {
+  async function enter(nickname: string, target: string, create?: { settings: Settings; filters: FilterInput }) {
     if (busy.value) return;
     busy.value = true; error.value = '';
     try {
@@ -64,7 +66,7 @@ export function useGameRoom() {
       });
       sessionStorage.setItem(key(member.code), member.token);
       if (member.code === code.value) token.value = member.token;
-      else await router.push({ path: `${base}/${member.code}`, query: route.query });
+      else await router.push({ path: `${base}/${member.code}`, query: create ? filterOnlyQuery(fromQuery(create.filters)) : route.query });
     } catch (cause) { error.value = (cause as Error).message; }
     finally { busy.value = false; }
   }
@@ -78,7 +80,7 @@ export function useGameRoom() {
       if (view.code !== code.value) return;
       if (action === 'leave') {
         if (view.phase === 'lobby') sessionStorage.removeItem(key(view.code));
-        await router.push({ path: base, query: route.query });
+        await router.push({ path: base, query: filterOnlyQuery(fromQuery(view.filters)) });
       } else apply(result);
     } catch (cause) { if (view.code === code.value) error.value = (cause as Error).message; }
     finally { busy.value = false; }

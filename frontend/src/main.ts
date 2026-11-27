@@ -14,6 +14,7 @@ const router = createRouter({
     { path: "/:mode(daily|random)", component: () => import("./PhotoDraw.vue"), props: true },
     { path: '/face-game', component: () => import('./FaceGame.vue') },
     { path: '/face-game/rooms/:code?', component: () => import('./GameRoom.vue') },
+    { path: '/history-quiz/rooms/:code?', component: () => import('./GameRoom.vue'), props: { history: true, key: 'history-room' } },
     { path: "/admin/:section?", component: Admin },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],

@@ -1,19 +1,18 @@
-import { spawn } from 'node:child_process';
-import { createInterface } from 'node:readline';
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from '../room-fixture';
 
 test('room creation remembers preferences across reloads', async ({ page }) => {
   await page.goto('/face-game/rooms');
   await page.evaluate(() => localStorage.setItem('face-room:settings', '{'));
   await page.reload();
-  const cropped = page.getByRole('switch', { name: '截取人脸' });
+  const cropped = page.getByRole('radio', { name: '截取人脸' });
   const singleLife = page.getByRole('switch', { name: '一命模式' });
   const times = page.locator('.n-input-number input');
   await expect(cropped).toBeChecked();
   await expect(singleLife).not.toBeChecked();
   await expect(times.nth(0)).toHaveValue('15');
   await expect(times.nth(1)).toHaveValue('10');
-  await cropped.click(); await singleLife.click();
+  await page.getByText('显示全图', { exact: true }).click(); await singleLife.click();
   await times.nth(0).fill('45'); await times.nth(0).press('Tab');
   await times.nth(1).fill('0'); await times.nth(1).press('Tab');
   await page.reload();
@@ -23,39 +22,23 @@ test('room creation remembers preferences across reloads', async ({ page }) => {
   await expect(times.nth(1)).toHaveValue('0');
 });
 
-test('three guests share a cropped round, a correction and the final score', async ({ browser, baseURL }, testInfo) => {
+test('three guests share a cropped round, a correction and the final score', async ({ guests }, testInfo) => {
   test.setTimeout(60000);
-  const server = spawn('.venv/bin/python', ['tests/serve_room_fixture.py'], { cwd: '../backend', env: { ...process.env, PYTHONPATH: '.' }, stdio: ['ignore', 'pipe', 'inherit'] });
-  const exited = new Promise(resolve => server.once('exit', resolve));
-  const contexts = await Promise.all([{ width: 375, height: 667 }, { width: 1280, height: 860 }, { width: 390, height: 844 }].map(viewport => browser.newContext({ baseURL, viewport })));
-  try {
-    let origin = '';
-    for await (const line of createInterface({ input: server.stdout })) {
-      if (line.startsWith('ROOM_ORIGIN=')) { origin = line.slice(12); break; }
-    }
-    expect(origin).toBeTruthy();
-    await expect.poll(async () => fetch(origin + '/api/v1/health').then(response => response.ok).catch(() => false)).toBe(true);
-    for (const context of contexts) {
-      await context.route('**/api/v1/**', async route => {
-        const url = new URL(route.request().url());
-        try { await route.fulfill({ response: await route.fetch({ url: origin + url.pathname + url.search }) }); }
-        catch (error) { if (context.pages().length) throw error; }
-      });
-    }
-    const [host, guest, late] = await Promise.all(contexts.map(context => context.newPage()));
+    const [host, guest, late] = guests;
     await host.goto('/face-game?people=1,2&publishers=x:alice&start=2025-01-01T00:00:00Z');
-    const mode = host.getByRole('switch', { name: '截取人脸' });
+    const mode = host.getByRole('radio', { name: '截取人脸' });
     await expect(mode).toBeChecked();
+    await host.getByRole('button', { name: '开始游戏' }).click();
     await expect(host.getByRole('heading', { name: '这是谁？' })).toBeVisible();
     await expect(host.getByRole('button', { name: '按住放大人脸' })).toHaveCount(0);
     await host.getByRole('button', { name: '人2', exact: true }).click();
     await expect(host.locator('.target-face')).toBeVisible();
-    await mode.click(); await mode.click();
-    await expect(host.locator('.target-face')).toBeVisible();
+    await expect(mode).toHaveCount(0);
     await host.getByRole('link', { name: '多人对战' }).click();
+    await expect(host.getByRole('button', { name: '创建并进入' })).toBeInViewport({ ratio: 1 });
     const longName = '这是一位昵称很长需要在窄屏选项内省略的玩家';
     await host.getByRole('textbox', { name: '昵称' }).fill(longName);
-    await expect(host.getByRole('switch', { name: '截取人脸' })).toBeChecked();
+    await expect(mode).toBeChecked();
     for (const [index, value] of ['90', '0'].entries()) {
       const input = host.locator('.n-input-number input').nth(index);
       await input.fill(value); await input.press('Tab');
@@ -125,8 +108,11 @@ test('three guests share a cropped round, a correction and the final score', asy
     await host.getByRole('button', { name: '结束对战' }).click();
     await expect(late.getByRole('heading', { name: '最终排名' })).toBeVisible();
     const record = late.getByRole('group', { name: '我的战绩' });
-    await expect(record).toContainText('正确 0'); await expect(record).toContainText('错误 1'); await expect(record).toContainText('未答 0');
-    await expect(late.getByRole('table').getByRole('row', { name: /玩家丙/ }).getByRole('cell')).toHaveText(['0', '1', '0']);
+    await expect(record).toContainText('并列第 1 名'); await expect(record).toContainText('答对 0 题'); await expect(record).toContainText('错误 1'); await expect(record).toContainText('未答 0');
+    await expect(late.getByRole('table').getByRole('row', { name: /玩家丙/ }).getByRole('cell')).toHaveText(['1', '0', '1', '0']);
+    await expect(host.getByRole('heading', { name: '我的战绩' })).toBeInViewport({ ratio: 1 });
+    await host.screenshot({ path: testInfo.outputPath('final-mobile.png') });
+    await guest.screenshot({ path: testInfo.outputPath('final-desktop.png') });
 
     await host.goto('/face-game/rooms?people=1,2');
     await expect(answerTime).toHaveValue('80');
@@ -145,20 +131,18 @@ test('three guests share a cropped round, a correction and the final score', asy
     await guest.getByRole('button', { name: '人2', exact: true }).click();
     await expect(host.getByRole('group', { name: '我的战绩' })).toContainText('已通过 1 题');
     await expect(guest.getByRole('group', { name: '我的战绩' })).toContainText('已淘汰');
-    await expect(host.getByRole('table').getByRole('columnheader')).toHaveText(['玩家', '通过题数']);
+    await expect(host.getByRole('table').getByRole('columnheader')).toHaveText(['名次', '玩家', '通过题数']);
     await host.getByRole('button', { name: '确认结算' }).click();
     await guest.getByRole('button', { name: '确认结算' }).click();
     await expect(host.getByRole('heading', { name: '最终排名' })).toBeVisible();
-    await expect(host.getByRole('table').getByRole('row', { name: new RegExp(longName) }).getByRole('cell')).toHaveText('1');
+    await expect(host.getByRole('table').getByRole('row', { name: new RegExp(longName) }).getByRole('cell')).toHaveText(['1', '1']);
     await expect(guest.getByRole('heading', { name: '最终排名' })).toBeVisible();
-    await expect(guest.getByRole('button', { name: '重新开始' })).toHaveCount(0);
-    await host.getByRole('button', { name: '重新开始' }).click();
+    await expect(guest.getByRole('group', { name: '我的战绩' })).toContainText('第 2 名');
+    await expect(guest.getByRole('group', { name: '我的战绩' })).toContainText('已通过 0 题 · 已淘汰');
+    await expect(guest.getByRole('button', { name: '再来一局' })).toHaveCount(0);
+    await host.getByRole('button', { name: '再来一局' }).click();
     await expect(guest.getByRole('heading', { name: '第 1 题 · 答题中' })).toBeVisible();
     await expect(guest.getByRole('group', { name: '我的战绩' })).toContainText('已通过 0 题');
     await expect(guest.getByRole('button', { name: '人2', exact: true })).toBeEnabled();
     expect(new URL(guest.url()).pathname).toBe(survivalRoom);
-  } finally {
-    await Promise.all(contexts.map(context => context.close()));
-    server.kill(); await exited;
-  }
 });
