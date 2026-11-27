@@ -17,3 +17,13 @@ test('reveal names the closest players and avoids repeating the viewer’s own r
   expect(closestResult({ ...history, closest: [1] }, players, 1)).toBe('你猜得最接近');
   expect(closestResult({ ...history, closest: [] }, players, 1)).toBe('本题无人作答，不计分');
 });
+
+test.each([
+  ['2026-01-09', '早了 1 天'],
+  ['2026-01-11', '晚了 1 天'],
+  ['2026-01-10', '正好猜中'],
+])('reveal describes the shared closest date %s', (date, detail) => {
+  const round = { ...history, guesses: { 1: date, 2: date, 3: '2026-01-07' } };
+  expect(closestResult(round, players, 3)).toBe(`甲、乙并列最接近 · ${detail}`);
+  expect(closestResult({ ...round, closest: [1], guesses: { 1: date } }, players, 3)).toBe(`甲最接近 · ${detail}`);
+});

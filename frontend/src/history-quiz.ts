@@ -19,8 +19,11 @@ export function closestResult(history: HistoryStatus, players: { id: number; nam
   if (!closest.length) return '本题无人作答，不计分';
   const others = players.filter(player => player.id !== me && closest.includes(player.id)).map(player => player.name).join('、');
   if (closest.includes(me)) return others ? `你和${others}并列最接近` : '你猜得最接近';
-  const days = Math.abs(dayNumber(guesses[closest[0]!]!) - dayNumber(correct_date));
-  return `${others}${closest.length > 1 ? '并列' : ''}最接近 · ${days ? `相差 ${days} 天` : '正好猜中'}`;
+  const firstGuess = guesses[closest[0]!]!;
+  const detail = closest.some(id => guesses[id] !== firstGuess)
+    ? `相差 ${Math.abs(dayNumber(firstGuess) - dayNumber(correct_date))} 天`
+    : firstGuess === correct_date ? '正好猜中' : difference(firstGuess, correct_date);
+  return `${others}${closest.length > 1 ? '并列' : ''}最接近 · ${detail}`;
 }
 export function difference(guess: string, correct: string) {
   const days = dayNumber(guess) - dayNumber(correct);
