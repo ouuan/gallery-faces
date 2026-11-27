@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { formatPoints } from './history-quiz';
+import { average, formatPoints } from './history-quiz';
 import { averageCells } from './face-grid';
 import type { RoomView } from './use-game-room';
 
@@ -21,7 +21,7 @@ onMounted(() => {
       <div class="place"><strong v-if="rank">{{ tied ? '并列第' : '第' }} {{ rank }} 名</strong><strong v-else>暂无名次</strong><span>共 {{ room.players.length }} 位玩家</span></div>
       <div class="measures">
         <template v-if="room.history"><strong>{{ formatPoints(room.history.scores[player.id]!) }} 分</strong>
-          <div><span>总偏差 {{ totalDeviation }} 天</span><span>已答 {{ room.history.settled - player.unanswered }} 题</span><span>未答 {{ player.unanswered }} 题</span></div>
+          <div><span>平均偏差 {{ average(totalDeviation, room.history.settled) }}</span><span>已答 {{ room.history.settled - player.unanswered }} 题</span><span>未答 {{ player.unanswered }} 题</span></div>
           <small v-if="player.unanswered">未答不得分，按居中日期计算偏差</small></template>
         <template v-else-if="room.settings.grid"><strong>{{ player.correct - player.wrong }} 分</strong>
           <div><span>正确 {{ player.correct }}</span><span>错误 {{ player.wrong }}</span><span>每边 {{ room.settings.grid_size }} 格</span><span>答对时平均 {{ averageCells(player.correct_cells ?? 0, player.correct) }}</span></div></template>

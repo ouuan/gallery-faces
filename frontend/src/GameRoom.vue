@@ -20,7 +20,7 @@ import GameFilterSummary from './GameFilterSummary.vue';
 import GameRoomSources from './GameRoomSources.vue';
 import PersonSelect from './PersonSelect.vue';
 import HistoryBoard from './HistoryBoard.vue';
-import { closestResult, compareHistory, dayLabel, difference, formatPoints, middleDay } from './history-quiz';
+import { average, closestResult, compareHistory, dayLabel, difference, formatPoints, middleDay } from './history-quiz';
 
 const props = defineProps<{ history?: boolean }>();
 const gamePath = props.history ? '/history-quiz' : '/face-game';
@@ -154,7 +154,7 @@ async function saveSettings() {
     <p v-else-if="!room" role="status">正在连接房间…</p>
     <template v-else>
       <div v-if="me && inRound" class="my-record" role="group" aria-label="我的战绩"><strong>我的战绩</strong>
-        <template v-if="record"><strong>{{ formatPoints(record.scores[me.id]!) }} 分</strong><span>总偏差 {{ deviation(me.id) }} 天</span><span>已结算 {{ record.settled }} 题 · 未答 {{ me.unanswered }}</span></template>
+        <template v-if="record"><strong>{{ formatPoints(record.scores[me.id]!) }} 分</strong><span>平均偏差 {{ average(deviation(me.id), record.settled) }}</span><span>已结算 {{ record.settled }} 题 · 未答 {{ me.unanswered }}</span></template>
         <template v-else-if="room.settings.grid"><strong>{{ me.correct - me.wrong }} 分</strong><span>正确 {{ me.correct }}</span><span>错误 {{ me.wrong }}</span><span>答对时平均 {{ averageCells(me.correct_cells ?? 0, me.correct) }}</span></template>
         <template v-else-if="room.settings.single_life"><span>已通过 {{ me.correct }} 题</span><small>{{ me.eliminated ? '已淘汰' : '存活' }} · 剩余 {{ survivors.length }} 人</small></template>
         <template v-else><span>正确 {{ me.correct }}</span><span>错误 {{ me.wrong }}</span><span>未答 {{ me.unanswered }}</span></template>
@@ -211,10 +211,10 @@ async function saveSettings() {
       <section class="standings"><div class="standings-heading"><h2>{{ room.phase === 'finished' ? '最终排名' : room.phase === 'lobby' ? '房间成员' : '排行榜' }}</h2>
         <n-button v-if="host && room.phase === 'finished'" type="primary" :disabled="busy" @click="act('restart')"><RotateCcw :size="16" aria-hidden="true" />再来一局</n-button></div>
         <p v-if="room.phase === 'finished' && eliminationOver">{{ survivors.length ? `获胜：${survivors[0]!.name}` : '无人存活' }}</p>
-        <table aria-label="房间排行榜"><thead><tr><th v-if="showRank" class="place-col" scope="col">名次</th><th class="player-col" scope="col">玩家</th><template v-if="record"><th v-if="showGuess" scope="col">本题猜测</th><th scope="col">分数</th><th scope="col">总偏差</th><th scope="col">未答</th></template><th v-else-if="room.settings.single_life" scope="col">通过题数</th><template v-else><th v-if="room.settings.grid" scope="col">分数</th><th scope="col">正确</th><th scope="col">错误</th><th scope="col">{{ room.settings.grid ? '平均格数' : '未答' }}</th></template></tr></thead>
+        <table aria-label="房间排行榜"><thead><tr><th v-if="showRank" class="place-col" scope="col">名次</th><th class="player-col" scope="col">玩家</th><template v-if="record"><th v-if="showGuess" scope="col">本题猜测</th><th scope="col">分数</th><th scope="col">平均偏差</th><th scope="col">未答</th></template><th v-else-if="room.settings.single_life" scope="col">通过题数</th><template v-else><th v-if="room.settings.grid" scope="col">分数</th><th scope="col">正确</th><th scope="col">错误</th><th scope="col">{{ room.settings.grid ? '平均格数' : '未答' }}</th></template></tr></thead>
           <tbody><tr v-for="player in ranking" :key="player.id" :class="{ 'own-row': player.id === room.me }"><td v-if="showRank" class="place-col">{{ rank(player) }}</td><th scope="row" class="player-col">{{ player.name }}
             <small>{{ [player.id === room.me ? '你' : '', player.id === room.host ? '房主' : '', player.eliminated ? '已淘汰' : '', !player.online ? '离线' : '', player.ready && room.phase === 'reveal' ? '已准备' : ''].filter(Boolean).join(' · ') }}</small></th>
-            <template v-if="record"><td v-if="showGuess && record.photo && record.correct_date"><span>{{ record.guesses?.[player.id] ?? '未答（按居中日期计）' }}</span><small>{{ difference(record.guesses?.[player.id] ?? dayLabel(middleDay(record.photo)), record.correct_date) }}</small></td><td>{{ formatPoints(record.scores[player.id]!) }}</td><td>{{ deviation(player.id) }} 天</td><td>{{ player.unanswered }}</td></template>
+            <template v-if="record"><td v-if="showGuess && record.photo && record.correct_date"><span>{{ record.guesses?.[player.id] ?? '未答（按居中日期计）' }}</span><small>{{ difference(record.guesses?.[player.id] ?? dayLabel(middleDay(record.photo)), record.correct_date) }}</small></td><td>{{ formatPoints(record.scores[player.id]!) }}</td><td>{{ average(deviation(player.id), record.settled) }}</td><td>{{ player.unanswered }}</td></template>
             <template v-else><td v-if="room.settings.grid">{{ player.correct - player.wrong }}</td><td>{{ player.correct }}</td><template v-if="!room.settings.single_life"><td>{{ player.wrong }}</td><td>{{ room.settings.grid ? averageCells(player.correct_cells ?? 0, player.correct) : player.unanswered }}</td></template></template></tr></tbody></table>
         <n-button v-if="host && inRound" :disabled="busy || room.ending" @click="act('finish')">{{ room.ending ? '投票结束后结算' : '结束对战' }}</n-button>
         <GameFilterSummary v-if="room.phase === 'finished'" :filter="activeFilter" />

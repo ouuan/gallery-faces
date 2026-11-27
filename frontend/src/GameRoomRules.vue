@@ -10,7 +10,7 @@ defineProps<{ settings: Settings; history?: boolean }>();
     <p v-if="settings.grid">逐格显示 · {{ settings.grid_size }}×{{ settings.grid_size }} · 每格 {{ settings.grid_seconds }} 秒 · 不限时抢答</p>
     <p v-else>{{ history ? '史官测验' : settings.cropped ? '截取人脸' : '显示全图' }} · 每题 {{ settings.answer_seconds }} 秒</p>
     <p v-if="settings.grid">全员加载照片后开始，最多等 5 秒。答对 +1 分，答错 −1 分，可继续抢答。</p>
-    <p v-if="history">每题猜得最接近的人得 1 分，并列则均分。分数相同时，总偏差小的排在前面。未答不得分，按居中日期计算偏差。</p>
+    <p v-if="history">每题猜得最接近的人得 1 分，并列则均分。分数相同时，平均偏差小的排在前面。未答不得分，按居中日期计算偏差。</p>
     <p>{{ settings.continue_seconds ? `${settings.continue_seconds} 秒后切题` : '全员继续后切题' }} · {{ settings.single_life ? '一命模式，答错或未答即淘汰，开局后不可加入' : settings.allow_late_join ? '允许中途加入' : '不允许中途加入' }}</p>
   </section>
 </template>

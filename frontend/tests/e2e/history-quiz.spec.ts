@@ -113,6 +113,7 @@ test('history room splits a point between three closest guesses and preserves th
   }
   await expect(late.getByRole('button', { name: '提交日期' })).toBeEnabled();
   await expect(host.getByRole('slider')).toBeDisabled();
+  await expect(host.getByRole('table').getByRole('cell', { name: '—', exact: true })).toHaveCount(3);
   await host.getByRole('button', { name: '提交日期' }).click();
   await expect(guest.getByText(/最早来源：/)).toHaveCount(0);
   await guest.getByRole('button', { name: '提交日期' }).click();
@@ -120,14 +121,18 @@ test('history room splits a point between three closest guesses and preserves th
   await expect(host.getByRole('table').getByRole('columnheader', { name: '本题猜测' })).toBeVisible();
   await late.reload();
   await expect(late.getByText('你和甲、乙并列最接近')).toBeVisible();
+  await expect(late.getByRole('group', { name: '我的战绩' })).toContainText('平均偏差 0.0 天');
   await expect(late.getByRole('group', { name: '我的战绩' })).toContainText('已结算 1 题 · 未答 0');
   for (const player of [host, guest, late]) await player.getByRole('button', { name: '确认结算' }).click();
   await expect(guest.getByRole('heading', { name: '最终排名' })).toBeVisible();
   const finalRecord = late.getByRole('group', { name: '我的战绩' });
   await expect(finalRecord).toContainText('并列第 1 名');
   await expect(finalRecord).toContainText('0.33333 分');
+  await expect(finalRecord).toContainText('平均偏差 0.0 天');
+  await expect(finalRecord).not.toContainText('总偏差');
   await expect(finalRecord).toContainText('已答 1 题');
   await expect(finalRecord).toContainText('未答 0 题');
-  await expect(late.getByRole('table').getByRole('columnheader')).toHaveText(['名次', '玩家', '分数', '总偏差', '未答']);
+  await expect(late.getByRole('table').getByRole('columnheader')).toHaveText(['名次', '玩家', '分数', '平均偏差', '未答']);
+  await expect(late.getByRole('table').getByRole('cell', { name: '0.0 天', exact: true })).toHaveCount(3);
   await expect(guest.getByRole('region', { name: '出题筛选' })).toContainText('未设置筛选');
 });
