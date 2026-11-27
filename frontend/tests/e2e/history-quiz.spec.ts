@@ -82,7 +82,7 @@ test('history quiz keeps the selected filters and score across mobile navigation
 test('history room shares a full photo and scores missing and submitted midpoints separately', async ({ guests }) => {
   const [host, guest, late] = guests;
   await host.goto('/history-quiz/rooms');
-  await expect(host.getByRole('switch')).toHaveCount(0);
+  await expect(host.getByRole('switch', { name: '允许中途加入' })).toBeChecked();
   await host.getByRole('textbox', { name: '昵称' }).fill('甲');
   await host.getByRole('button', { name: /筛选照片/ }).click();
   await host.getByRole('checkbox', { name: '包含无人脸图片' }).check();

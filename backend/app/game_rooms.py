@@ -22,6 +22,7 @@ class RoomSettings(BaseModel):
     continue_seconds: int = Field(default=10, ge=0, le=300)
     cropped: bool = True
     single_life: bool = False
+    allow_late_join: bool = True
     grid: bool = False
     grid_size: int = Field(default=5, ge=2, le=16)
     grid_seconds: float = Field(default=0.5, ge=0.1, le=60)
@@ -272,6 +273,7 @@ class Room:
     def join(self, name):
         check(self.phase != 'finished' and not self.ending, '对战已经结束')
         check(not self.settings.single_life or not self.round, '一命模式开局后不能加入')
+        check(self.settings.allow_late_join or not self.round, '本房间不允许中途加入')
         check(len(self.players) < 12, '房间已满')
         check(all(player.name != name for player in self.players.values()), '房间内已有相同昵称')
         self.serial += 1

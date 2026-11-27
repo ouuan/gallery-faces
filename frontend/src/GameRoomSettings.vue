@@ -11,9 +11,10 @@ defineProps<{ history?: boolean }>();
     <label v-if="!model.grid">每题答题时间（秒）<n-input-number aria-label="每题答题时间" :value="model.answer_seconds" :min="3" :max="300" @update:value="value => model = { ...model, answer_seconds: value ?? 15 }" /></label>
     <label>自动切题等待（秒，0 为关闭）<n-input-number aria-label="自动切题等待" :value="model.continue_seconds" :min="0" :max="300" @update:value="value => model = { ...model, continue_seconds: value ?? 0 }" /></label>
     </div>
-    <div v-if="!history" class="face-options">
-      <FaceDisplayMode :model-value="model" @update:model-value="value => model = { ...model, ...value, single_life: !value.grid && model.single_life }" />
-      <label v-if="!model.grid" class="display"><span><n-switch aria-label="一命模式" :value="model.single_life" @update:value="value => model = { ...model, single_life: value }" /> 一命模式</span></label>
+    <div class="face-options">
+      <FaceDisplayMode v-if="!history" :model-value="model" @update:model-value="value => model = { ...model, ...value, single_life: !value.grid && model.single_life }" />
+      <label v-if="!history && !model.grid" class="display"><span><n-switch aria-label="一命模式" :value="model.single_life" @update:value="value => model = { ...model, single_life: value }" /> 一命模式</span></label>
+      <label class="display"><span><n-switch aria-label="允许中途加入" :aria-disabled="model.single_life" :disabled="model.single_life" :value="!model.single_life && model.allow_late_join" @update:value="value => model = { ...model, allow_late_join: value }" /> 允许中途加入</span></label>
     </div>
   </fieldset>
 </template>

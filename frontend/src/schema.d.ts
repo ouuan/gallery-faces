@@ -3324,6 +3324,11 @@ export interface components {
              */
             single_life: boolean;
             /**
+             * Allow Late Join
+             * @default true
+             */
+            allow_late_join: boolean;
+            /**
              * Grid
              * @default false
              */

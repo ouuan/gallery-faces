@@ -264,6 +264,16 @@ def test_grid_wait_ends_when_unready_player_leaves(match):
     assert state()['phase'] == 'answer' and state()['grid']['elapsed'] == 0
 
 
+def test_closed_room_allows_lobby_join_and_member_reconnect(client, match):
+    join, state, act, _ = match
+    act('settings', settings={'grid': True, 'allow_late_join': False})
+    join('丙'); act('start')
+    response = client.post(f"{BASE}/{state()['code']}/join", json={'nickname': '丁'})
+    assert response.status_code == 409 and '不允许中途加入' in response.json()['detail']
+    act('leave', 2)
+    assert state(2)['players'][2]['online']
+
+
 def test_grid_round_privacy_timing_and_rescore(match):
     join, state, act, now = match
     act('settings', settings={'grid': True, 'single_life': True, 'continue_seconds': 0})

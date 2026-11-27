@@ -32,10 +32,11 @@ const roomFilters = (value: Filter) => ({ ...filterOnlyQuery(value), include_no_
 const nickname = ref(sessionStorage.getItem('face-room:name') || ''), joinCode = ref(''), joining = ref(false);
 const settingsKey = props.history ? 'history-room:settings' : 'face-room:settings';
 function loadSettings(): Settings {
-  const defaults = { ...faceDisplay(null, !props.history), single_life: false, answer_seconds: 15, continue_seconds: 10 };
+  const defaults = { ...faceDisplay(null, !props.history), single_life: false, allow_late_join: true, answer_seconds: 15, continue_seconds: 10 };
   try {
     const saved = JSON.parse(localStorage.getItem(settingsKey) ?? 'null');
     if (!saved || typeof saved !== 'object') return defaults;
+    defaults.allow_late_join = saved.allow_late_join !== false;
     if (!props.history) {
       Object.assign(defaults, faceDisplay(saved));
       defaults.single_life = !defaults.grid && saved.single_life === true;
@@ -74,6 +75,7 @@ const voteName = computed(() => room.value?.proposal?.suggested_name || (room.va
 const proposer = computed(() => room.value?.players.find(player => player.id === room.value?.proposer)?.name);
 const invite = computed(() => `${location.origin}${gamePath}/rooms/${code.value}`);
 const phaseName = { lobby: '等待开局', loading: '等待玩家加载照片', answer: '答题中', reveal: '答案揭晓', draft: '填写反馈', vote: '反馈投票', waiting: '等待出题', finished: '最终排名' };
+const canInvite = computed(() => room.value && !room.value.ending && room.value.phase !== 'finished' && (!room.value.round || (room.value.settings.allow_late_join && !room.value.settings.single_life)));
 const inRound = computed(() => room.value && !['lobby', 'finished'].includes(room.value.phase));
 const showGuess = computed(() => room.value?.phase !== 'finished' && !!record.value?.correct_date);
 const showRank = computed(() => room.value?.phase !== 'lobby' && (!record.value || record.value.settled > 0));
@@ -178,9 +180,9 @@ async function saveSettings() {
         </GameBoard>
       </template>
       <div class="room-bar"><strong>房间 <span class="code">{{ room.code }}</span></strong>
-        <n-button v-if="room.phase !== 'finished' && !(room.settings.single_life && room.round)" quaternary @click="copyInvite"><Copy :size="15" />复制邀请链接</n-button>
+        <n-button v-if="canInvite" quaternary @click="copyInvite"><Copy :size="15" />复制邀请链接</n-button>
         <span class="spacer" /><router-link v-if="inRound" :to="{ path: gamePath, query }">单人游戏</router-link><n-button quaternary :disabled="busy" @click="act('leave')">离开房间</n-button></div>
-      <n-input v-if="showLink" readonly :value="invite" :input-props="{ 'aria-label': '邀请链接' }" />
+      <n-input v-if="showLink && canInvite" readonly :value="invite" :input-props="{ 'aria-label': '邀请链接' }" />
       <RoomPersonalResult v-if="me && room.phase === 'finished'" :room="room" :player="me" :rank="showRank ? myRank : null" :tied="tied" />
       <section class="standings"><div class="standings-heading"><h2>{{ room.phase === 'finished' ? '最终排名' : room.phase === 'lobby' ? '房间成员' : '排行榜' }}</h2>
         <n-button v-if="host && room.phase === 'finished'" type="primary" :disabled="busy" @click="act('restart')"><RotateCcw :size="16" aria-hidden="true" />再来一局</n-button></div>
@@ -215,7 +217,10 @@ header a, .room-bar button, .actions button, .entry > button, .standings > butto
 }
 .entry > button { justify-self: start; }
 .setup-entry > button { min-width: 8rem; }
-@media (max-width: 599px) { .setup-entry > button { justify-self: stretch; } }
+@media (max-width: 599px) {
+  .setup-entry, .setup-columns, .setup-fields { gap: 12px; }
+  .setup-entry > button { justify-self: stretch; }
+}
 .tabs { border-bottom: 1px solid var(--line); }
 .tabs button { min-height: 44px; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 0 8px; }
 .tabs button[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }

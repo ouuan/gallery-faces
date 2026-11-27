@@ -7,9 +7,12 @@ test('room creation remembers preferences across reloads', async ({ page }) => {
   await page.reload();
   const cropped = page.getByRole('radio', { name: '截取人脸' });
   const singleLife = page.getByRole('switch', { name: '一命模式' });
+  const lateJoin = page.getByRole('switch', { name: '允许中途加入' });
   const times = page.locator('.n-input-number input');
   await expect(cropped).toBeChecked();
   await expect(singleLife).not.toBeChecked();
+  await expect(lateJoin).toBeChecked();
+  await lateJoin.click();
   await expect(times.nth(0)).toHaveValue('15');
   await expect(times.nth(1)).toHaveValue('10');
   await page.getByText('显示全图', { exact: true }).click(); await singleLife.click();
@@ -18,6 +21,9 @@ test('room creation remembers preferences across reloads', async ({ page }) => {
   await page.reload();
   await expect(cropped).not.toBeChecked();
   await expect(singleLife).toBeChecked();
+  await expect(lateJoin).toBeDisabled();
+  await singleLife.click();
+  await expect(lateJoin).not.toBeChecked();
   await expect(times.nth(0)).toHaveValue('45');
   await expect(times.nth(1)).toHaveValue('0');
 });

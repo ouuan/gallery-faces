@@ -10345,6 +10345,11 @@
             "title": "Single Life",
             "default": false
           },
+          "allow_late_join": {
+            "type": "boolean",
+            "title": "Allow Late Join",
+            "default": true
+          },
           "grid": {
             "type": "boolean",
             "title": "Grid",
