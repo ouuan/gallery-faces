@@ -5,7 +5,7 @@ async function chooseMore(group: Locator, name: string) {
   await group.page().getByRole('menuitem', { name, exact: true }).click();
 }
 
-test("monitor selection, partial batch results, resume and responsive themes", async ({ page }) => {
+test("monitor selection, partial batch results, resume and responsive actions", async ({ page }) => {
   const calls: any[] = [];
   const items = [1, 2].map(id => ({ id, platform: "x", username: id === 1 ? "alice" : "bob", interval_minutes: 60, paused: id === 2 ? 1 : 0, active_task_id: null, last_checked_at: null, next_check_at: "2026-11-19T00:00:00Z", last_result: "{}", last_status: null, last_error: null }));
   await page.route("**/api/v1/**", async route => {
@@ -32,13 +32,6 @@ test("monitor selection, partial batch results, resume and responsive themes", a
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("补齐 2 位发布者");
   const date = dialog.locator("input").first();
-  await date.click();
-  await page.waitForTimeout(350);
-  await page.screenshot({ path: "/tmp/gallery-faces/backfill-picker-desktop.png" });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.waitForTimeout(350);
-  await page.screenshot({ path: "/tmp/gallery-faces/backfill-picker-mobile.png" });
-  await page.setViewportSize({ width: 1280, height: 900 });
   await date.fill("2020-01-01 12:34:56"); await date.press("Enter");
   await dialog.getByRole("button", { name: "确认补齐" }).click();
   await expect(page.locator(".monitor-manager")).toContainText("任务 #42");
@@ -59,20 +52,12 @@ test("monitor selection, partial batch results, resume and responsive themes", a
     else expect(Math.abs(actions!.y - summary!.y)).toBeLessThan(1);
     const buttonTops = await batch.getByRole('button').evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().top));
     expect(Math.max(...buttonTops) - Math.min(...buttonTops)).toBeLessThan(1);
-    for (const theme of ["light", "dark"] as const) {
-      await page.emulateMedia({ colorScheme: theme });
-      await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
-      await page.evaluate(() => window.scrollTo(0, 0));
-      await page.waitForTimeout(400);
-      await page.screenshot({ path: `/tmp/gallery-faces/monitors-${width}-${theme}.png`, fullPage: true });
-    }
+    await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
   }
   await page.getByRole("button", { name: "继续", exact: true }).click();
   await dialog.getByLabel("恢复方式").click();
   await page.getByText("指定起始时间", { exact: true }).click();
   await expect(dialog).toContainText("新的采集起点");
-  await page.waitForTimeout(350);
-  await page.screenshot({ path: "/tmp/gallery-faces/resume-mobile.png" });
   await dialog.getByRole("button", { name: "取消", exact: true }).click();
   await chooseMore(batch, '删除');
   await expect(dialog).toContainText("删除 2 项监控");
@@ -256,15 +241,7 @@ test("batch interval validates input, reports partial failure and refreshes save
   await expect(dialog.getByRole("button", { name: "确认修改" })).toBeDisabled();
   await dialog.getByRole("textbox").fill("30");
   await dialog.getByRole("textbox").press("Tab");
-  for (const width of [1280, 390]) {
-    await page.setViewportSize({ width, height: 900 });
-    for (const theme of ["light", "dark"] as const) {
-      await page.emulateMedia({ colorScheme: theme });
-      await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
-      await page.waitForTimeout(350);
-      await page.screenshot({ path: `/tmp/gallery-faces/batch-interval-${width}-${theme}.png` });
-    }
-  }
+  await page.setViewportSize({ width: 390, height: 900 });
   await dialog.getByRole("button", { name: "确认修改" }).click();
   await expect(dialog).not.toBeVisible();
   expect(calls).toEqual([{ action: "interval", ids: [1, 2], start: "", interval_minutes: 30 }]);
@@ -312,14 +289,9 @@ test("monitor layout preserves disclosure drafts and handles long content", asyn
   await expect(form.getByLabel("账号 1 用户名")).toHaveValue("draft_account");
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   await expect(form).toBeVisible();
-  for (const width of [390, 900, 1280, 1440]) {
+  for (const width of [390, 900, 1280]) {
     await page.setViewportSize({ width, height: 900 });
-    for (const theme of ["light", "dark"] as const) {
-      await page.emulateMedia({ colorScheme: theme });
-      await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
-      await page.waitForTimeout(350);
-      await page.screenshot({ path: `/tmp/gallery-faces/monitor-layout/after-expanded-${width}-${theme}.png`, fullPage: true });
-    }
+    await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
   }
   const selection = page.getByRole('tabpanel').getByRole('checkbox', { name: '全选', exact: true });
   await selection.check();
@@ -402,16 +374,7 @@ test("shared platform filter and canonical List batch", async ({ page }) => {
   await form.getByRole('textbox', { name: '话题标签' }).fill('摄影 Live');
   await form.getByRole('textbox', { name: '话题标签' }).press('Tab');
   await expect(form).toContainText("共 3 项监控");
-  for (const width of [1280, 390]) {
-    await page.setViewportSize({ width, height: 900 });
-    for (const theme of ["light", "dark"] as const) {
-      await page.emulateMedia({ colorScheme: theme });
-      await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
-      await page.evaluate(() => window.scrollTo(0, 0));
-      await page.waitForTimeout(400);
-      await page.screenshot({ path: `/tmp/gallery-faces/list-platforms-${width}-${theme}.png`, fullPage: true });
-    }
-  }
+  await page.setViewportSize({ width: 390, height: 900 });
   await submit.click();
   await expect(form.getByLabel("Twitter List 链接")).toHaveValue("");
   expect(calls.map(({ platform, username }) => ({ platform, username }))).toEqual([

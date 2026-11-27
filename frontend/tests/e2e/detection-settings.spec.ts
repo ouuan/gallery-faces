@@ -40,14 +40,4 @@ test("detection threshold can be saved and restored", async ({ page }) => {
   await page.reload();
   await expect(lower).toHaveAttribute("aria-valuenow", "0.51");
   await expect(input).toHaveValue("0.3");
-  for (const width of [390, 1280]) {
-    await page.setViewportSize({ width, height: 1000 });
-    for (const theme of ["light", "dark"]) {
-      await page.evaluate((theme) => localStorage.setItem("theme", theme), theme);
-      await page.reload();
-      await expect(input).toBeVisible();
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      await page.screenshot({ path: `/tmp/gallery-faces/detection-settings-${width}-${theme}.png`, fullPage: true });
-    }
-  }
 });

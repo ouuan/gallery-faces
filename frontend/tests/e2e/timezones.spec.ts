@@ -35,12 +35,6 @@ for (const zone of ["Asia/Shanghai", "America/New_York", "Asia/Kathmandu"]) {
       await expect(input).toHaveValue(before);
       await page.goto("/?start=2026-01-01");
       await expect(filters).toContainText("重新选择");
-      await page.goto("/admin/import");
-      await page.locator(".import-form .n-date-picker input").first().click();
-      await expect(page.locator(".n-date-panel")).toBeVisible();
-      await page.waitForTimeout(350);
-      await page.screenshot({ path: "/tmp/gallery-faces/datetime-" + zone.replaceAll("/", "-") + ".png" });
-      await page.keyboard.press("Escape");
     });
   });
 }

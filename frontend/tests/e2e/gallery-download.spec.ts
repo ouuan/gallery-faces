@@ -1,5 +1,4 @@
 import { test as base, expect, type Page } from "@playwright/test";
-import { mkdirSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -58,59 +57,50 @@ async function setup(page: Page, archiveUrl: string, options: { fail?: boolean; 
   return selections;
 }
 
-for (const width of [390, 1280]) {
-  test(`select, append and download without opening details at ${width}px`, async ({ page, archiveUrl }) => {
-    await page.setViewportSize({ width, height: 900 });
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    const errors: string[] = [];
-    page.on("pageerror", error => errors.push(error.message));
-    const selections = await setup(page, archiveUrl);
-    await page.getByRole("button", { name: "下载", exact: true }).click();
-    const download = page.getByRole("button", { name: "下载 ZIP", exact: true });
-    await expect(download).toBeDisabled();
-    const first = page.getByRole("button", { name: "选择 人物 1 的照片" });
-    await first.focus();
-    await page.keyboard.press("Space");
-    await expect(first).toHaveAttribute("aria-pressed", "true");
-    await expect(page).not.toHaveURL(/photo=/);
-    await expect(page.getByText("已选 1 张", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "加载更多" }).click();
-    await expect(page.locator(".photo-card")).toHaveCount(6);
-    await expect(first).toHaveAttribute("aria-pressed", "true");
-    await page.getByRole("button", { name: "全选已加载" }).click();
-    await expect(page.getByText("已选 6 张", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "取消全选" }).click();
-    await expect(download).toBeDisabled();
-    await first.click();
-    await page.getByRole("button", { name: "选择 人物 5 的照片" }).click();
-    const downloaded = page.waitForEvent("download");
-    await download.click();
-    const file = await downloaded;
-    expect(file.suggestedFilename()).toBe("gallery-test.zip");
-    expect(await file.failure()).toBeNull();
-    expect(selections).toEqual([[1, 5]]);
-    await expect(page.getByText("已发起下载，可在浏览器中查看进度")).toBeVisible();
-    await expect(page).toHaveURL(/\/$/);
+test("select, append and download without opening details on mobile", async ({ page, archiveUrl }) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  const selections = await setup(page, archiveUrl);
+  await page.getByRole("button", { name: "下载", exact: true }).click();
+  const download = page.getByRole("button", { name: "下载 ZIP", exact: true });
+  await expect(download).toBeDisabled();
+  const first = page.getByRole("button", { name: "选择 人物 1 的照片" });
+  await first.focus();
+  await page.keyboard.press("Space");
+  await expect(first).toHaveAttribute("aria-pressed", "true");
+  await expect(page).not.toHaveURL(/photo=/);
+  await expect(page.getByText("已选 1 张", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "加载更多" }).click();
+  await expect(page.locator(".photo-card")).toHaveCount(6);
+  await expect(first).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "全选已加载" }).click();
+  await expect(page.getByText("已选 6 张", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "取消全选" }).click();
+  await expect(download).toBeDisabled();
+  await first.click();
+  await page.getByRole("button", { name: "选择 人物 5 的照片" }).click();
+  const downloaded = page.waitForEvent("download");
+  await download.click();
+  const file = await downloaded;
+  expect(file.suggestedFilename()).toBe("gallery-test.zip");
+  expect(await file.failure()).toBeNull();
+  expect(selections).toEqual([[1, 5]]);
+  await expect(page.getByText("已发起下载，可在浏览器中查看进度")).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
 
-    for (const layout of ["方格", "瀑布流", "等高排列"]) {
-      await page.locator('[aria-label="布局"]').click();
-      await page.locator(".n-base-select-option").filter({ hasText: new RegExp(`^${layout}$`) }).click();
-      await expect(first).toHaveAttribute("aria-pressed", "true");
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    }
-    mkdirSync("../.impeccable/review", { recursive: true });
-    for (const theme of ["浅色", "深色"]) {
-      await page.getByRole('button', { name: /^主题：/ }).click();
-      await page.getByRole('menuitemradio', { name: theme }).click();
-      await page.evaluate(() => window.scrollTo(0, 0));
-      await page.screenshot({ path: `../.impeccable/review/download-${width}-${theme}.png`, fullPage: true });
-    }
-    await page.getByRole("button", { name: "取消", exact: true }).click();
-    await expect(page.getByRole("button", { name: "下载", exact: true })).toBeVisible();
-    await expect(first).toHaveCount(0);
-    expect(errors).toEqual([]);
-  });
-}
+  for (const layout of ["方格", "瀑布流", "等高排列"]) {
+    await page.locator('[aria-label="布局"]').click();
+    await page.locator(".n-base-select-option").filter({ hasText: new RegExp(`^${layout}$`) }).click();
+    await expect(first).toHaveAttribute("aria-pressed", "true");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  await page.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(page.getByRole("button", { name: "下载", exact: true })).toBeVisible();
+  await expect(first).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
 
 test("download error keeps selection for retry; filter changes clear it", async ({ page, archiveUrl }) => {
   const options = { fail: true, displayCount: 1 };

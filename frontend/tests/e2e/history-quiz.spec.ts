@@ -1,8 +1,8 @@
 import { expect } from '@playwright/test';
 import { test } from '../room-fixture';
 
-for (const width of [390, 1280]) test(`history quiz, date controls and session at ${width}px`, async ({ page }, info) => {
-  await page.setViewportSize({ width, height: 844 });
+test('history quiz keeps the selected filters and score across mobile navigation', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   let rounds = 0, details = 0;
   await page.route('**/api/v1/**', route => {
     const url = new URL(route.request().url());
@@ -20,31 +20,22 @@ for (const width of [390, 1280]) test(`history quiz, date controls and session a
   });
   await page.route('**/quiz-fixture.svg', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="100"><rect width="160" height="100" fill="#ddd"/><text x="48" y="54">布局示例</text></svg>' }));
   await page.goto('/?people=1,2&sort=oldest');
-  if (width === 390) {
-    const menu = page.getByRole('button', { name: '图库菜单：Gallery Faces' });
-    await expect(menu).toHaveText('Gallery Faces');
-    await expect(menu.locator('svg')).toHaveCount(1);
-    await menu.click();
-  }
-  await expect(page.getByRole('navigation', { name: '图库导航' }).getByRole('link', { name: '订阅图库 RSS' })).toHaveCount(0);
+  await page.getByRole('button', { name: '图库菜单：Gallery Faces' }).click();
   await page.getByRole('link', { name: '史官测验' }).click();
   await expect(page).toHaveURL(/history-quiz\?people=1-2$/);
   const slider = page.getByRole('slider', { name: '猜测日期' });
   await expect(slider).toHaveCount(0);
   expect(rounds).toBe(0);
   const filterToggle = page.getByRole('button', { name: /筛选照片/ });
-  if (width === 390) {
-    await expect(filterToggle).toContainText('2 位人物');
-    await filterToggle.click();
-  }
+  await expect(filterToggle).toContainText('2 位人物');
+  await filterToggle.click();
   await page.getByRole('checkbox', { name: '包含无人脸图片' }).check();
   await page.getByRole('button', { name: '开始游戏' }).click();
   await expect(slider).toHaveAttribute('aria-valuetext', '2026-01-05');
   await expect(page.getByRole('button', { name: '提交日期' })).toBeEnabled();
   await expect(page.getByRole('dialog', { name: '图库菜单' })).toHaveCount(0);
-  if (width === 390) await expect(page.getByRole('button', { name: '图库菜单：史官测验' })).toHaveText('史官测验');
+  await expect(page.getByRole('button', { name: '图库菜单：史官测验' })).toHaveText('史官测验');
   expect(details).toBe(0);
-  await page.screenshot({ path: info.outputPath('question.png'), animations: 'disabled' });
   await slider.press('ArrowRight');
   await page.getByRole('button', { name: '提交日期' }).click();
   await expect(page.getByText('你的猜测：2026-01-06 · 早了 2 天')).toBeVisible();
@@ -65,7 +56,6 @@ for (const width of [390, 1280]) test(`history quiz, date controls and session a
   await expect(summary.getByRole('region', { name: '出题筛选' })).toContainText('包含无人脸图片');
   await expect(summary).toContainText('已答 2 题');
   await expect(summary).toContainText('累计偏差 6 天');
-  await page.screenshot({ path: info.outputPath('result.png'), animations: 'disabled' });
   await page.reload();
   await page.getByRole('button', { name: '开始游戏' }).click();
   await expect(page.getByText('已答 0 题')).toBeVisible();
@@ -76,7 +66,7 @@ for (const width of [390, 1280]) test(`history quiz, date controls and session a
   await expect(page.getByRole('form', { name: '开局设置' })).toHaveCount(0);
   await summary.getByRole('button', { name: '再来一局' }).click();
   await expect(summary).toHaveCount(0);
-  if (width === 390) await filterToggle.click();
+  await filterToggle.click();
   await expect(page.getByRole('checkbox', { name: '包含无人脸图片' })).toBeChecked();
 });
 

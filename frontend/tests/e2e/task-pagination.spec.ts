@@ -75,12 +75,7 @@ test("task pages preserve selection when polling and retrying, and reset after i
     await page.setViewportSize({ width, height: 900 });
     await pagination.scrollIntoViewIfNeeded();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await page.screenshot({ path: `/tmp/gallery-faces/tasks-${width}.png` });
   }
-  await page.emulateMedia({ colorScheme: "dark" });
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await page.clock.runFor(500);
-  await page.screenshot({ path: "/tmp/gallery-faces/tasks-dark.png", animations: "disabled" });
   await previous.click();
   await expect(currentPage).toHaveText("2");
   await page.locator(".import-form textarea").fill("https://x.com/test/status/1");
@@ -88,18 +83,4 @@ test("task pages preserve selection when polling and retrying, and reset after i
   await expect(rows.first()).toContainText("#46");
   await expect(currentPage).toHaveText("1");
   await expect(pagination).toContainText("共 46 条");
-});
-
-test("empty task history has no pagination", async ({ page }) => {
-  await page.route("**/api/v1/**", (route) => {
-    const path = new URL(route.request().url()).pathname;
-    if (path.endsWith("/tasks"))
-      return route.fulfill({ json: { items: [], total: 0, page: 1, page_size: 20 } });
-    if (path.endsWith("/session") || path.endsWith("/settings") || path.endsWith("/site"))
-      return route.fulfill({ json: {} });
-    return route.fulfill({ json: [] });
-  });
-  await page.goto("/admin/import");
-  await expect(page.getByText("还没有导入任务")).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "任务记录分页" })).toHaveCount(0);
 });

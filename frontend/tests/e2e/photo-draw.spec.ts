@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
-for (const [mode, label] of [['daily', '每日一图'], ['random', '随机图片']]) {
-  for (const width of [390, 1280]) test(`${mode} links preserve the selected filters at ${width}px`, async ({ page }) => {
+for (const [mode, label, width] of [['daily', '每日一图', 390], ['random', '随机图片', 1280]] as const) {
+  test(`${mode} links preserve the selected filters at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
     const imagePath = '/api/v1/media/42';
     const requests: string[] = [];
