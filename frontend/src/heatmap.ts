@@ -8,21 +8,21 @@ export type Metric = 'new_photos' | 'posts';
 type Boundary = { min: number; max: number };
 type CountGroup = { count: number; cumulativeDays: number };
 
-const windowCenters = [25, 55, 85];
+const windowCenters = [25, 60, 90];
 const windowRadius = 5;
 
 function chooseBoundary(groups: CountGroup[], first: number, last: number, center: number, totalDays: number) {
-  let best = first, bestOutside = Infinity, bestRatio = 0, bestDistance = Infinity;
+  let best = first, bestOutside = Infinity, bestGap = 0, bestDistance = Infinity;
   for (let index = first; index <= last; index++) {
     const { count, cumulativeDays } = groups[index];
     const distance = Math.abs(100 * cumulativeDays - center * totalDays);
     const outside = Math.max(0, distance - windowRadius * totalDays);
-    const ratio = groups[index + 1].count / count;
+    const gap = groups[index + 1].count - count;
     if (outside < bestOutside || (outside === bestOutside &&
-      (ratio > bestRatio || (ratio === bestRatio && distance < bestDistance)))) {
+      (gap > bestGap || (gap === bestGap && distance < bestDistance)))) {
       best = index;
       bestOutside = outside;
-      bestRatio = ratio;
+      bestGap = gap;
       bestDistance = distance;
     }
   }

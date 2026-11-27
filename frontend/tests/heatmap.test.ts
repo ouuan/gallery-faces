@@ -19,14 +19,19 @@ describe('heatmap scale', () => {
     const counts = [...spread(1, 5, 25), ...spread(6, 11, 25), ...spread(12, 21, 25),
       ...spread(22, 31, 10), ...spread(60, 100, 14), 304];
     const bands = heatmapScale(counts);
-    expect(bands.map(band => band.end)).toEqual([0, 4, 11, 59, 304]);
-    expect(bandSizes(counts)).toEqual([24, 26, 35, 15]);
+    expect(bands.map(band => band.end)).toEqual([0, 5, 15, 59, 304]);
+    expect(bandSizes(counts)).toEqual([25, 36, 24, 15]);
     expect(heatmapScale([0, ...counts.slice().reverse(), 0])).toEqual(bands);
   });
-  it('breaks equal ratio ties by proximity to the window center, then by lower count', () => {
-    const powersOfTwo = (days: number[]) => days.flatMap((size, index) => Array<number>(size).fill(2 ** index));
-    expect(bandSizes(powersOfTwo([20, 5, 5, 25, 30, 15]))).toEqual([25, 30, 30, 15]);
-    expect(bandSizes(powersOfTwo([20, 10, 25, 30, 15]))).toEqual([20, 35, 30, 15]);
+  it('prefers the largest absolute gap even at the upper edge of each window', () => {
+    const counts = [[1, 20], [4, 10], [10, 20], [30, 5], [31, 10], [40, 5], [60, 15], [61, 10], [80, 5]]
+      .flatMap(([count, days]) => Array<number>(days).fill(count));
+    expect(bandSizes(counts)).toEqual([30, 35, 30, 5]);
+  });
+  it('breaks equal gap ties by proximity to the window center, then by lower count', () => {
+    const consecutive = (days: number[]) => days.flatMap((size, index) => Array<number>(size).fill(index + 1));
+    expect(bandSizes(consecutive([20, 5, 5, 25, 30, 15]))).toEqual([25, 30, 30, 15]);
+    expect(bandSizes(consecutive([20, 10, 25, 30, 15]))).toEqual([20, 35, 30, 15]);
   });
   it('uses the nearest feasible boundary when repeated counts skip a window', () => {
     const counts = [...Array<number>(65).fill(1), 2, 2, 3, 3, 3, ...Array<number>(15).fill(4), ...Array<number>(15).fill(100)];
