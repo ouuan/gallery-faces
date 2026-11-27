@@ -26,6 +26,12 @@ test('solo reveals the magnified viewport and averages only correct answers', as
   expect(box.height).toBeCloseTo(image.height * 0.3, 1);
   const frame = (await page.locator('.game-frame').boundingBox())!;
   expect(image.width).toBeGreaterThan(frame.width);
+  const fractionalFrame = await page.addStyleTag({ content: '.game-frame { position: absolute; left: 0.5px; width: 97px !important; }' });
+  const bounds = (await page.locator('.game-frame').boundingBox())!;
+  const edge = { x: Math.floor(bounds.x + bounds.width) - 2, y: Math.ceil(bounds.y) + 5, width: 4, height: Math.floor(bounds.height) - 10 };
+  const coveredEdge = await page.screenshot({ clip: edge });
+  expect((await page.screenshot({ clip: edge, style: '.game-frame img { visibility: hidden; }' })).equals(coveredEdge)).toBe(true);
+  await fractionalFrame.evaluate(style => style.remove());
   await page.screenshot({ path: info.outputPath('grid-mobile.png') });
   await page.clock.fastForward(10000);
   await expect(page.getByText('已显示 1 / 9 格')).toBeVisible();

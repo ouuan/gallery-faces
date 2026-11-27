@@ -117,7 +117,7 @@ const imageStyle = computed(() => {
 .game-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 28px; align-items: start; }
 .game-picture { position: sticky; top: calc(var(--site-header-height) + 16px); display: grid; grid-template: 100% / 100%; place-items: center; container-type: size; height: 64svh; }
 .game-frame { position: relative; overflow: hidden; border-radius: 4px; }
-.grid-mask { position: absolute; inset: 0; display: grid; grid-template: repeat(var(--side), 1fr) / repeat(var(--side), 1fr); pointer-events: none; }
+.grid-mask { position: absolute; inset: -1px; display: grid; grid-template: repeat(var(--side), 1fr) / repeat(var(--side), 1fr); pointer-events: none; }
 .grid-mask .covered { background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
 .grid-progress { margin-inline-start: 8px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .game-frame img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; transform-origin: top left; }
