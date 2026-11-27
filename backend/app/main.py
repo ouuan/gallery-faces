@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager, ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import (
     FastAPI,
     Depends,
@@ -996,6 +997,26 @@ def gallery(
             else None
         )
         return {"items": gallery_summaries(db, page), "next_cursor": next_cursor, "total": total}
+
+
+class HeatmapDay(BaseModel):
+    date: str
+    new_photos: int
+    posts: int
+
+
+@app.get('/api/v1/gallery/heatmap', response_model=list[HeatmapDay])
+def gallery_heatmap(timezone: str = Query(max_length=128), people: str = '', match: PeopleMatch = 'any',
+                    publishers: str = '', start: str = '', end: str = '', include_no_faces: bool = False):
+    try:
+        zone = ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        fail('时区无效')
+    ids, accounts = parse_people_publishers(people, publishers)
+    source, args = source_filter(accounts, *date_bounds(start, end), post='{post}')
+    with connect() as db:
+        db.execute('BEGIN')
+        return list_queries.heatmap_days(db, ids, match, source, args, include_no_faces, zone)
 
 
 class GalleryDownloadInput(BaseModel):

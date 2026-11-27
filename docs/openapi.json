@@ -1199,6 +1199,116 @@
         }
       }
     },
+    "/api/v1/gallery/heatmap": {
+      "get": {
+        "summary": "Gallery Heatmap",
+        "operationId": "gallery_heatmap_api_v1_gallery_heatmap_get",
+        "parameters": [
+          {
+            "name": "timezone",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "title": "Timezone"
+            }
+          },
+          {
+            "name": "people",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "People"
+            }
+          },
+          {
+            "name": "match",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "any",
+                "all",
+                "exact",
+                "subset"
+              ],
+              "type": "string",
+              "default": "any",
+              "title": "Match"
+            }
+          },
+          {
+            "name": "publishers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Publishers"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "End"
+            }
+          },
+          {
+            "name": "include_no_faces",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include No Faces"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HeatmapDay"
+                  },
+                  "title": "Response Gallery Heatmap Api V1 Gallery Heatmap Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/gallery/downloads": {
       "post": {
         "summary": "Prepare Gallery Download",
@@ -7570,6 +7680,29 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HeatmapDay": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "new_photos": {
+            "type": "integer",
+            "title": "New Photos"
+          },
+          "posts": {
+            "type": "integer",
+            "title": "Posts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "new_photos",
+          "posts"
+        ],
+        "title": "HeatmapDay"
       },
       "HistoryPhoto": {
         "properties": {

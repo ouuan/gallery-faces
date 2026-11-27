@@ -12,6 +12,7 @@ const router = createRouter({
       { path: "posts/:key", name: "gallery-post", component: () => import("./PostDetail.vue"), props: route => ({ postKey: route.params.key }) },
     ] },
     { path: "/:mode(daily|random)", component: () => import("./PhotoDraw.vue"), props: true },
+    { path: '/heatmap', component: () => import('./Heatmap.vue') },
     { path: '/face-game', component: () => import('./FaceGame.vue') },
     { path: '/face-game/rooms/:code?', component: () => import('./GameRoom.vue') },
     { path: '/history-quiz', component: () => import('./HistoryQuiz.vue') },

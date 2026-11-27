@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
-import { CalendarDays, History, House, ScanFace, Settings, Shuffle } from '@lucide/vue';
+import { CalendarDays, Grid2x2, History, House, ScanFace, Settings, Shuffle } from '@lucide/vue';
 import { filterOnlyQuery, fromQuery } from './filters';
 
 defineProps<{ drawer: boolean }>();
@@ -10,6 +10,7 @@ const route = useRoute();
 const filter = computed(() => fromQuery(route.query));
 const query = computed(() => filterOnlyQuery(filter.value));
 const items = [
+  { path: '/heatmap', name: '热力图', icon: Grid2x2 },
   { path: '/daily', name: '每日一图', icon: CalendarDays }, { path: '/random', name: '随机图片', icon: Shuffle },
   { path: '/face-game', name: '认脸游戏', icon: ScanFace }, { path: '/history-quiz', name: '史官测验', icon: History },
 ];

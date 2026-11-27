@@ -1,6 +1,7 @@
 """Index-backed listing queries. SQL fragments use internal identifiers only."""
 
 import json
+from datetime import datetime
 
 
 SPARSE_LIMIT = 512
@@ -74,7 +75,7 @@ def gallery_rows(db, people, match, source, source_args, include_no_faces, order
     return items, count
 
 
-def post_rows(db, people, match, source_template, source_args, include_no_faces, order, edge, limit):
+def post_matches(db, people, match, source_template, source_args, include_no_faces):
     def probe(sql, args):
         rows = [row[0] for row in db.execute(sql + ' LIMIT ?', [*args, SPARSE_LIMIT + 1])]
         return rows if len(rows) <= SPARSE_LIMIT else None
@@ -84,9 +85,6 @@ def post_rows(db, people, match, source_template, source_args, include_no_faces,
     selected, person_args = matching_groups('public', people, match) if people else ('', [])
     groups = probe(selected, person_args) if people and (posts is None or len(posts) > 32) else None
     columns = "id,platform || ':' || coalesce(embed_id,'record:' || id) AS key,platform,url,embed_id,author,author_name,published_at"
-    direction, comparison = ('DESC', '<') if order == 'newest' else ('ASC', '>')
-    boundary = f' AND (published_at,id) {comparison} (?,?)' if edge else ''
-    tail = f' ORDER BY published_at {direction},id {direction} LIMIT ?'
     supported = "p.platform IN ('x','instagram')"
 
     def eligible(alias):
@@ -131,8 +129,27 @@ def post_rows(db, people, match, source_template, source_args, include_no_faces,
             other_values.extend(source_args)
         sql = f'''SELECT {columns} FROM posts p INDEXED BY post_date WHERE {where} AND (embed_id IS NULL OR NOT EXISTS(
             SELECT 1 FROM posts other WHERE other.platform=p.platform AND other.embed_id=p.embed_id AND other.id<p.id AND {other}))'''
-        return db.execute(sql + boundary + tail, [*args, *other_values, *edge, limit + 1])
+        return sql, [*args, *other_values]
     sql = f'''WITH chosen AS MATERIALIZED ({chosen}), ranked AS (SELECT p.*,
         row_number() OVER(PARTITION BY platform,embed_id,CASE WHEN embed_id IS NULL THEN p.id END ORDER BY p.id) AS rank
         FROM chosen CROSS JOIN posts p ON p.id=chosen.id) SELECT {columns} FROM ranked WHERE rank=1'''
+    return sql, args
+
+
+def post_rows(db, people, match, source_template, source_args, include_no_faces, order, edge, limit):
+    sql, args = post_matches(db, people, match, source_template, source_args, include_no_faces)
+    direction, comparison = ('DESC', '<') if order == 'newest' else ('ASC', '>')
+    boundary = f' AND (published_at,id) {comparison} (?,?)' if edge else ''
+    tail = f' ORDER BY published_at {direction},id {direction} LIMIT ?'
     return db.execute(sql + boundary + tail, [*args, *edge, limit + 1])
+
+
+def heatmap_days(db, people, match, source_template, source_args, include_no_faces, zone):
+    photos, photo_args = gallery_matches(people, match, source_template.format(post='p'), source_args, include_no_faces)
+    posts, post_args = post_matches(db, people, match, source_template, source_args, include_no_faces)
+    db.create_function('local_day', 1, lambda stamp: datetime.fromisoformat(stamp).astimezone(zone).date().isoformat(), deterministic=True)
+    return [dict(row) for row in db.execute(f'''WITH activity AS (
+        SELECT stamp, 1 AS new_photos, 0 AS posts FROM ({photos})
+        UNION ALL SELECT published_at, 0, 1 FROM ({posts})
+    ) SELECT local_day(stamp) AS date, sum(new_photos) AS new_photos, sum(posts) AS posts
+      FROM activity GROUP BY date ORDER BY date''', [*photo_args, *post_args])]
