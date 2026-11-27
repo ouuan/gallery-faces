@@ -37,6 +37,15 @@ test('history quiz keeps the selected filters and score across mobile navigation
   await expect(page.getByRole('button', { name: '图库菜单：史官测验' })).toHaveText('史官测验');
   expect(details).toBe(0);
   await slider.press('ArrowRight');
+  const picker = page.getByRole('textbox', { name: '选择猜测日期' });
+  await expect(picker).toHaveValue('2026-01-06');
+  await picker.click();
+  const calendar = page.locator('.n-date-panel-dates');
+  await expect(calendar.getByText('11', { exact: true })).toHaveClass(/--disabled/);
+  await calendar.locator('.n-date-panel-date:not(.n-date-panel-date--excluded)').getByText('7', { exact: true }).click();
+  await expect(slider).toHaveAttribute('aria-valuetext', '2026-01-07');
+  await page.getByRole('button', { name: '前一天' }).click();
+  await expect(picker).toHaveValue('2026-01-06');
   await page.getByRole('button', { name: '提交日期' }).click();
   await expect(page.getByText('你的猜测：2026-01-06 · 早了 2 天')).toBeVisible();
   await expect(slider).toBeDisabled();

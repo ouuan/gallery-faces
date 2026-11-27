@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { NButton } from 'naive-ui';
+import { NButton, NDatePicker } from 'naive-ui';
 import { ChevronLeft, ChevronRight } from '@lucide/vue';
 import { dayLabel, dayNumber, difference, middleDay, type HistoryPhoto } from './history-quiz';
 import LoadingOverlay from './LoadingOverlay.vue';
@@ -12,6 +12,11 @@ const day = computed(() => props.selected ? dayNumber(props.selected) : props.un
 const first = computed(() => dayNumber(props.photo.first_date)), last = computed(() => dayNumber(props.photo.last_date));
 const loaded = ref(false), failed = ref(false);
 const disabled = computed(() => props.locked || !!props.correct || !loaded.value);
+const firstLocal = computed(() => Date.parse(`${props.photo.first_date}T00:00:00`));
+const lastLocal = computed(() => Date.parse(`${props.photo.last_date}T23:59:59.999`));
+function outsideRange(timestamp: number) {
+  return timestamp < firstLocal.value || timestamp > lastLocal.value;
+}
 function select(value: number) {
   draft.value = value;
   emit('change', dayLabel(value));
@@ -28,7 +33,11 @@ function select(value: number) {
     <section class="controls">
       <h2>这张照片最早发布于哪一天？</h2>
       <div class="date-step"><n-button quaternary circle aria-label="前一天" title="前一天" :disabled="disabled || day <= first" @click="select(day - 1)"><ChevronLeft :size="20" /></n-button>
-        <output>{{ dayLabel(day) }}</output>
+        <output v-if="disabled || first === last">{{ dayLabel(day) }}</output>
+        <label v-else class="date-picker"><span class="sr-only">选择猜测日期</span>
+          <n-date-picker type="date" value-format="yyyy-MM-dd" format="yyyy-MM-dd" input-readonly :actions="null"
+            :formatted-value="dayLabel(day)" :is-date-disabled="outsideRange" @update:formatted-value="select(dayNumber($event))" />
+        </label>
         <n-button quaternary circle aria-label="后一天" title="后一天" :disabled="disabled || day >= last" @click="select(day + 1)"><ChevronRight :size="20" /></n-button></div>
       <input type="range" aria-label="猜测日期" :aria-valuetext="dayLabel(day)" :min="first" :max="last" step="1" :value="day" :disabled="disabled || first === last" @input="select(($event.target as HTMLInputElement).valueAsNumber)" />
       <div class="bounds"><span>{{ photo.first_date }}</span><span>{{ photo.last_date }}</span></div>
@@ -47,6 +56,8 @@ function select(value: number) {
 .date-step, .bounds { display: flex; align-items: center; justify-content: space-between; font-variant-numeric: tabular-nums; }
 .date-step { margin-top: 14px; }
 .date-step button { width: 44px; height: 44px; }
+.date-picker { width: 148px; max-width: calc(100% - 88px); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 output { font-size: 22px; font-weight: 600; }
 input[type=range] { display: block; width: 100%; height: 44px; margin: 0; accent-color: var(--accent); }
 .bounds { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
