@@ -2,15 +2,35 @@ import { describe, expect, it } from 'vitest';
 import { calendarDays, dayQuery, heatmapRange, heatmapScale } from '../src/heatmap';
 import { emptyFilter } from '../src/filters';
 
-describe('heatmap calendar', () => {
-  it('balances nonzero days without splitting ties or letting an outlier set the thresholds', () => {
+function bandSizes(counts: number[]) {
+  const bands = heatmapScale(counts);
+  return bands.slice(1).map((band, index) => counts.filter(count => count > bands[index].end && count <= band.end).length);
+}
+
+describe('heatmap scale', () => {
+  it('keeps zero separate even when there are too few distinct positive counts for four bands', () => {
+    expect(heatmapScale([]).map(band => band.label)).toEqual(['0']);
     expect(heatmapScale([0, 0]).map(band => band.label)).toEqual(['0']);
     expect(heatmapScale([3, 3, 0]).map(band => band.label)).toEqual(['0', '1–3']);
-    const counts = [1000, 5, 1, 0, 4, 2, 3, 0, 1, 3];
+  });
+  it('separates a cluster of high days without reserving a color for the single peak', () => {
+    const spread = (low: number, high: number, days: number) => Array.from({ length: days },
+      (_, index) => low + Math.floor(index * (high - low) / (days - 1)));
+    const counts = [...spread(1, 5, 25), ...spread(6, 11, 25), ...spread(12, 21, 25),
+      ...spread(22, 31, 10), ...spread(60, 100, 14), 304];
     const bands = heatmapScale(counts);
-    const sizes = bands.slice(1).map((band, index) => counts.filter(count => count > bands[index].end && count <= band.end).length);
-    expect(sizes.sort()).toEqual([1, 2, 2, 3]);
-    expect(heatmapScale([1, 1, 2, 3, 4, 4, 5, 1000]).map(band => band.end)).toEqual([0, 1, 3, 4, 1000]);
+    expect(bands.map(band => band.end)).toEqual([0, 4, 11, 59, 304]);
+    expect(bandSizes(counts)).toEqual([24, 26, 35, 15]);
+    expect(heatmapScale([0, ...counts.slice().reverse(), 0])).toEqual(bands);
+  });
+  it('breaks equal ratio ties by proximity to the window center, then by lower count', () => {
+    const powersOfTwo = (days: number[]) => days.flatMap((size, index) => Array<number>(size).fill(2 ** index));
+    expect(bandSizes(powersOfTwo([20, 5, 5, 25, 30, 15]))).toEqual([25, 30, 30, 15]);
+    expect(bandSizes(powersOfTwo([20, 10, 25, 30, 15]))).toEqual([20, 35, 30, 15]);
+  });
+  it('uses the nearest feasible boundary when repeated counts skip a window', () => {
+    const counts = [...Array<number>(65).fill(1), 2, 2, 3, 3, 3, ...Array<number>(15).fill(4), ...Array<number>(15).fill(100)];
+    expect(bandSizes(counts)).toEqual([65, 2, 18, 15]);
   });
   it('redistributes only unused counts, balancing widths between forced boundaries', () => {
     expect(heatmapScale([4, 4, 20]).map(band => band.label)).toEqual(['0', '1–10', '11–20']);
@@ -19,6 +39,9 @@ describe('heatmap calendar', () => {
     expect(ends([1, 50, 99, 100])).toEqual([0, 33, 66, 99, 100]);
     expect(ends([1, 2, 3, 4])).toEqual([0, 1, 2, 3, 4]);
   });
+});
+
+describe('heatmap calendar', () => {
   it('maps leap days and partial weeks to the Monday-first calendar', () => {
     const days = calendarDays(2012);
     expect(days).toHaveLength(366);

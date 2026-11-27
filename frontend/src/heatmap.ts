@@ -6,6 +6,28 @@ export type HeatmapDay = components['schemas']['HeatmapDay'];
 export type Metric = 'new_photos' | 'posts';
 
 type Boundary = { min: number; max: number };
+type CountGroup = { count: number; cumulativeDays: number };
+
+const windowCenters = [25, 55, 85];
+const windowRadius = 5;
+
+function chooseBoundary(groups: CountGroup[], first: number, last: number, center: number, totalDays: number) {
+  let best = first, bestOutside = Infinity, bestRatio = 0, bestDistance = Infinity;
+  for (let index = first; index <= last; index++) {
+    const { count, cumulativeDays } = groups[index];
+    const distance = Math.abs(100 * cumulativeDays - center * totalDays);
+    const outside = Math.max(0, distance - windowRadius * totalDays);
+    const ratio = groups[index + 1].count / count;
+    if (outside < bestOutside || (outside === bestOutside &&
+      (ratio > bestRatio || (ratio === bestRatio && distance < bestDistance)))) {
+      best = index;
+      bestOutside = outside;
+      bestRatio = ratio;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
 
 function balanceWidths(bounds: Boundary[]) {
   const ends = [0];
@@ -33,27 +55,24 @@ export function heatmapScale(counts: number[]) {
   const bands = [{ end: 0, label: '0', color: 'var(--line)' }];
   const colors = heatmapColorThemes.blue;
   const frequencies = new Map<number, number>();
-  let remainingDays = 0;
   for (const count of counts) {
     if (count <= 0) continue;
     frequencies.set(count, (frequencies.get(count) ?? 0) + 1);
-    remainingDays++;
   }
-  const groups = [...frequencies].sort(([left], [right]) => left - right);
-  const bandCount = Math.min(colors.length, groups.length);
+  let totalDays = 0;
+  const groups = [...frequencies].sort(([left], [right]) => left - right).map(([count, days]) => {
+    totalDays += days;
+    return { count, cumulativeDays: totalDays };
+  });
+  const bandCount = Math.min(windowCenters.length + 1, colors.length, groups.length);
   const bounds: Boundary[] = [];
-  let group = 0;
+  let first = 0;
   for (let index = 0; index < bandCount; index++) {
-    const remainingBands = bandCount - index;
-    const target = remainingDays / remainingBands;
-    let days = groups[group++][1];
-    while (group <= groups.length - remainingBands &&
-      Math.abs(days + groups[group][1] - target) <= Math.abs(days - target)) {
-      days += groups[group++][1];
-    }
-    remainingDays -= days;
-    const min = groups[group - 1][0];
-    bounds.push({ min, max: group < groups.length ? groups[group][0] - 1 : min });
+    const last = groups.length - (bandCount - index);
+    const cut = index === bandCount - 1 ? last : chooseBoundary(groups, first, last, windowCenters[index], totalDays);
+    const min = groups[cut].count;
+    first = cut + 1;
+    bounds.push({ min, max: first < groups.length ? groups[first].count - 1 : min });
   }
   const ends = balanceWidths(bounds);
   for (let index = 0; index < bandCount; index++) {
