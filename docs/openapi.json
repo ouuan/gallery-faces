@@ -2421,6 +2421,45 @@
         }
       }
     },
+    "/api/v1/face-game/rooms/{code}/preview": {
+      "get": {
+        "summary": "Preview Room",
+        "operationId": "preview_room_api_v1_face_game_rooms__code__preview_get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomPreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/face-game/rooms/{code}": {
       "get": {
         "summary": "Read Room",
@@ -2614,6 +2653,45 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Membership"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/history-quiz/rooms/{code}/preview": {
+      "get": {
+        "summary": "Preview Room",
+        "operationId": "preview_room_api_v1_history_quiz_rooms__code__preview_get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomPreview"
                 }
               }
             }
@@ -10318,6 +10396,42 @@
           "choices"
         ],
         "title": "RoomPhoto"
+      },
+      "RoomPreview": {
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "lobby",
+              "loading",
+              "answer",
+              "reveal",
+              "draft",
+              "vote",
+              "waiting",
+              "finished"
+            ],
+            "title": "Phase"
+          },
+          "members": {
+            "type": "integer",
+            "title": "Members"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/RoomSettings"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/GameFilters"
+          }
+        },
+        "type": "object",
+        "required": [
+          "phase",
+          "members",
+          "settings",
+          "filters"
+        ],
+        "title": "RoomPreview"
       },
       "RoomSettings": {
         "properties": {

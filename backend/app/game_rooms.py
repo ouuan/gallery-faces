@@ -47,6 +47,13 @@ class JoinRoom(BaseModel):
     nickname: Nickname
 
 
+class RoomPreview(BaseModel):
+    phase: Phase
+    members: int
+    settings: RoomSettings
+    filters: GameFilters
+
+
 class CreateRoom(JoinRoom):
     settings: RoomSettings = Field(default_factory=RoomSettings)
     filters: GameFilters = Field(default_factory=GameFilters)
@@ -640,6 +647,11 @@ def router(draw, validate, save_feedback=None, *, room_type=Room):
         async with room.lock:
             await room.advance()
             return room.join(body.nickname)
+
+    @routes.get('/{code}/preview', response_model=RoomPreview)
+    async def preview_room(code: str):
+        room = room_for(code)
+        return RoomPreview(phase=room.phase, members=len(room.players), settings=room.settings, filters=room.filters)
 
     @routes.get('/{code}', response_model=RoomView)
     async def read_room(code: str, x_room_token: Annotated[str, Header()], after: int | None = Query(None, ge=0)):

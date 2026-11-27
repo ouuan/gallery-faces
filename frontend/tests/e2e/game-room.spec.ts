@@ -62,9 +62,19 @@ test('three guests share a cropped round, a correction and the final score', asy
     const invitation = new URL(host.url()).pathname;
     async function join(page: typeof host, name: string) {
       await page.goto(invitation);
+      await expect(page.getByRole('region', { name: '对战规则' })).toContainText('每题 80 秒');
+      await expect(page.getByRole('region', { name: '出题筛选' })).toContainText('X @alice');
       await page.getByRole('textbox', { name: '昵称' }).fill(name);
       await page.getByRole('button', { name: '进入房间' }).click();
     }
+    await guest.goto('/face-game/rooms');
+    await guest.getByRole('button', { name: '加入房间' }).click();
+    const roomCode = guest.getByRole('textbox', { name: '房间码' });
+    await roomCode.fill(invitation.split('/').pop()!.toLowerCase());
+    await expect(guest.getByRole('region', { name: '对战规则' })).toContainText('每题 80 秒');
+    await roomCode.fill('000000');
+    await expect(guest.getByText('房间不存在或已失效')).toBeVisible();
+    await expect(guest.getByRole('region', { name: '出题筛选' })).toHaveCount(0);
     await join(guest, '玩家乙');
     const filters = guest.getByRole('region', { name: '出题筛选' });
     await expect(filters).toContainText('人1、人2（任一入镜，可含他人）');

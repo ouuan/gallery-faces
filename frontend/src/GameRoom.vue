@@ -11,6 +11,9 @@ import { usePageTitle } from './page-title';
 import GameBoard from './GameBoard.vue';
 import { averageCells, compareGrid, faceDisplay } from './face-grid';
 import GameRoomSettings from './GameRoomSettings.vue';
+import GameRoomRules from './GameRoomRules.vue';
+import { api } from './api';
+import type { components } from './schema';
 import RoomPersonalResult from './RoomPersonalResult.vue';
 import GameFilterEditor from './GameFilterEditor.vue';
 import GameFilterSummary from './GameFilterSummary.vue';
@@ -80,6 +83,18 @@ const inRound = computed(() => room.value && !['lobby', 'finished'].includes(roo
 const showGuess = computed(() => room.value?.phase !== 'finished' && !!record.value?.correct_date);
 const showRank = computed(() => room.value?.phase !== 'lobby' && (!record.value || record.value.settled > 0));
 const isJoin = computed(() => Boolean(code.value) || joining.value);
+const previewCode = computed(() => isJoin.value && !token.value ? code.value || joinCode.value.trim().toUpperCase() : '');
+const preview = ref<components['schemas']['RoomPreview'] | null>(null), previewError = ref('');
+watch(previewCode, async (target, _, cleanup) => {
+  preview.value = null; previewError.value = '';
+  if (target.length !== 6) return;
+  const controller = new AbortController();
+  cleanup(() => controller.abort());
+  try {
+    const result = await api<components['schemas']['RoomPreview']>(`${gamePath}/rooms/${encodeURIComponent(target)}/preview`, { signal: controller.signal });
+    if (!controller.signal.aborted) preview.value = result;
+  } catch (cause) { if (!controller.signal.aborted) previewError.value = (cause as Error).message; }
+}, { immediate: true });
 watch(() => room.value?.phase, phase => {
   editing.value = false;
   if (phase === 'draft') {
@@ -124,7 +139,13 @@ async function saveSettings() {
       <label>昵称<n-input v-model:value="nickname" :maxlength="24" placeholder="你的昵称" :input-props="{ 'aria-label': '昵称', autocomplete: 'nickname' }" /></label>
       <label v-if="joining && !code">房间码<n-input v-model:value="joinCode" :maxlength="6" placeholder="6 位房间码" :input-props="{ 'aria-label': '房间码', autocapitalize: 'characters' }" /></label>
       <GameRoomSettings v-if="!isJoin" v-model="settings" :history="history" />
-      </div><GameFilterEditor v-if="!isJoin" v-model="filters" :face="!history" /></div>
+      </div><GameFilterEditor v-if="!isJoin" v-model="filters" :face="!history" />
+      <div v-else-if="preview" class="setup-fields">
+        <strong>{{ phaseName[preview.phase] }} · {{ preview.members }}/12 人</strong>
+        <GameRoomRules :settings="preview.settings" :history="history" />
+        <GameFilterSummary :filter="fromQuery(preview.filters)" />
+      </div>
+      <p v-else-if="previewCode.length === 6" role="status">{{ previewError || '正在读取房间信息…' }}</p></div>
       <n-button type="primary" attr-type="submit" :loading="busy" :disabled="!nickname.trim() || (isJoin ? !code && joinCode.trim().length !== 6 : !!rangeError(filters.start, filters.end))">{{ isJoin ? '进入房间' : '创建并进入' }}</n-button>
     </form>
     <p v-else-if="!room" role="status">正在连接房间…</p>
@@ -138,8 +159,7 @@ async function saveSettings() {
       <section v-if="room.phase === 'lobby'" class="entry" :class="{ 'setup-entry': editing }">
         <h2>等待开局 · {{ online }}/12 人</h2>
         <template v-if="editing"><div class="setup-columns"><GameRoomSettings v-model="draftSettings" :history="history" /><GameFilterEditor v-model="draftFilters" :face="!history" /></div><div class="actions"><n-button type="primary" :disabled="busy || !!rangeError(draftFilters.start, draftFilters.end)" @click="saveSettings">保存设置</n-button><n-button quaternary @click="editing = false">取消</n-button></div></template>
-        <template v-else><p>{{ room.settings.grid ? `逐格显示 · ${room.settings.grid_size}×${room.settings.grid_size} · 每格 ${room.settings.grid_seconds} 秒 · 不限时抢答` : `${room.settings.cropped ? '截取人脸' : '显示全图'} · 每题 ${room.settings.answer_seconds} 秒` }} · {{ room.settings.continue_seconds ? `${room.settings.continue_seconds} 秒后切题` : '全员继续后切题' }}</p>
-          <p v-if="room.settings.single_life">一命模式 · 答错或未答即淘汰，开局后不可加入</p>
+        <template v-else><GameRoomRules :settings="room.settings" :history="history" />
           <div v-if="host" class="actions"><n-button type="primary" :disabled="busy || online < 2" @click="act('start')">开始对战</n-button><n-button :disabled="busy" @click="editSettings">修改设置</n-button></div>
           <p v-else>等待房主开始对战</p></template>
         <GameFilterSummary v-if="!editing" :filter="activeFilter" />

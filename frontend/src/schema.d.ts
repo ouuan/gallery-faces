@@ -657,6 +657,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/face-game/rooms/{code}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Room */
+        get: operations["preview_room_api_v1_face_game_rooms__code__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/face-game/rooms/{code}": {
         parameters: {
             query?: never;
@@ -719,6 +736,23 @@ export interface paths {
         put?: never;
         /** Join Room */
         post: operations["join_room_api_v1_history_quiz_rooms__code__join_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/history-quiz/rooms/{code}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Room */
+        get: operations["preview_room_api_v1_history_quiz_rooms__code__preview_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3301,6 +3335,18 @@ export interface components {
             /** Choices */
             choices: components["schemas"]["Choice-Output"][];
         };
+        /** RoomPreview */
+        RoomPreview: {
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "lobby" | "loading" | "answer" | "reveal" | "draft" | "vote" | "waiting" | "finished";
+            /** Members */
+            members: number;
+            settings: components["schemas"]["RoomSettings"];
+            filters: components["schemas"]["GameFilters"];
+        };
         /** RoomSettings */
         RoomSettings: {
             /**
@@ -4940,6 +4986,37 @@ export interface operations {
             };
         };
     };
+    preview_room_api_v1_face_game_rooms__code__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     read_room_api_v1_face_game_rooms__code__get: {
         parameters: {
             query?: {
@@ -5067,6 +5144,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Membership"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_room_api_v1_history_quiz_rooms__code__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomPreview"];
                 };
             };
             /** @description Validation Error */

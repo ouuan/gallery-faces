@@ -264,6 +264,16 @@ def test_grid_wait_ends_when_unready_player_leaves(match):
     assert state()['phase'] == 'answer' and state()['grid']['elapsed'] == 0
 
 
+def test_preview_exposes_only_public_room_details_without_joining(client, match):
+    _, state, act, _ = match
+    act('settings', settings={'answer_seconds': 33, 'allow_late_join': False})
+    started = act('start')
+    path = f"{BASE}/{started['code']}/preview"
+    assert client.get(path).json() == dict(phase='answer', members=2, settings=started['settings'], filters=started['filters'])
+    assert state()['version'] == started['version']
+    assert client.get(path.replace('face-game', 'history-quiz')).status_code == 404
+
+
 def test_closed_room_allows_lobby_join_and_member_reconnect(client, match):
     join, state, act, _ = match
     act('settings', settings={'grid': True, 'allow_late_join': False})
