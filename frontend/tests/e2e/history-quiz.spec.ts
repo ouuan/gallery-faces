@@ -79,7 +79,7 @@ test('history quiz keeps the selected filters and score across mobile navigation
   await expect(page.getByRole('checkbox', { name: '包含无人脸图片' })).toBeChecked();
 });
 
-test('history room shares a full photo and scores missing and submitted midpoints separately', async ({ guests }) => {
+test('history room splits a point between three closest guesses and preserves the result on reload', async ({ guests }) => {
   const [host, guest, late] = guests;
   await host.goto('/history-quiz/rooms');
   await expect(host.getByRole('switch', { name: '允许中途加入' })).toBeChecked();
@@ -119,12 +119,15 @@ test('history room shares a full photo and scores missing and submitted midpoint
   await late.getByRole('button', { name: '提交日期' }).click();
   await expect(host.getByRole('table').getByRole('columnheader', { name: '本题猜测' })).toBeVisible();
   await late.reload();
+  await expect(late.getByText('你和甲、乙并列最接近')).toBeVisible();
   await expect(late.getByRole('group', { name: '我的战绩' })).toContainText('已结算 1 题 · 未答 0');
   for (const player of [host, guest, late]) await player.getByRole('button', { name: '确认结算' }).click();
   await expect(guest.getByRole('heading', { name: '最终排名' })).toBeVisible();
   const finalRecord = late.getByRole('group', { name: '我的战绩' });
+  await expect(finalRecord).toContainText('并列第 1 名');
+  await expect(finalRecord).toContainText('0.33333 分');
   await expect(finalRecord).toContainText('已答 1 题');
   await expect(finalRecord).toContainText('未答 0 题');
-  await expect(late.getByRole('table').getByRole('columnheader')).toHaveText(['名次', '玩家', '平均偏差', '未答']);
+  await expect(late.getByRole('table').getByRole('columnheader')).toHaveText(['名次', '玩家', '分数', '总偏差', '未答']);
   await expect(guest.getByRole('region', { name: '出题筛选' })).toContainText('未设置筛选');
 });

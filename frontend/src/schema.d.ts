@@ -2474,6 +2474,12 @@ export interface components {
             } | null;
             /** Settled */
             settled: number;
+            /** Scores */
+            scores: {
+                [key: string]: number;
+            };
+            /** Closest */
+            closest: number[] | null;
             /** Total Deviations */
             total_deviations: {
                 [key: string]: number;

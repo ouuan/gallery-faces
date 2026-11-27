@@ -5,6 +5,7 @@ import time
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from fractions import Fraction
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
@@ -135,6 +136,8 @@ class HistoryStatus(BaseModel):
     correct_date: date | None
     guesses: dict[int, date] | None
     settled: int
+    scores: dict[int, float]
+    closest: list[int] | None
     total_deviations: dict[int, int]
 
 
@@ -554,6 +557,8 @@ class HistoryRoom(Room):
     def reset_match(self):
         super().reset_match()
         self.settled = self.midpoint_total = 0
+        self.scores = {}
+        self.closest = []
 
     def new_player(self, name):
         return Player(self.serial, name, unanswered=self.settled, deviation=self.midpoint_total)
@@ -572,10 +577,16 @@ class HistoryRoom(Room):
     def score(self):
         first, last, correct = (self.question[key] for key in ('first_date', 'last_date', 'correct_date'))
         midpoint = first + timedelta(days=(last - first).days // 2)
+        deviations = {key: abs((guess - correct).days) for key, guess in self.answers.items()}
+        best = min(deviations.values(), default=None)
+        self.closest = [key for key, days in deviations.items() if days == best]
+        for key in self.closest:
+            self.scores[key] = self.scores.get(key, 0) + Fraction(1, len(self.closest))
         self.settled += 1
-        self.midpoint_total += abs((midpoint - correct).days)
+        midpoint_deviation = abs((midpoint - correct).days)
+        self.midpoint_total += midpoint_deviation
         for key, player in self.players.items():
-            player.deviation += abs((self.answers.get(key, midpoint) - correct).days)
+            player.deviation += deviations.get(key, midpoint_deviation)
             if key not in self.answers:
                 player.unanswered += 1
 
@@ -583,6 +594,8 @@ class HistoryRoom(Room):
         history = HistoryStatus(photo=HistoryPhoto(**question) if question else None,
                                 my_guess=self.answers.get(player.id), guesses=self.answers if revealed else None,
                                 correct_date=question['correct_date'] if revealed else None, settled=self.settled,
+                                scores={key: float(self.scores.get(key, 0)) for key in self.players},
+                                closest=self.closest if revealed else None,
                                 total_deviations={key: member.deviation for key, member in self.players.items()})
         return dict(photo=None, choice=None, tallies=None, answer_name=None, history=history)
 

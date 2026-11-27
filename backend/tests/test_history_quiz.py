@@ -63,16 +63,19 @@ def test_history_room_midpoint_timeout_backfill_and_reconnect(client, monkeypatc
         if round_number == 4:
             late = join('丙')
             assert read(late)['history']['total_deviations']['3'] == 9
+            assert read(late)['history']['scores']['3'] == 0
             act(late, 'answer', guess_date='2026-01-08')
         act(member, 'answer', 422, guess_date='2026-01-11')
         act(member, 'answer', guess_date='2026-01-07')
         act(member, 'answer', 409, guess_date='2026-01-08')
         pending = read(guest)
+        assert pending['history']['closest'] is None
         assert pending['source_photo'] is pending['history']['correct_date'] is pending['history']['guesses'] is None
         assert 'correct_date' not in pending['history']['photo'] and pending['history']['my_guess'] is None
         now[0] += 3
         revealed = read(guest)
         assert revealed['history']['settled'] == round_number
+        assert revealed['history']['closest'] == ([3] if round_number == 4 else [1])
         assert revealed['history']['guesses'] == ({'1': '2026-01-07', '3': '2026-01-08'} if round_number == 4 else {'1': '2026-01-07'})
         assert revealed['history']['total_deviations']['1'] == round_number
         assert revealed['history']['total_deviations']['2'] == 3 * round_number
@@ -89,5 +92,19 @@ def test_history_room_midpoint_timeout_backfill_and_reconnect(client, monkeypatc
     result = act(guest, 'answer', guess_date='2026-01-05')
     assert result['history']['total_deviations'] == {'1': 4, '2': 15, '3': 12}
     assert result['players'][2]['unanswered'] == 3
+    assert result['history']['scores'] == {'1': 4, '2': 0, '3': 1}
+    for who in (member, guest, late):
+        act(who, 'ready')
+    act(member, 'answer', guess_date='2026-01-07')
+    act(guest, 'answer', guess_date='2026-01-09')
+    now[0] += 3
+    tied = read(late)['history']
+    assert tied['closest'] == [1, 2] and tied['scores'] == {'1': 4.5, '2': 0.5, '3': 1}
+    for who in (member, guest, late):
+        act(who, 'ready')
+    now[0] += 3
+    empty = read(guest)['history']
+    assert empty['closest'] == [] and empty['scores'] == tied['scores']
     act(member, 'finish'); restarted = act(member, 'restart')
     assert restarted['history']['settled'] == 0 and not any(restarted['history']['total_deviations'].values())
+    assert restarted['history']['closest'] is None and not any(restarted['history']['scores'].values())

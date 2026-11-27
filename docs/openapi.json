@@ -7939,6 +7939,27 @@
             "type": "integer",
             "title": "Settled"
           },
+          "scores": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Scores"
+          },
+          "closest": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closest"
+          },
           "total_deviations": {
             "additionalProperties": {
               "type": "integer"
@@ -7954,6 +7975,8 @@
           "correct_date",
           "guesses",
           "settled",
+          "scores",
+          "closest",
           "total_deviations"
         ],
         "title": "HistoryStatus"
