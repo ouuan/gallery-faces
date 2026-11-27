@@ -237,6 +237,7 @@ def test_grid_round_privacy_timing_and_rescore(match):
     first = act('start')
     assert not first['settings']['single_life'] and first['remaining'] is None
     assert sorted(first['grid']['order']) == list(range(25))
+    assert first['grid']['correct_cells'] is None
     now[0] += 0.499
     for choice in (None, 1):
         assert act('answer', status=409, choice=choice)['detail'] == '首格揭示后才能作答'
@@ -258,6 +259,7 @@ def test_grid_round_privacy_timing_and_rescore(match):
     def scores(view):
         return [(player['correct'], player['wrong'], player['correct_cells']) for player in view['players']]
     assert scores(result) == [(1, 1, 25), (0, 1, 0), (0, 1, 0)]
+    assert result['grid']['correct_cells'] == 25
     assert {item['choice']: (item['count'], item['nickname']) for item in result['tallies']} == {
         None: (1, '甲'), 2: (2, None), 1: (1, '甲')}
     act('answer', 1, stage=first['stage'], status=409, choice=1)
@@ -265,6 +267,7 @@ def test_grid_round_privacy_timing_and_rescore(match):
     corrected = act('vote', 2, support=True)
     assert corrected['tallies'] == result['tallies'] and not corrected['void']
     assert scores(corrected) == [(0, 1, 0), (0, 0, 0), (1, 0, 2)]
+    assert corrected['grid']['correct_cells'] == 2
     act('ready'); act('ready', 1); act('ready', 2)
     now[0] += 0.5
     act('answer', choice=None)
@@ -283,6 +286,7 @@ def test_grid_void_round_restores_all_previous_statistics(match, proposal):
     act('answer', choice=None); original = act('answer', 1, choice=1)
     act('draft'); act('submit', **proposal); corrected = act('vote', 1, support=True)
     assert corrected['void'] and corrected['tallies'] == original['tallies']
+    assert corrected['grid']['correct_cells'] is None
     for before, after in zip(previous['players'], corrected['players'], strict=True):
         assert all(before[key] == after[key] for key in ('correct', 'wrong', 'correct_cells'))
 

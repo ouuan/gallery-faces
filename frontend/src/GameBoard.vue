@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, watchEffect } from 'vue';
-import { Check, X, ZoomIn } from '@lucide/vue';
+import { Check, Grid2X2, X, ZoomIn } from '@lucide/vue';
 import { NButton } from 'naive-ui';
 import { facePosition } from './api';
 import { cropBox, faceZoom, gridViewport } from './face-game';
@@ -10,22 +10,27 @@ import type { components } from './schema';
 
 const props = defineProps<{ photo?: components['schemas']['RoomPhoto'] | null; cropped: boolean; revealed: boolean;
   locked: boolean; selected?: number | null; correctId?: number | null; answerName?: string | null; voided?: boolean;
-  order?: number[]; started?: number | null; interval?: number; wrongChoices?: (number | null)[];
+  order?: number[]; started?: number | null; interval?: number; correctCells?: number | null; wrongChoices?: (number | null)[];
   tallies?: components['schemas']['ChoiceTally'][] | null }>();
 const emit = defineEmits<{ choose: [choice: number | null, cells: number]; loaded: [] }>();
-const imageReady = ref(false), failed = ref(false), zoomed = ref(false);
-const grid = computed(() => !!props.order && !props.revealed);
+const imageReady = ref(false), failed = ref(false);
+const preview = ref<'zoom' | 'grid' | null>(null);
+const zoomed = computed(() => preview.value === 'zoom');
+const liveGrid = computed(() => !!props.order && !props.revealed);
+const canReview = computed(() => props.revealed && !!props.order && props.correctCells != null && !props.voided);
+const grid = computed(() => liveGrid.value || (canReview.value && preview.value === 'grid'));
 const crop = computed(() => props.cropped && !grid.value && !props.revealed);
-const shown = ref(0);
+const liveCells = ref(0);
+const shown = computed(() => props.revealed ? props.correctCells ?? 0 : liveCells.value);
 watchEffect(cleanup => {
   const order = props.order, start = props.started, seconds = props.interval;
-  shown.value = 0;
-  if (!grid.value || !imageReady.value || !order || start == null || !seconds) return;
+  liveCells.value = 0;
+  if (!liveGrid.value || !imageReady.value || !order || start == null || !seconds) return;
   let timer: number;
   function tick() {
     const elapsed = performance.now() - start!;
     const count = visibleCells(elapsed, seconds!, order!.length);
-    shown.value = count;
+    liveCells.value = count;
     if (count < order!.length) timer = window.setTimeout(tick, Math.max(1, (count + 1) * seconds! * 1000 - elapsed));
   }
   tick(); cleanup(() => clearTimeout(timer));
@@ -47,11 +52,14 @@ const frame = computed(() => {
   const nativeWidth = grid.value && props.photo ? Math.min(props.photo.width, props.photo.height * ratio) : width;
   return { width: `min(100%, ${crop.value ? '100%' : nativeWidth + 'px'}, ${ratio * 100}cqh)`, aspectRatio: `${width} / ${height}` };
 });
-watch([crop, () => props.revealed], () => { zoomed.value = false; });
-function holdZoom(event: PointerEvent) {
+watch([crop, () => props.revealed], () => { preview.value = null; });
+function holdPreview(event: PointerEvent, mode: 'zoom' | 'grid') {
   if (!event.isPrimary || event.button !== 0 || !imageReady.value) return;
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-  zoomed.value = true;
+  preview.value = mode;
+}
+function releasePreview(mode: 'zoom' | 'grid') {
+  if (preview.value === mode) preview.value = null;
 }
 const targetStyle = computed(() => {
   if (!props.photo) return;
@@ -89,12 +97,17 @@ const imageStyle = computed(() => {
     <div v-if="photo" class="game-controls">
         <div class="game-prompt-row">
           <h2 id="game-prompt">{{ crop ? '这是谁？' : '框中的是谁？' }}</h2>
-          <span v-if="grid && order" class="grid-progress">已显示 {{ shown }} / {{ order.length }} 格</span>
-          <n-button v-if="!crop && !grid" quaternary circle :disabled="!imageReady" aria-label="按住放大人脸" title="按住放大人脸"
-            @pointerdown="holdZoom" @lostpointercapture="zoomed = false" @contextmenu.prevent
-            @keydown.space.enter.prevent="zoomed = true" @keyup.space.enter.prevent="zoomed = false" @blur="zoomed = false">
+          <n-button v-if="!crop && !liveGrid" quaternary circle :disabled="!imageReady" aria-label="按住放大人脸" title="按住放大人脸"
+            @pointerdown="holdPreview($event, 'zoom')" @lostpointercapture="releasePreview('zoom')" @contextmenu.prevent
+            @keydown.space.enter.prevent="preview = 'zoom'" @keyup.space.enter.prevent="releasePreview('zoom')" @blur="releasePreview('zoom')">
             <ZoomIn :size="18" aria-hidden="true" />
           </n-button>
+          <n-button v-if="canReview" quaternary circle :disabled="!imageReady" aria-label="按住查看答对时的格子" title="按住查看答对时的格子"
+            @pointerdown="holdPreview($event, 'grid')" @lostpointercapture="releasePreview('grid')" @contextmenu.prevent
+            @keydown.space.enter.prevent="preview = 'grid'" @keyup.space.enter.prevent="releasePreview('grid')" @blur="releasePreview('grid')">
+            <Grid2X2 :size="18" aria-hidden="true" />
+          </n-button>
+          <span v-if="grid && order" class="grid-progress">已显示 {{ shown }} / {{ order.length }} 格</span>
         </div>
         <div class="game-options" role="group" aria-labelledby="game-prompt">
           <button v-for="choice in choices" :key="choice.id ?? 'none'" type="button" :disabled="locked || !imageReady || (grid && shown === 0) || wrongChoices?.includes(choice.id)"

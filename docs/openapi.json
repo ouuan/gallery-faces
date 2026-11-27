@@ -7529,6 +7529,17 @@
             },
             "type": "array",
             "title": "Wrong Choices"
+          },
+          "correct_cells": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correct Cells"
           }
         },
         "type": "object",

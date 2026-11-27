@@ -2316,6 +2316,8 @@ export interface components {
             elapsed: number;
             /** Wrong Choices */
             wrong_choices: (number | null)[];
+            /** Correct Cells */
+            correct_cells?: number | null;
         };
         /** GroupInput */
         GroupInput: {

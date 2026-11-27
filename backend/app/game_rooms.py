@@ -139,6 +139,7 @@ class GridView(BaseModel):
     order: list[int]
     elapsed: float
     wrong_choices: list[int | None]
+    correct_cells: int | None = None
 
 
 class RoomView(BaseModel):
@@ -481,7 +482,8 @@ class Room:
         revealed = question is not None and self.phase != 'answer'
         grid = None
         if self.grid and question:
-            grid = GridView(order=self.grid.order, elapsed=clock() - self.grid.started, wrong_choices=[
+            grid = GridView(order=self.grid.order, elapsed=clock() - self.grid.started,
+                            correct_cells=self.grid.credited[-1][3] if revealed and self.grid.credited else None, wrong_choices=[
                 choice for key, choice, _ in self.grid.attempts if key == player.id and (not revealed or choice != self.correct)])
         return RoomView(code=self.code, version=self.version, stage=self.stage, phase=self.phase,
                         round=self.round, host=self.host, me=player.id, settings=self.settings, filters=self.filters,
