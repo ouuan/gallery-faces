@@ -57,7 +57,7 @@ class Membership(BaseModel):
 
 
 class RoomAction(BaseModel):
-    action: Literal['settings', 'start', 'restart', 'answer', 'ready', 'draft', 'cancel', 'submit', 'vote', 'finish', 'leave']
+    action: Literal['settings', 'start', 'restart', 'answer', 'give_up', 'ready', 'draft', 'cancel', 'submit', 'vote', 'finish', 'leave']
     stage: int
     settings: RoomSettings | None = None
     filters: GameFilters | None = None
@@ -140,6 +140,7 @@ class GridView(BaseModel):
     elapsed: float
     wrong_choices: list[int | None]
     correct_cells: int | None = None
+    gave_up: bool = False
 
 
 class RoomView(BaseModel):
@@ -202,10 +203,16 @@ class GridRound:
     started: float = field(default_factory=lambda: clock())
     attempts: list[tuple[int, int | None, int]] = field(default_factory=list)
     credited: list[tuple[int, int, int, int]] = field(default_factory=list)
+    passed: set[int] = field(default_factory=set)
+    ended_by_pass: bool = False
+
+    def visible_cells(self, interval):
+        return min(len(self.order), int((clock() - self.started) / interval))
 
     def submit(self, key, choice, interval):
+        check(key not in self.passed, '本题已放弃作答')
         check(not any(player == key and tried == choice for player, tried, _ in self.attempts), '你已选过这一项')
-        cells = min(len(self.order), int((clock() - self.started) / interval))
+        cells = self.visible_cells(interval)
         check(cells > 0, '首格揭示后才能作答')
         self.attempts.append((key, choice, cells))
 
@@ -215,7 +222,7 @@ class GridRound:
             players[key].wrong -= wrong
             players[key].correct_cells -= cells
         self.credited.clear()
-        if not valid or not any(choice == correct for _, choice, _ in self.attempts):
+        if not valid or (not self.ended_by_pass and not any(choice == correct for _, choice, _ in self.attempts)):
             return False
         for key, choice, cells in self.attempts:
             right = choice == correct
@@ -364,7 +371,14 @@ class Room:
 
     async def advance(self):
         expired = self.deadline is not None and clock() >= self.deadline
-        if self.phase == 'answer' and not self.grid and (expired or self.playing <= self.answers.keys()):
+        if self.phase == 'answer':
+            if self.grid:
+                eligible = self.online() & self.playing
+                if not eligible or not eligible <= self.grid.passed:
+                    return
+                self.grid.ended_by_pass = True
+            elif not expired and not self.playing <= self.answers.keys():
+                return
             self.score()
             self.reveal()
         elif self.phase == 'reveal':
@@ -382,7 +396,7 @@ class Room:
         check(body.stage == self.stage, '房间状态已更新，请重试')
         if action in ('start', 'restart', 'settings', 'finish'):
             check(key == self.host, '仅房主可操作', 403)
-        if action in ('answer', 'ready', 'draft', 'cancel', 'submit', 'vote'):
+        if action in ('answer', 'give_up', 'ready', 'draft', 'cancel', 'submit', 'vote'):
             check(key in self.playing and not player.withdrawn, '已淘汰，只能观战' if self.settings.single_life else '从下一题起参赛', 403)
         if action == 'settings':
             check(self.phase == 'lobby' and (body.settings or body.filters), '仅可在开局前设置')
@@ -418,6 +432,11 @@ class Room:
                 self.reveal()
             else:
                 self.answers[key] = choice
+        elif action == 'give_up':
+            check(self.phase == 'answer' and self.grid, '当前不能放弃作答')
+            check(self.grid.visible_cells(self.settings.grid_seconds) == len(self.grid.order), '全部格子显示后才能放弃作答')
+            check(key not in self.grid.passed, '本题已放弃作答')
+            self.grid.passed.add(key)
         elif action == 'ready':
             check(self.phase == 'reveal', '尚不能进入下一题')
             self.ready.add(key)
@@ -483,7 +502,8 @@ class Room:
         grid = None
         if self.grid and question:
             grid = GridView(order=self.grid.order, elapsed=clock() - self.grid.started,
-                            correct_cells=self.grid.credited[-1][3] if revealed and self.grid.credited else None, wrong_choices=[
+                            gave_up=player.id in self.grid.passed,
+                            correct_cells=next((cells for _, right, _, cells in self.grid.credited if right), None), wrong_choices=[
                 choice for key, choice, _ in self.grid.attempts if key == player.id and (not revealed or choice != self.correct)])
         return RoomView(code=self.code, version=self.version, stage=self.stage, phase=self.phase,
                         round=self.round, host=self.host, me=player.id, settings=self.settings, filters=self.filters,

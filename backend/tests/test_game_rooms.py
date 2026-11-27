@@ -291,6 +291,36 @@ def test_grid_void_round_restores_all_previous_statistics(match, proposal):
         assert all(before[key] == after[key] for key in ('correct', 'wrong', 'correct_cells'))
 
 
+def test_grid_give_up_waits_for_full_grid_and_all_players(match):
+    _, state, act, now = match
+    act('settings', settings={'grid': True, 'grid_size': 2, 'continue_seconds': 0})
+    act('start'); now[0] += 1.999
+    act('give_up', status=409)
+    act('answer', choice=2)
+    now[0] += 0.001
+    pending = act('give_up')
+    assert pending['phase'] == 'answer' and pending['grid']['gave_up']
+    assert state()['grid']['gave_up'] and not state(1)['grid']['gave_up']
+    act('give_up', status=409); act('answer', choice=1, status=409)
+    result = act('give_up', 1)
+    assert result['phase'] == 'reveal' and result['correct_choice'] == 1 and not result['void']
+    assert result['grid']['correct_cells'] is None
+    assert [(player['correct'], player['wrong']) for player in result['players']] == [(0, 1), (0, 0)]
+    act('ready'); following = act('ready', 1)
+    assert following['round'] == 2 and not following['grid']['gave_up']
+
+
+@pytest.mark.parametrize('last_action', ['answer', 'leave'])
+def test_grid_give_up_does_not_block_other_players(match, last_action):
+    _, _, act, now = match
+    act('settings', settings={'grid': True, 'grid_size': 2})
+    act('start'); now[0] += 2
+    act('give_up')
+    result = act(last_action, 1, **({'choice': 1} if last_action == 'answer' else {}))
+    assert result['phase'] == 'reveal' and not result['void']
+    assert result['grid']['correct_cells'] == (4 if last_action == 'answer' else None)
+
+
 def test_grid_competing_correct_answers_score_once(match):
     _, _, act, now = match
     act('settings', settings={'grid': True})

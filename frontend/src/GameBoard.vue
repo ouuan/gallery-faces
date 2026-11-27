@@ -121,7 +121,7 @@ const imageStyle = computed(() => {
             <X v-else-if="!voided && (wrongChoices?.includes(choice.id) || (revealed && choice.id === selected))" :size="16" aria-hidden="true" />
           </button>
         </div>
-      <slot />
+      <slot :grid-complete="liveGrid && liveCells === order?.length" />
     </div>
   </div>
 </template>

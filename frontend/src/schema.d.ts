@@ -2318,6 +2318,11 @@ export interface components {
             wrong_choices: (number | null)[];
             /** Correct Cells */
             correct_cells?: number | null;
+            /**
+             * Gave Up
+             * @default false
+             */
+            gave_up: boolean;
         };
         /** GroupInput */
         GroupInput: {
@@ -3259,7 +3264,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "settings" | "start" | "restart" | "answer" | "ready" | "draft" | "cancel" | "submit" | "vote" | "finish" | "leave";
+            action: "settings" | "start" | "restart" | "answer" | "give_up" | "ready" | "draft" | "cancel" | "submit" | "vote" | "finish" | "leave";
             /** Stage */
             stage: number;
             settings?: components["schemas"]["RoomSettings"] | null;

@@ -151,12 +151,15 @@ async function saveSettings() {
           <n-button v-if="room.phase === 'reveal' && me?.playing" type="primary" :disabled="busy || me.ready" @click="act('ready')">{{ me.ready ? '已准备继续' : '继续' }}</n-button>
           <GameRoomSources v-if="room.source_photo" :group-id="room.source_photo.group_id" :image-id="room.source_photo.image_id" :query="query" />
         </HistoryBoard>
-        <GameBoard v-else-if="room.photo" :key="room.round" :photo="room.photo" :cropped="room.settings.cropped" :revealed="room.phase !== 'answer'"
+        <GameBoard v-else-if="room.photo" v-slot="{ gridComplete }" :key="room.round" :photo="room.photo" :cropped="room.settings.cropped" :revealed="room.phase !== 'answer'"
           :order="room.grid?.order" :started="gridStarted" :interval="room.settings.grid_seconds" :wrong-choices="room.grid?.wrong_choices" :correct-cells="room.grid?.correct_cells"
-          :locked="busy || room.phase !== 'answer' || !me?.playing || me.answered" :selected="me?.answered ? room.choice : undefined"
+          :locked="busy || room.phase !== 'answer' || !me?.playing || me.answered || !!room.grid?.gave_up" :selected="me?.answered ? room.choice : undefined"
           :correct-id="room.correct_choice" :voided="room.void" :tallies="room.tallies" :answer-name="room.accepted ? room.proposal?.suggested_name : room.answer_name" @choose="choice => act('answer', { choice })">
           <p v-if="!me?.playing" role="status">{{ me?.eliminated ? '已淘汰，正在观战' : '你将从下一题起参赛' }}</p>
-          <p v-else-if="room.grid && room.phase === 'answer'" role="status">答对 +1 分，答错 −1 分，可继续抢答</p>
+          <div v-else-if="room.grid && room.phase === 'answer'" class="grid-answer-help">
+            <p role="status">{{ room.grid.gave_up ? '已放弃本题，等待其他玩家' : '答对 +1 分，答错 −1 分，可继续抢答' }}</p>
+            <n-button v-if="gridComplete && !room.grid.gave_up" :disabled="busy" @click="act('give_up')">放弃作答</n-button>
+          </div>
           <p v-else-if="room.phase === 'answer'" role="status">{{ me.answered ? '已提交，等待揭晓' : '请选择答案' }} · {{ room.players.filter(player => player.answered).length }}/{{ room.players.filter(player => player.playing).length }} 人已答</p>
           <div v-if="room.phase === 'reveal' && me?.playing" class="actions round-actions"><n-button type="primary" :disabled="busy || me.ready" @click="act('ready')">{{ me.ready ? '已准备继续' : lastRound ? '确认结算' : '继续' }}</n-button><n-button v-if="room.accepted === null" :disabled="busy" @click="act('draft')">我要反馈</n-button></div>
           <p v-if="room.phase !== 'answer'" role="status">图库答案：{{ room.answer_name }}<template v-if="room.accepted !== null"> · {{ room.accepted ? (room.void ? '反馈已采纳，本题不计分' : `反馈已采纳，按${voteName}计分`) : '反馈未通过，保留原判' }}</template></p>
@@ -219,6 +222,7 @@ header a, .room-bar button, .actions button, .entry > button, .standings > butto
 .round-bar { min-height: 44px; font-variant-numeric: tabular-nums; }
 .round-bar + .my-record { margin: 0 0 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 .round-actions { margin: 8px 0; }
+.grid-answer-help { display: grid; justify-items: start; gap: 8px; margin-block-start: 12px; }
 .room-bar a { display: inline-flex; align-items: center; min-height: 44px; }
 .actions { flex-wrap: wrap; }
 .feedback p, .entry p, small, .rank { color: var(--muted); }

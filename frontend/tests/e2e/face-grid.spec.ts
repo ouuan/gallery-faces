@@ -110,3 +110,32 @@ test('grid players can retry privately and see all attempted options after the r
   await expect(guest.getByRole('table').getByRole('columnheader')).toHaveText(['名次', '玩家', '分数', '正确', '错误', '平均格数']);
   expect(await host.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+test('players can pass a fully revealed grid and reveal the answer together', async ({ guests }) => {
+  const [host, guest] = guests;
+  await host.goto('/face-game/rooms?people=1,2');
+  await host.getByText('逐格显示', { exact: true }).click();
+  const size = host.locator('.grid-settings input').first();
+  await size.fill('2'); await size.press('Tab');
+  await host.getByRole('textbox', { name: '昵称' }).fill('甲');
+  await host.getByRole('button', { name: '创建并进入' }).click();
+  await expect(host.getByRole('heading', { name: /等待开局/ })).toBeVisible();
+  await guest.goto(new URL(host.url()).pathname);
+  await guest.getByRole('textbox', { name: '昵称' }).fill('乙');
+  await guest.getByRole('button', { name: '进入房间' }).click();
+  await host.getByRole('button', { name: '开始对战' }).click();
+  const pass = host.getByRole('button', { name: '放弃作答' });
+  await expect(host.locator('.grid-mask')).toBeVisible();
+  await expect(pass).toHaveCount(0);
+  await expect(host.getByText('已显示 4 / 4 格')).toBeVisible();
+  await pass.click();
+  await host.reload();
+  await expect(host.getByText('已放弃本题，等待其他玩家')).toBeVisible();
+  await expect(host.locator('.game-options button:enabled')).toHaveCount(0);
+  await expect(guest.getByRole('button', { name: '人1', exact: true })).toBeEnabled();
+  await guest.getByRole('button', { name: '放弃作答' }).click();
+  for (const page of [host, guest]) {
+    await expect(page.getByRole('button', { name: '人1', exact: true })).toHaveClass(/right/);
+    await expect(page.getByRole('button', { name: '按住查看答对时的格子' })).toHaveCount(0);
+  }
+});
