@@ -24,7 +24,7 @@ def matching_groups(scope, people, match):
     return chosen, args
 
 
-def gallery_matches(people, match, source, source_args, include_no_faces, group_id=None):
+def gallery_matches(people, match, source, source_args, include_no_faces, group_id=None, *, first_source=False):
     conditions, args = [], []
     if people:
         selected, args = matching_groups('public', people, match)
@@ -34,7 +34,12 @@ def gallery_matches(people, match, source, source_args, include_no_faces, group_
     if group_id is not None:
         conditions.append('g.group_id=?')
         args.append(group_id)
-    if source:
+    if source and first_source:
+        conditions.append(source)
+        matches = ('SELECT g.group_id,g.first_post,g.stamp FROM public_groups g JOIN posts p ON p.id=g.first_post WHERE '
+                   + ' AND '.join(conditions))
+        args.extend(source_args)
+    elif source:
         conditions.append(source)
         args.extend(source_args)
         links = ('public_groups g JOIN public_group_posts link ON link.group_id=g.group_id JOIN posts p ON p.id=link.post_id'

@@ -41,6 +41,18 @@ def match(client, monkeypatch):
     return join, state, act, now
 
 
+def test_filter_changes_are_validated_before_start(match):
+    _, state, act, _ = match
+    original = state()
+    act('settings', 1, status=403, filters={})
+    act('settings', status=400, settings={'cropped': False}, filters={'start': 'invalid'})
+    assert state()['filters'] == original['filters'] and state()['settings'] == original['settings']
+    act('settings', filters={'publishers': 'x:absent'})
+    assert state(1)['filters']['publishers'] == 'x:absent'
+    assert act('start')['phase'] == 'waiting'
+    act('settings', status=409, filters={})
+
+
 @pytest.mark.parametrize('single_life', [True, False])
 def test_host_restarts_finished_room(match, single_life):
     _, state, act, _ = match

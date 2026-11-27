@@ -520,6 +520,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/gallery/history-quiz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** History Quiz */
+        get: operations["history_quiz_api_v1_gallery_history_quiz_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/gallery/{group_id}": {
         parameters: {
             query?: never;
@@ -651,6 +668,74 @@ export interface paths {
         put?: never;
         /** Room Action */
         post: operations["room_action_api_v1_face_game_rooms__code__actions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/history-quiz/rooms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Room */
+        post: operations["create_room_api_v1_history_quiz_rooms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/history-quiz/rooms/{code}/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Join Room */
+        post: operations["join_room_api_v1_history_quiz_rooms__code__join_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/history-quiz/rooms/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Room */
+        get: operations["read_room_api_v1_history_quiz_rooms__code__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/history-quiz/rooms/{code}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Room Action */
+        post: operations["room_action_api_v1_history_quiz_rooms__code__actions_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2253,6 +2338,71 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HistoryPhoto */
+        HistoryPhoto: {
+            /** Image Url */
+            image_url: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /**
+             * First Date
+             * Format: date
+             */
+            first_date: string;
+            /**
+             * Last Date
+             * Format: date
+             */
+            last_date: string;
+        };
+        /** HistoryQuestion */
+        HistoryQuestion: {
+            /** Group Id */
+            group_id: number;
+            /** Image Id */
+            image_id: number;
+            /** Image Url */
+            image_url: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /**
+             * First Date
+             * Format: date
+             */
+            first_date: string;
+            /**
+             * Last Date
+             * Format: date
+             */
+            last_date: string;
+            /**
+             * Correct Date
+             * Format: date
+             */
+            correct_date: string;
+        };
+        /** HistoryStatus */
+        HistoryStatus: {
+            photo: components["schemas"]["HistoryPhoto"] | null;
+            /** My Guess */
+            my_guess: string | null;
+            /** Correct Date */
+            correct_date: string | null;
+            /** Guesses */
+            guesses: {
+                [key: string]: string;
+            } | null;
+            /** Settled */
+            settled: number;
+            /** Total Deviations */
+            total_deviations: {
+                [key: string]: number;
+            };
+        };
         /** ImageAction */
         ImageAction: {
             /** Ids */
@@ -3071,8 +3221,11 @@ export interface components {
             /** Stage */
             stage: number;
             settings?: components["schemas"]["RoomSettings"] | null;
+            filters?: components["schemas"]["GameFilters"] | null;
             /** Choice */
             choice?: number | null;
+            /** Guess Date */
+            guess_date?: string | null;
             /** Support */
             support?: boolean | null;
             /** Suggested Person Id */
@@ -3176,6 +3329,7 @@ export interface components {
             ending: boolean;
             /** Message */
             message: string;
+            history?: components["schemas"]["HistoryStatus"] | null;
         };
         /** SettingsInput */
         SettingsInput: {
@@ -4380,6 +4534,43 @@ export interface operations {
             };
         };
     };
+    history_quiz_api_v1_gallery_history_quiz_get: {
+        parameters: {
+            query?: {
+                last_group?: number | null;
+                people?: string;
+                publishers?: string;
+                match?: "any" | "all" | "exact" | "subset";
+                start?: string;
+                end?: string;
+                include_no_faces?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryQuestion"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     detail_api_v1_gallery__group_id__get: {
         parameters: {
             query?: {
@@ -4680,6 +4871,146 @@ export interface operations {
         };
     };
     room_action_api_v1_face_game_rooms__code__actions_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-room-token": string;
+            };
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoomAction"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_room_api_v1_history_quiz_rooms_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRoom"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Membership"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    join_room_api_v1_history_quiz_rooms__code__join_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinRoom"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Membership"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_room_api_v1_history_quiz_rooms__code__get: {
+        parameters: {
+            query?: {
+                after?: number | null;
+            };
+            header: {
+                "x-room-token": string;
+            };
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    room_action_api_v1_history_quiz_rooms__code__actions_post: {
         parameters: {
             query?: never;
             header: {

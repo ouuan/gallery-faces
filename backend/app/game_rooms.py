@@ -3,6 +3,7 @@ import secrets
 import time
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
@@ -49,7 +50,9 @@ class RoomAction(BaseModel):
     action: Literal['settings', 'start', 'restart', 'answer', 'ready', 'draft', 'cancel', 'submit', 'vote', 'finish', 'leave']
     stage: int
     settings: RoomSettings | None = None
+    filters: GameFilters | None = None
     choice: int | None = None
+    guess_date: date | None = None
     support: bool | None = None
     suggested_person_id: int | None = Field(default=None, gt=0, le=9223372036854775807)
     not_face: bool = False
@@ -94,6 +97,27 @@ class RevealedPhoto(BaseModel):
     image_id: int
 
 
+class HistoryPhoto(BaseModel):
+    image_url: str
+    width: int
+    height: int
+    first_date: date
+    last_date: date
+
+
+class HistoryQuestion(HistoryPhoto, RevealedPhoto):
+    correct_date: date
+
+
+class HistoryStatus(BaseModel):
+    photo: HistoryPhoto | None
+    my_guess: date | None
+    correct_date: date | None
+    guesses: dict[int, date] | None
+    settled: int
+    total_deviations: dict[int, int]
+
+
 class ChoiceTally(BaseModel):
     choice: int | None
     count: int
@@ -127,6 +151,7 @@ class RoomView(BaseModel):
     voted: bool
     ending: bool
     message: str
+    history: HistoryStatus | None = None
 
 
 @dataclass
@@ -139,6 +164,7 @@ class Player:
     correct: int = 0
     wrong: int = 0
     unanswered: int = 0
+    deviation: int = 0
     withdrawn: bool = False
 
     def eliminated(self, single_life):
@@ -151,8 +177,11 @@ def check(condition, message, status=409):
 
 
 class Room:
-    def __init__(self, code, setup, draw):
+    game = 'face-game'
+
+    def __init__(self, code, setup, draw, validate):
         self.code, self.settings, self.filters, self.draw = code, setup.settings, setup.filters, draw
+        self.validate_filters = validate
         self.players = {}
         self.host = self.serial = self.version = self.stage = 0
         self.phase = 'lobby'
@@ -185,13 +214,16 @@ class Room:
         check(len(self.players) < 12, '房间已满')
         check(all(player.name != name for player in self.players.values()), '房间内已有相同昵称')
         self.serial += 1
-        player = Player(self.serial, name)
+        player = self.new_player(name)
         self.players[player.id] = player
         if not self.host:
             self.host = player.id
         self.touched = clock()
         self.changed()
         return Membership(code=self.code, token=player.token)
+
+    def new_player(self, name):
+        return Player(self.serial, name)
 
     def online(self):
         return {player.id for player in self.players.values() if player.online}
@@ -251,6 +283,11 @@ class Room:
                 self.outcomes[key] = outcome
                 setattr(player, outcome, getattr(player, outcome) + 1)
 
+    def answer(self, body):
+        check('choice' in body.model_fields_set and (body.choice is None or any(
+            item['id'] == body.choice for item in self.question['choices'])), '选项无效', 422)
+        return body.choice
+
     def reveal(self):
         final_round = self.settings.single_life and len(self.survivors()) <= 1
         self.enter('reveal', self.settings.continue_seconds or (10 if final_round else None))
@@ -287,8 +324,12 @@ class Room:
         if action in ('answer', 'ready', 'draft', 'cancel', 'submit', 'vote'):
             check(key in self.playing and not player.withdrawn, '已淘汰，只能观战' if self.settings.single_life else '从下一题起参赛', 403)
         if action == 'settings':
-            check(self.phase == 'lobby' and body.settings, '仅可在开局前设置')
-            self.settings = body.settings
+            check(self.phase == 'lobby' and (body.settings or body.filters), '仅可在开局前设置')
+            if body.filters is not None:
+                self.validate_filters(body.filters)
+                self.filters = body.filters
+            if body.settings is not None:
+                self.settings = body.settings
         elif action == 'start':
             check(self.phase in ('lobby', 'waiting') and len(self.online()) >= 2, '至少需要两位在线玩家')
             await self.next_question()
@@ -296,7 +337,7 @@ class Room:
             check(self.phase == 'finished', '仅可在对战结束后重新开始')
             self.players = {key: member for key, member in self.players.items() if member.online}
             for member in self.players.values():
-                member.correct = member.wrong = member.unanswered = 0
+                member.correct = member.wrong = member.unanswered = member.deviation = 0
                 member.withdrawn = False
             self.reset_match()
             if len(self.players) >= 2:
@@ -305,9 +346,7 @@ class Room:
                 self.enter('lobby')
         elif action == 'answer':
             check(self.phase == 'answer' and key not in self.answers, '当前不能作答')
-            check('choice' in body.model_fields_set and (body.choice is None or any(
-                item['id'] == body.choice for item in self.question['choices'])), '选项无效', 422)
-            self.answers[key] = body.choice
+            self.answers[key] = self.answer(body)
         elif action == 'ready':
             check(self.phase == 'reveal', '尚不能进入下一题')
             self.ready.add(key)
@@ -354,9 +393,7 @@ class Room:
         self.changed()
         await self.advance()
 
-    def view(self, player):
-        question = self.question
-        revealed = question is not None and self.phase != 'answer'
+    def question_view(self, player, question, revealed):
         photo = RoomPhoto(**question, box=question['face']['box']) if question else None
         tallies = None
         if revealed:
@@ -365,6 +402,12 @@ class Room:
                 voters.setdefault(choice, []).append(self.players[key].name)
             tallies = [ChoiceTally(choice=choice, count=len(names), nickname=names[0] if len(names) == 1 else None)
                        for choice, names in voters.items()]
+        return dict(photo=photo, choice=self.answers.get(player.id), tallies=tallies,
+                    answer_name=question['face']['answer_name'] if revealed else None)
+
+    def view(self, player):
+        question = self.question
+        revealed = question is not None and self.phase != 'answer'
         return RoomView(code=self.code, version=self.version, stage=self.stage, phase=self.phase,
                         round=self.round, host=self.host, me=player.id, settings=self.settings, filters=self.filters,
                         remaining=None if self.deadline is None else max(0, self.deadline - clock()),
@@ -372,13 +415,55 @@ class Room:
                                             unanswered=item.unanswered, eliminated=item.eliminated(self.settings.single_life), online=item.online,
                                             playing=item.id in self.playing, answered=item.id in self.answers,
                                             ready=item.id in self.ready) for item in self.players.values()],
-                        photo=photo, source_photo=RevealedPhoto(**question) if revealed else None,
-                        choice=self.answers.get(player.id), tallies=tallies,
-                        answer_name=question['face']['answer_name'] if revealed else None,
+                        **self.question_view(player, question, revealed),
+                        source_photo=RevealedPhoto(**question) if revealed else None,
                         correct_choice=self.correct if revealed else None, void=self.void, proposer=self.proposer,
                         proposal=self.proposal, accepted=self.accepted, votes_for=sum(self.votes.values()),
                         votes_against=len(self.votes) - sum(self.votes.values()), voted=player.id in self.votes,
                         ending=self.ending, message=self.message)
+
+
+class HistoryRoom(Room):
+    game = 'history-quiz'
+
+    def __init__(self, code, setup, draw, validate):
+        super().__init__(code, setup, draw, validate)
+        self.settings.cropped = self.settings.single_life = False
+
+    def reset_match(self):
+        super().reset_match()
+        self.settled = self.midpoint_total = 0
+
+    def new_player(self, name):
+        return Player(self.serial, name, unanswered=self.settled, deviation=self.midpoint_total)
+
+    def answer(self, body):
+        guess = body.guess_date
+        check(guess is not None and self.question['first_date'] <= guess <= self.question['last_date'], '请选择范围内的日期', 422)
+        return guess
+
+    async def act(self, player, body, save):
+        check(body.action not in ('draft', 'cancel', 'submit', 'vote'), '史官测验不支持纠错投票')
+        if body.action == 'settings' and body.settings:
+            body.settings.cropped = body.settings.single_life = False
+        await super().act(player, body, save)
+
+    def score(self):
+        first, last, correct = (self.question[key] for key in ('first_date', 'last_date', 'correct_date'))
+        midpoint = first + timedelta(days=(last - first).days // 2)
+        self.settled += 1
+        self.midpoint_total += abs((midpoint - correct).days)
+        for key, player in self.players.items():
+            player.deviation += abs((self.answers.get(key, midpoint) - correct).days)
+            if key not in self.answers:
+                player.unanswered += 1
+
+    def question_view(self, player, question, revealed):
+        history = HistoryStatus(photo=HistoryPhoto(**question) if question else None,
+                                my_guess=self.answers.get(player.id), guesses=self.answers if revealed else None,
+                                correct_date=question['correct_date'] if revealed else None, settled=self.settled,
+                                total_deviations={key: member.deviation for key, member in self.players.items()})
+        return dict(photo=None, choice=None, tallies=None, answer_name=None, history=history)
 
 
 rooms = {}
@@ -407,11 +492,11 @@ async def service():
         rooms.clear()
 
 
-def router(draw, validate, save_feedback):
-    routes = APIRouter(prefix='/api/v1/face-game/rooms')
+def router(draw, validate, save_feedback=None, *, room_type=Room):
+    routes = APIRouter(prefix=f'/api/v1/{room_type.game}/rooms')
     def room_for(code):
         room = rooms.get(code.upper())
-        check(room and clock() - room.touched < 900, '房间不存在或已失效', 404)
+        check(room and room.game == room_type.game and clock() - room.touched < 900, '房间不存在或已失效', 404)
         return room
 
     def identify(room, token):
@@ -433,7 +518,7 @@ def router(draw, validate, save_feedback):
             code = ''.join(secrets.choice('23456789ABCDEFGHJKLMNPQRSTUVWXYZ') for _ in range(6))
             if code not in rooms:
                 break
-        rooms[code] = room = Room(code, body, draw)
+        rooms[code] = room = room_type(code, body, draw, validate)
         return room.join(body.nickname)
 
     @routes.post('/{code}/join', response_model=Membership, status_code=201)

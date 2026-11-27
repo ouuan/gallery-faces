@@ -1,6 +1,6 @@
 import json
 import random
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import HTTPException
 
@@ -17,8 +17,8 @@ def saved_pick(db, key):
     return tuple(row) if row else None
 
 
-def candidates(db, filters, *, group_id=None, last=None, first=False, game=False):
-    matches, args = gallery_matches(*filters, group_id=group_id)
+def candidates(db, filters, *, group_id=None, last=None, first=False, game=False, first_source=False):
+    matches, args = gallery_matches(*filters, group_id=group_id, first_source=first_source)
     sql = f'SELECT g.group_id,g.representative FROM ({matches}) hit JOIN public_groups g ON g.group_id=hit.group_id'
     if game and not filters[0]:
         sql += ' WHERE EXISTS(SELECT 1 FROM public_group_people who WHERE who.group_id=g.group_id)'
@@ -30,13 +30,13 @@ def candidates(db, filters, *, group_id=None, last=None, first=False, game=False
     return [tuple(row) for row in db.execute(sql, args)]
 
 
-def draw(filters, last, *, game=False):
+def draw(filters, last, *, game=False, first_source=False):
     with connect() as db:
-        first = candidates(db, filters, last=last, first=True, game=game)
+        first = candidates(db, filters, last=last, first=True, game=game, first_source=first_source)
     if first:
         yield first[0]
         with connect() as db:
-            others = candidates(db, filters, last=last, game=game)
+            others = candidates(db, filters, last=last, game=game, first_source=first_source)
         yield from (candidate for candidate in others if candidate != first[0])
 
 
@@ -78,6 +78,26 @@ def game_question(filters, last_group, last_face, pin):
                                           locked=bool(face['locked']), person_id=face['person_id'],
                                           answer_name=face['answer_name']), game_choices(db, face, selected)
     raise HTTPException(404, '当前筛选下没有可出题的人脸')
+
+
+def history_question(filters, last, pin):
+    matches, args = gallery_matches(*filters, first_source=True)
+    for group, representative in draw(filters, last, first_source=True):
+        try:
+            asset = pin(representative)
+        except HTTPException as error:
+            if error.status_code == 404:
+                continue
+            raise
+        with connect() as db:
+            db.execute('BEGIN')
+            if candidates(db, filters, group_id=group, first_source=True) != [(group, representative)]:
+                continue
+            stamp = db.execute('SELECT stamp FROM public_groups WHERE group_id=?', (group,)).fetchone()[0]
+            bounds = db.execute(f'SELECT MIN(stamp), MAX(stamp) FROM ({matches})', args).fetchone()
+            earliest, latest, answer = (datetime.fromisoformat(value).astimezone().date() for value in (*bounds, stamp))
+            return group, asset, earliest, latest, answer
+    raise HTTPException(404, '当前筛选下没有可用于史官测验的照片')
 
 
 def resolve(key, filters, pin):

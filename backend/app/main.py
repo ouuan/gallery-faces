@@ -1208,6 +1208,22 @@ def draw_game_question(reads, scope, last_group, last_face):
                 image_url=variant_url(row, variant), face=face, choices=choices)
 
 
+def draw_history_question(reads, scope, last_group):
+    def pin(identifier):
+        reads.close()
+        return pin_public(reads, public_row(identifier), 'image')
+
+    group, (variant, _, row), first, last, answer = photo_draw.history_question(scope, last_group, pin)
+    return dict(group_id=group, image_id=row['id'], width=row['width'], height=row['height'],
+                image_url=variant_url(row, variant), first_date=first, last_date=last, correct_date=answer)
+
+
+@app.get('/api/v1/gallery/history-quiz', response_model=game_rooms.HistoryQuestion)
+def history_quiz(reads: MediaReads, filters: Annotated[game_rooms.GameFilters, Depends()],
+                 last_group: int | None = Query(None, gt=0, le=9223372036854775807)):
+    return draw_history_question(reads, game_scope(filters), last_group)
+
+
 class GalleryDetail(GalleryPhoto):
     faces: list[PublicFace]
 
@@ -1587,6 +1603,14 @@ def save_room_feedback(question, proposal, request):
 
 
 app.include_router(game_rooms.router(draw_room_question, game_scope, save_room_feedback))
+
+
+def draw_history_room_question(filters, previous):
+    with MediaRead() as reads:
+        return draw_history_question(reads, game_scope(filters), previous and previous['group_id'])
+
+
+app.include_router(game_rooms.router(draw_history_room_question, game_scope, room_type=game_rooms.HistoryRoom))
 
 
 @app.get("/api/v1/admin/images/{image_id}/feedback", response_model=FeedbackPage, response_model_exclude_unset=True)
