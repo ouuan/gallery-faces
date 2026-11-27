@@ -3264,7 +3264,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "settings" | "start" | "restart" | "answer" | "give_up" | "ready" | "draft" | "cancel" | "submit" | "vote" | "finish" | "leave";
+            action: "settings" | "start" | "restart" | "image_loaded" | "answer" | "give_up" | "ready" | "draft" | "cancel" | "submit" | "vote" | "finish" | "leave";
             /** Stage */
             stage: number;
             settings?: components["schemas"]["RoomSettings"] | null;
@@ -3351,7 +3351,7 @@ export interface components {
              * Phase
              * @enum {string}
              */
-            phase: "lobby" | "answer" | "reveal" | "draft" | "vote" | "waiting" | "finished";
+            phase: "lobby" | "loading" | "answer" | "reveal" | "draft" | "vote" | "waiting" | "finished";
             /** Round */
             round: number;
             /** Host */

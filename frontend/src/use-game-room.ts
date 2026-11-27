@@ -29,7 +29,7 @@ export function useGameRoom(history = false) {
   function apply(view: RoomView) {
     if (view.code !== code.value || (room.value && view.version < room.value.version)) return;
     if (view.grid && room.value?.grid && view.version === room.value.version && view.grid.elapsed < room.value.grid.elapsed) return;
-    const started = view.grid ? performance.now() - view.grid.elapsed * 1000 : null;
+    const started = view.grid && view.phase !== 'loading' ? performance.now() - view.grid.elapsed * 1000 : null;
     gridStarted.value = started !== null && gridStarted.value !== null && view.stage === room.value?.stage
       ? Math.min(started, gridStarted.value) : started;
     room.value = view;
@@ -77,8 +77,9 @@ export function useGameRoom(history = false) {
   }
   async function act(action: RoomAction['action'], fields: Partial<RoomAction> = {}) {
     const view = room.value;
-    if (!view || busy.value) return;
-    busy.value = true; error.value = '';
+    const background = action === 'image_loaded';
+    if (!view || (background ? view.phase !== 'loading' : busy.value)) return;
+    if (!background) { busy.value = true; error.value = ''; }
     try {
       const result = await api<RoomView>(`${base}/${view.code}/actions`, { method: 'POST', headers: { 'X-Room-Token': token.value },
         body: JSON.stringify({ ...fields, action, stage: view.stage }) });
@@ -87,8 +88,8 @@ export function useGameRoom(history = false) {
         if (view.phase === 'lobby') sessionStorage.removeItem(key(view.code));
         await router.push({ path: base, query: filterOnlyQuery(fromQuery(view.filters)) });
       } else apply(result);
-    } catch (cause) { if (view.code === code.value) error.value = (cause as Error).message; }
-    finally { busy.value = false; }
+    } catch (cause) { if (!background && view.code === code.value) error.value = (cause as Error).message; }
+    finally { if (!background) busy.value = false; }
   }
   return { code, token, room, busy, error, syncError, seconds, gridStarted, enter, act };
 }

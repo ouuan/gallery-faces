@@ -81,7 +81,21 @@ test('grid players can retry privately and see all attempted options after the r
     await player.getByRole('button', { name: '进入房间' }).click();
   }
   await join(guest, '乙');
+  let releaseImage!: () => void;
+  const delayedImage = new Promise<void>(resolve => { releaseImage = resolve; });
+  await guest.route('**/api/v1/**', async route => {
+    if (route.request().resourceType() === 'image') await delayedImage;
+    await route.fallback();
+  });
+  const hostLoaded = host.waitForResponse(response => response.request().postDataJSON()?.action === 'image_loaded');
   await host.getByRole('button', { name: '开始对战' }).click();
+  expect((await (await hostLoaded).json()).phase).toBe('loading');
+  await expect(host.getByRole('heading', { name: /等待玩家加载照片/ })).toBeVisible();
+  await expect(host.locator('.grid-mask .covered')).toHaveCount(25);
+  await expect(host.locator('.game-options button:enabled')).toHaveCount(0);
+  const guestLoaded = guest.waitForResponse(response => response.request().postDataJSON()?.action === 'image_loaded');
+  releaseImage();
+  expect((await (await guestLoaded).json()).phase).toBe('answer');
   await expect(guest.locator('.grid-mask')).toBeVisible();
   await expect(guest.getByLabel('要辨认的人脸')).toBeVisible();
   const wrong = host.getByRole('button', { name: '人2', exact: true });

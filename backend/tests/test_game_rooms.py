@@ -231,10 +231,43 @@ def test_late_join_can_answer_without_extending_deadline(match):
     assert act('answer', 2, choice=1)['choice'] == 1
 
 
+def load_grid(act, count=2):
+    for who in range(count):
+        view = act('image_loaded', who)
+    assert view['phase'] == 'answer'
+    return view
+
+
+def test_grid_waits_for_online_players_or_five_seconds(match):
+    join, state, act, now = match
+    act('settings', settings={'grid': True})
+    pending = act('start')
+    assert pending['phase'] == 'loading' and pending['remaining'] == 5
+    assert all(pending[key] is None for key in ('answer_name', 'source_photo', 'correct_choice', 'tallies'))
+    act('image_loaded'); act('image_loaded')
+    now[0] += 4.75
+    join('丙')
+    assert act('image_loaded', 1)['phase'] == 'loading'
+    act('answer', status=409, choice=1)
+    assert state(2)['grid']['elapsed'] == 0
+    now[0] += 0.75
+    assert state()['grid']['elapsed'] == 0.5
+    act('image_loaded', 2, stage=pending['stage'], status=409)
+    assert act('answer', 2, choice=1)['grid']['correct_cells'] == 1
+
+
+def test_grid_wait_ends_when_unready_player_leaves(match):
+    _, state, act, now = match
+    act('settings', settings={'grid': True}); act('start'); act('image_loaded')
+    now[0] += 2
+    act('leave', 1)
+    assert state()['phase'] == 'answer' and state()['grid']['elapsed'] == 0
+
+
 def test_grid_round_privacy_timing_and_rescore(match):
     join, state, act, now = match
     act('settings', settings={'grid': True, 'single_life': True, 'continue_seconds': 0})
-    first = act('start')
+    act('start'); first = load_grid(act)
     assert not first['settings']['single_life'] and first['remaining'] is None
     assert sorted(first['grid']['order']) == list(range(25))
     assert first['grid']['correct_cells'] is None
@@ -269,6 +302,7 @@ def test_grid_round_privacy_timing_and_rescore(match):
     assert scores(corrected) == [(0, 1, 0), (0, 0, 0), (1, 0, 2)]
     assert corrected['grid']['correct_cells'] == 2
     act('ready'); act('ready', 1); act('ready', 2)
+    load_grid(act, 3)
     now[0] += 0.5
     act('answer', choice=None)
     assert scores(act('finish')) == scores(corrected)
@@ -279,9 +313,10 @@ def test_grid_round_privacy_timing_and_rescore(match):
 def test_grid_void_round_restores_all_previous_statistics(match, proposal):
     _, _, act, now = match
     act('settings', settings={'grid': True, 'continue_seconds': 0})
-    act('start'); now[0] += 0.5
+    act('start'); load_grid(act); now[0] += 0.5
     act('answer', 1, choice=2); previous = act('answer', choice=1)
     act('ready'); act('ready', 1)
+    load_grid(act)
     now[0] += 0.5
     act('answer', choice=None); original = act('answer', 1, choice=1)
     act('draft'); act('submit', **proposal); corrected = act('vote', 1, support=True)
@@ -294,7 +329,7 @@ def test_grid_void_round_restores_all_previous_statistics(match, proposal):
 def test_grid_give_up_waits_for_full_grid_and_all_players(match):
     _, state, act, now = match
     act('settings', settings={'grid': True, 'grid_size': 2, 'continue_seconds': 0})
-    act('start'); now[0] += 1.999
+    act('start'); load_grid(act); now[0] += 1.999
     act('give_up', status=409)
     act('answer', choice=2)
     now[0] += 0.001
@@ -314,7 +349,7 @@ def test_grid_give_up_waits_for_full_grid_and_all_players(match):
 def test_grid_give_up_does_not_block_other_players(match, last_action):
     _, _, act, now = match
     act('settings', settings={'grid': True, 'grid_size': 2})
-    act('start'); now[0] += 2
+    act('start'); load_grid(act); now[0] += 2
     act('give_up')
     result = act(last_action, 1, **({'choice': 1} if last_action == 'answer' else {}))
     assert result['phase'] == 'reveal' and not result['void']
@@ -324,7 +359,7 @@ def test_grid_give_up_does_not_block_other_players(match, last_action):
 def test_grid_competing_correct_answers_score_once(match):
     _, _, act, now = match
     act('settings', settings={'grid': True})
-    start = act('start')
+    act('start'); start = load_grid(act)
     now[0] += 0.5
     def submit(who):
         try:

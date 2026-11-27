@@ -10177,6 +10177,7 @@
               "settings",
               "start",
               "restart",
+              "image_loaded",
               "answer",
               "give_up",
               "ready",
@@ -10385,6 +10386,7 @@
             "type": "string",
             "enum": [
               "lobby",
+              "loading",
               "answer",
               "reveal",
               "draft",

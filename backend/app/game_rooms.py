@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 
 
 Nickname = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=24)]
-Phase = Literal['lobby', 'answer', 'reveal', 'draft', 'vote', 'waiting', 'finished']
+Phase = Literal['lobby', 'loading', 'answer', 'reveal', 'draft', 'vote', 'waiting', 'finished']
 clock = time.monotonic
 
 
@@ -57,7 +57,7 @@ class Membership(BaseModel):
 
 
 class RoomAction(BaseModel):
-    action: Literal['settings', 'start', 'restart', 'answer', 'give_up', 'ready', 'draft', 'cancel', 'submit', 'vote', 'finish', 'leave']
+    action: Literal['settings', 'start', 'restart', 'image_loaded', 'answer', 'give_up', 'ready', 'draft', 'cancel', 'submit', 'vote', 'finish', 'leave']
     stage: int
     settings: RoomSettings | None = None
     filters: GameFilters | None = None
@@ -200,7 +200,8 @@ def check(condition, message, status=409):
 @dataclass
 class GridRound:
     order: list[int]
-    started: float = field(default_factory=lambda: clock())
+    started: float
+    loaded: set[int] = field(default_factory=set)
     attempts: list[tuple[int, int | None, int]] = field(default_factory=list)
     credited: list[tuple[int, int, int, int]] = field(default_factory=list)
     passed: set[int] = field(default_factory=set)
@@ -276,7 +277,7 @@ class Room:
         self.serial += 1
         player = self.new_player(name)
         self.players[player.id] = player
-        if self.phase == 'answer':
+        if self.phase in ('loading', 'answer'):
             self.playing.add(player.id)
         if not self.host:
             self.host = player.id
@@ -329,8 +330,10 @@ class Room:
         self.votes, self.void = {}, False
         if self.settings.grid:
             count = self.settings.grid_size ** 2
-            self.grid = GridRound(random.sample(range(count), count))
-        self.enter('answer', None if self.grid else self.settings.answer_seconds)
+            self.enter('loading', 5)
+            self.grid = GridRound(random.sample(range(count), count), self.deadline)
+        else:
+            self.enter('answer', self.settings.answer_seconds)
 
     def score(self):
         person = self.question['face']['person_id']
@@ -371,7 +374,11 @@ class Room:
 
     async def advance(self):
         expired = self.deadline is not None and clock() >= self.deadline
-        if self.phase == 'answer':
+        if self.phase == 'loading':
+            if expired or (self.online() & self.playing) <= self.grid.loaded:
+                self.grid.started = min(clock(), self.deadline)
+                self.enter('answer')
+        elif self.phase == 'answer':
             if self.grid:
                 eligible = self.online() & self.playing
                 if not eligible or not eligible <= self.grid.passed:
@@ -396,7 +403,7 @@ class Room:
         check(body.stage == self.stage, '房间状态已更新，请重试')
         if action in ('start', 'restart', 'settings', 'finish'):
             check(key == self.host, '仅房主可操作', 403)
-        if action in ('answer', 'give_up', 'ready', 'draft', 'cancel', 'submit', 'vote'):
+        if action in ('image_loaded', 'answer', 'give_up', 'ready', 'draft', 'cancel', 'submit', 'vote'):
             check(key in self.playing and not player.withdrawn, '已淘汰，只能观战' if self.settings.single_life else '从下一题起参赛', 403)
         if action == 'settings':
             check(self.phase == 'lobby' and (body.settings or body.filters), '仅可在开局前设置')
@@ -419,6 +426,11 @@ class Room:
                 await self.next_question()
             else:
                 self.enter('lobby')
+        elif action == 'image_loaded':
+            check(self.phase == 'loading', '当前不在加载照片')
+            self.grid.loaded.add(key)
+            await self.advance()
+            return
         elif action == 'answer':
             check(self.phase == 'answer' and key not in self.answers, '当前不能作答')
             choice = self.answer(body)
@@ -461,7 +473,7 @@ class Room:
             check(self.phase != 'finished', '对战已经结束')
             self.ending = True
             if self.phase != 'vote':
-                if self.phase == 'answer':
+                if self.phase in ('loading', 'answer'):
                     self.question = None
                 self.enter('finished')
         elif action == 'leave':
@@ -498,10 +510,10 @@ class Room:
 
     def view(self, player):
         question = self.question
-        revealed = question is not None and self.phase != 'answer'
+        revealed = question is not None and self.phase not in ('loading', 'answer')
         grid = None
         if self.grid and question:
-            grid = GridView(order=self.grid.order, elapsed=clock() - self.grid.started,
+            grid = GridView(order=self.grid.order, elapsed=max(0, clock() - self.grid.started),
                             gave_up=player.id in self.grid.passed,
                             correct_cells=next((cells for _, right, _, cells in self.grid.credited if right), None), wrong_choices=[
                 choice for key, choice, _ in self.grid.attempts if key == player.id and (not revealed or choice != self.correct)])
