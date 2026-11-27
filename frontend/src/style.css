@@ -17,6 +17,7 @@
   --selection: #e5edfc;
   --success: #216b42;
   --success-bg: #e5f3e9;
+  --chart-amber: #a45b12;
   --error: #bd3b3b;
   color-scheme: light;
 }
@@ -33,6 +34,7 @@ html[data-theme="dark"] {
   --selection: #263b60;
   --success: #91d5a8;
   --success-bg: #20392b;
+  --chart-amber: #f2b56c;
   --error: #ff9292;
   background: var(--bg);
   color: var(--text);
@@ -196,6 +198,7 @@ svg {
   flex-direction: column;
   gap: 24px;
 }
+#app main.game-start { max-width: 960px; margin-block: 0; }
 .section-heading {
   display: flex;
   align-items: center;

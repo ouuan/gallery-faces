@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onMounted, ref, toRef } from 'vue';
 import { useRoute } from 'vue-router';
-import { ArrowLeft, ArrowRight } from '@lucide/vue';
-import { NAlert, NButton, NSwitch } from 'naive-ui';
+import { ArrowRight } from '@lucide/vue';
+import SoloGameNav from './SoloGameNav.vue';
+import { NAlert, NButton } from 'naive-ui';
 import { api, ApiError, type Photo } from './api';
-import { filterOnlyQuery, fromQuery } from './filters';
+import { useSoloSetup } from './use-solo-setup';
+import SoloGameSetup from './SoloGameSetup.vue';
+import SoloGameResult from './SoloGameResult.vue';
+import FaceDisplayMode from './FaceDisplayMode.vue';
 import { answer, correctChoice, feedbackReceipt, game, openRound, score, type Question } from './face-game';
 import { useLibrary } from './store';
 import { useLatestRequest } from './use-latest-request';
@@ -17,8 +21,6 @@ const route = useRoute(), store = useLibrary();
 const PostDetail = defineAsyncComponent(() => import('./PostDetail.vue'));
 const postKey = computed(() => typeof route.query.post === 'string' ? route.query.post : '');
 usePageTitle(() => postKey.value ? '帖子详情' : '认脸游戏');
-const query = computed(() => filterOnlyQuery(fromQuery(route.query)));
-const scope = computed(() => new URLSearchParams(query.value).toString());
 const stats = computed(() => score(game.outcomes));
 const question = computed(() => game.round?.question);
 const answered = computed(() => game.round?.choice !== undefined);
@@ -29,7 +31,6 @@ const submitted = computed(() => game.round ? feedbackReceipt(game.round, game.o
 const latest = useLatestRequest(), details = useLatestRequest();
 const loading = ref(false), error = ref(''), empty = ref(false);
 const cropped = ref(localStorage.getItem('face-game:cropped') !== 'false');
-watch(cropped, value => localStorage.setItem('face-game:cropped', String(value)));
 const photo = computed(() => !loading.value && !error.value && question.value ? { ...question.value, box: question.value.face.box } : null);
 const detail = ref<Photo | null>(null), detailError = ref(''), authenticated = ref(false);
 const answerName = computed(() => {
@@ -73,27 +74,37 @@ function choose(person: number | null) {
   answer(person);
   void loadDetail();
 }
-watch(scope, value => {
-  if (game.filter !== value) { game.filter = value; game.round = null; game.outcomes = []; }
-  if (!game.round) void next();
-  else if (answered.value) void loadDetail();
-}, { immediate: true });
+const { draft, query, playing, result, start, end } = useSoloSetup(toRef(game, 'filter'), () => {
+  latest.cancel(); details.cancel(); game.round = null; game.outcomes = [];
+}, () => ({ ...stats.value, count: game.outcomes.length }));
+async function begin() {
+  if (!await start()) return;
+  game.cropped = cropped.value;
+  localStorage.setItem('face-game:cropped', String(cropped.value));
+  void next();
+}
 onMounted(() => {
+  if (playing.value && !game.round) void next();
+  else if (playing.value && answered.value) void loadDetail();
   api<{ admin: boolean }>('/session').then(result => { authenticated.value = result.admin; }).catch(() => {});
-  store.load().catch(cause => { detailError.value = (cause as Error).message; });
 });
 </script>
 
 <template>
-  <main class="game-page">
-    <header class="game-header"><h1>认脸游戏</h1><nav><router-link :to="{ path: '/face-game/rooms', query }">多人对战</router-link><router-link :to="{ path: '/', query }" aria-label="返回筛选" title="返回筛选"><ArrowLeft :size="16" /><span>返回筛选</span></router-link></nav></header>
+  <main class="game-page" :class="{ 'game-start': !playing }">
+    <header class="game-header"><h1>认脸游戏</h1><SoloGameNav rooms-path="/face-game/rooms" :query="query"><n-button v-if="playing" text @click="end">结束本局</n-button></SoloGameNav></header>
+    <SoloGameResult v-if="result" :filter="result.filter" :count="result.count" label="正确率" :value="result.accuracy" :detail="`结束时连对 ${result.streak} 题`"
+      :breakdown="[{ label: '正确', count: result.correct, tone: 'success' }, { label: '错误', count: result.wrong, tone: 'error' }, { label: '存疑', count: result.disputed, tone: 'muted' }]" @setup="result = undefined" />
+    <SoloGameSetup v-else-if="!playing" v-model="draft" face @start="begin">
+      <FaceDisplayMode v-model="cropped" />
+    </SoloGameSetup>
+    <template v-else>
     <div class="game-score" aria-label="本局统计"><strong>正确率 {{ stats.accuracy }}</strong><span>正确 {{ stats.correct }}</span><span>错误 {{ stats.wrong }}</span><span>存疑 {{ stats.disputed }}</span><span>连对 {{ stats.streak }}</span></div>
-    <GameBoard :key="game.round?.key" :photo="photo" :cropped="cropped" :revealed="answered" :locked="answered" :selected="game.round?.choice" :correct-id="correctId" :answer-name="answerName" @choose="choose">
+    <GameBoard :key="game.round?.key" :photo="photo" :cropped="game.cropped" :revealed="answered" :locked="answered" :selected="game.round?.choice" :correct-id="correctId" :answer-name="answerName" @choose="choose">
       <template #placeholder>
         <div v-if="error" role="status"><p>{{ error }}</p><n-button v-if="!empty" @click="next">重试</n-button></div>
         <LoadingOverlay v-else show center label="正在出题…" />
       </template>
-      <template #mode><label class="crop-mode"><n-switch v-model:value="cropped" size="small" aria-label="截取人脸" />截取人脸</label></template>
       <template v-if="question && game.round">
         <div class="game-actions">
           <n-button v-if="answered" type="primary" @click="next">下一题 <ArrowRight :size="16" /></n-button>
@@ -112,19 +123,16 @@ onMounted(() => {
         </template>
       </template>
     </GameBoard>
+    </template>
   </main>
   <PostDetail v-if="postKey" :post-key="postKey" return-path="/face-game" />
 </template>
 
 <style scoped>
 .game-page { width: min(100%, 1440px); margin: auto; padding: 20px 28px; }
-.game-header, .game-header a, .game-score { display: flex; align-items: center; }
-.game-header { justify-content: space-between; gap: 12px; }
-.game-header a { gap: 6px; min-height: 44px; }
+.game-header, .game-score { display: flex; align-items: center; }
+.game-header { justify-content: space-between; flex-wrap: wrap; gap: 0 12px; }
 .game-score { flex-wrap: wrap; gap: 4px 16px; padding: 8px 0 16px; margin-bottom: 20px; border-bottom: 1px solid var(--line); color: var(--muted); font-variant-numeric: tabular-nums; }
-.game-header nav, .crop-mode { display: flex; align-items: center; gap: 12px; }
-.crop-mode { margin-inline-start: auto; min-height: 44px; gap: 6px; color: var(--muted); }
-.game-header a { justify-content: center; min-width: 44px; }
 .game-score strong { color: var(--text); }
 .game-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; color: var(--muted); }
 .game-actions:has(button) { margin-top: 16px; }
@@ -135,11 +143,14 @@ onMounted(() => {
   .game-score { gap: 4px 12px; padding: 0 0 8px; margin-bottom: 8px; }
   .game-actions:has(button) { margin-top: 8px; }
   .game-actions button { flex: 1; }
-  .game-header a span { display: none; }
 }
 @media (min-width: 600px) and (orientation: landscape) and (max-height: 540px) {
-  .game-page { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px 20px; padding: 4px 16px 16px; }
+  .game-page:not(.game-start) { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px 20px; padding: 4px 16px 16px; }
   .game-score { justify-content: end; gap: 4px 12px; margin: 0; padding: 0; border: 0; }
   .game-page > .game-layout { grid-column: 1 / -1; }
+}
+@media (max-width: 340px) {
+  .game-page { padding-inline: 12px; }
+  .game-header { column-gap: 4px; }
 }
 </style>

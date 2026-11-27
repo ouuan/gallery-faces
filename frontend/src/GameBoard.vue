@@ -62,7 +62,6 @@ const imageStyle = computed(() => {
             @keydown.space.enter.prevent="zoomed = true" @keyup.space.enter.prevent="zoomed = false" @blur="zoomed = false">
             <ZoomIn :size="18" aria-hidden="true" />
           </n-button>
-          <slot name="mode" />
         </div>
         <div class="game-options" role="group" aria-labelledby="game-prompt">
           <button v-for="choice in choices" :key="choice.id ?? 'none'" type="button" :disabled="locked || !imageReady"

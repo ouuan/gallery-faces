@@ -4,8 +4,8 @@ import type { components } from './schema';
 export type Question = components['schemas']['GameQuestion'];
 export type Outcome = 'correct' | 'wrong' | 'disputed';
 export type Round = { question: Question; choice?: number | null; index: number; key: number };
-export const game = reactive<{ filter: string | null; round: Round | null; outcomes: Outcome[] }>({
-  filter: null, round: null, outcomes: [],
+export const game = reactive<{ filter: string | null; round: Round | null; outcomes: Outcome[]; cropped: boolean }>({
+  filter: null, round: null, outcomes: [], cropped: true,
 });
 
 export function faceZoom(box: number[], width: number, height: number) {
