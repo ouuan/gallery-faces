@@ -74,9 +74,9 @@ function set(key: keyof Filter, value: any) {
     <fieldset class="date-bounds">
       <legend>{{ t("发布日期") }}</legend>
       <label class="field-label date-field"
-        >{{ t("从") }}<LocalDateTime :contained="contained" :aria-label="t('开始时间')" :model-value="modelValue.start" @update:model-value="set('start', $event)" /></label
+        >{{ t("从") }}<LocalDateTime update-value-on-close :contained="contained" :aria-label="t('开始时间')" :model-value="modelValue.start" @update:model-value="set('start', $event)" /></label
       ><label class="field-label date-field"
-        >{{ t("至") }}<LocalDateTime :contained="contained" :aria-label="t('结束时间')" :model-value="modelValue.end" @update:model-value="set('end', $event)" /></label>
+        >{{ t("至") }}<LocalDateTime update-value-on-close :contained="contained" :aria-label="t('结束时间')" :model-value="modelValue.end" @update:model-value="set('end', $event)" /></label>
       <DateRangeHint :start="modelValue.start" :end="modelValue.end" />
     </fieldset>
     <n-checkbox

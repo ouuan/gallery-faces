@@ -12,13 +12,14 @@ const vInputLabel = {
   },
 };
 const attrs = useAttrs();
-const props = defineProps<{ modelValue?: string | null; disabled?: boolean; contained?: boolean }>();
+const props = defineProps<{ modelValue?: string | null; disabled?: boolean; contained?: boolean; updateValueOnClose?: boolean }>();
 const emit = defineEmits<{ "update:modelValue": [value: string] }>();
 const value = computed(() => props.modelValue && validInstant(props.modelValue) ? Date.parse(props.modelValue) : null);
 </script>
 <template>
   <n-date-picker @keydown.enter.prevent type="datetime" v-input-label="attrs['aria-label']" :value="value" clearable :disabled="disabled" format="yyyy-MM-dd HH:mm:ss"
     :to="contained ? false : undefined"
+    :update-value-on-close="updateValueOnClose" :actions="['clear', 'confirm']"
     :theme-overrides="contained ? { itemCellWidth: 'min(38px, calc((100cqi - 24px) / 7))' } : undefined"
     @update:value="emit('update:modelValue', $event == null ? '' : new Date($event).toISOString().replace('.000Z', 'Z'))" />
 </template>
