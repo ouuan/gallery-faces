@@ -319,7 +319,7 @@ onUnmounted(() => {
         </p>
         <form class="feed-form import-form" @submit.prevent="submitImport" @reset.prevent="resetImport">
           <FeedSourceFields v-model:publishers="publishers" v-model:platforms="importPlatforms" v-model:scope="scope" :disabled="busy" :target-platforms="targetPlatforms" single-import>
-            <p v-if="publishers.length && !importAccounts.length" class="hint" role="status">没有匹配的发布者账号，仍可导入手动链接或目录。</p>
+            <p v-if="publishers.length && !importAccounts.length" class="hint" role="status">没有匹配的发布者账号，仍可导入手动链接或目录</p>
             <label class="field-label">链接，每行一个<n-input v-model:value="urls" type="textarea" :autosize="{ minRows: 4, maxRows: 8 }" placeholder="https://www.instagram.com/p/…&#10;https://x.com/username/status/…" /></label>
           </FeedSourceFields>
           <HashtagField v-model="hashtags" :disabled="busy || !importUrls.length" />

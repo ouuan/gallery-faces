@@ -271,7 +271,7 @@ test("monitor layout preserves disclosure drafts and handles long content", asyn
   await page.goto("/admin/monitors");
   const form = page.locator(".monitor-create");
   const toggle = page.getByRole("button", { name: "添加发布者", exact: true });
-  await expect(page.getByText('还没有 X 发布者监控。')).toBeVisible();
+  await expect(page.getByText('还没有 X 发布者监控')).toBeVisible();
   await page.getByRole('tab', { name: 'Instagram' }).click();
   await expect(page.locator(".monitor-list li")).toHaveCount(1);
   await expect(form).toBeHidden();

@@ -356,4 +356,4 @@ App 覆盖 Naive UI 的 primaryColor、primaryColorHover、primaryColorPressed �
 
 ## 文案约定
 
-简单文案末尾不要逗号
+简单文案末尾不要句号

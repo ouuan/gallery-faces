@@ -58,7 +58,7 @@ test("trash preserves read-only previews and supports cancellation, failure and 
   await page.getByRole("button", { name: "恢复当前图片", exact: true }).click();
   await expect(page.getByRole("button", { name: "恢复当前图片", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "取消恢复", exact: true }).click();
-  await expect(page.getByText("恢复已取消，图片仍在回收站。")).toBeVisible();
+  await expect(page.getByText("恢复已取消，图片仍在回收站")).toBeVisible();
   await page.getByRole("button", { name: "恢复当前图片", exact: true }).click();
   failNextRead = true;
   await expect(page.getByText(/恢复失败：原文件已失效/)).toBeVisible();

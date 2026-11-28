@@ -29,7 +29,7 @@ test('cache monitoring is read-only and refresh preserves settings edits', async
   await expect(activity.getByRole('row', { name: /展示图/ })).toHaveText('展示图75%311');
   await expect(activity.getByText('暂无读取')).toBeVisible();
   await expect(panel.getByText('8.25 天')).toBeVisible();
-  await expect(panel.getByText('暂无清理记录。')).toBeVisible();
+  await expect(panel.getByText('暂无清理记录')).toBeVisible();
   const input = page.getByRole('textbox', { name: '人脸检测阈值' });
   await input.fill('0.3');
   refreshed = true;

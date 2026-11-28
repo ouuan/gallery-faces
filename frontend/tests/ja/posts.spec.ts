@@ -68,10 +68,10 @@ test('embed failure never falls back to images', async ({page}) => {
   await page.route('**/api/v1/**', route => route.fulfill({json: route.request().url().includes('/posts') ? {items:[{id:1,key:'x:20',platform:'x',url:'https://x.com/jack/status/20',embed_id:'20',author:'jack',published_at:'2026-01-01T00:00:00Z'}], next_cursor:null} : route.request().url().includes('/site') ? {site_title:'Gallery Faces'} : []}));
   await page.route('https://platform.twitter.com/widgets.js', route => route.abort());
   await page.goto('/');
-  await expect(page.getByText('投稿を表示できません。')).toBeVisible();
+  await expect(page.getByText('投稿を表示できません')).toBeVisible();
   await expect(page.getByRole('link',{name:'Xで投稿を見る'})).toBeVisible();
   await page.getByRole('button',{name:'再試行',exact:true}).click();
-  await expect(page.getByText('投稿を表示できません。')).toBeVisible();
+  await expect(page.getByText('投稿を表示できません')).toBeVisible();
   await expect(page.locator('img')).toHaveCount(0);
 });
 

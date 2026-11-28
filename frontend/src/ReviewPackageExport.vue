@@ -91,7 +91,7 @@ async function start() {
     <a :href="download" download target="_blank" rel="noopener" title="未开始或中断时可重试；未下载的文件保留一小时">手动下载</a>
   </span>
   <span v-if="error || job?.status === 'failed' || job?.status === 'expired'" role="alert" class="error-text">
-    {{ error || job?.error || '审核包不可用，请重新导出。' }}
+    {{ error || job?.error || '审核包不可用，请重新导出' }}
     <n-button v-if="restoring || job?.status === 'building' || job?.status === 'ready'" @click="check">重试查询</n-button>
   </span>
 </template>

@@ -28,7 +28,7 @@ onMounted(() => heading.value?.focus());
         <dl v-if="count"><div v-for="item in breakdown" :key="item.label" class="row">
           <dt>{{ item.label }}</dt><dd><span class="track" aria-hidden="true"><i :class="item.tone" :style="{ width: `${item.count / count * 100}%` }" /></span><span>{{ item.count }} 题</span></dd>
         </div></dl>
-        <p v-else>本局尚未提交答案。</p>
+        <p v-else>本局尚未提交答案</p>
       </section>
     </div>
     <GameFilterSummary class="result-filters" :filter="filter" />

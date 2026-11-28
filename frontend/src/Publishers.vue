@@ -135,8 +135,8 @@ async function submit() {
       <n-radio-button value="rules">仅有屏蔽规则 <small>{{ listing?.rules_count ?? '–' }}</small></n-radio-button>
     </n-radio-group>
   </div>
-  <p v-if="moved && view === 'posts'" role="status">帖子已删除，屏蔽规则已保留。<n-button text @click="view = 'rules'; moved = false">查看仅有屏蔽规则的账号</n-button></p>
-  <p v-if="view === 'rules'" class="hint">这些账号目前没有帖子，但屏蔽规则仍然生效。</p>
+  <p v-if="moved && view === 'posts'" role="status">帖子已删除，屏蔽规则已保留 <n-button text @click="view = 'rules'; moved = false">查看仅有屏蔽规则的账号</n-button></p>
+  <p v-if="view === 'rules'" class="hint">这些账号目前没有帖子，但屏蔽规则仍然生效</p>
   <n-alert v-if="listError" type="error">{{ listError }} <n-button text @click="load">重试</n-button></n-alert>
   <p v-else-if="loading" class="hint" role="status">正在加载发布者…</p>
   <div v-else-if="!listing?.items.length" class="empty-state" role="status">
@@ -176,7 +176,7 @@ async function submit() {
         <legend>{{ dialog.mode === 'purge' ? '删除后的收录规则' : '避免未来收录' }}</legend>
         <p v-if="dialog.mode === 'purge' && dialog.items.length > 1"><n-checkbox v-model:checked="keepRules" :disabled="busy">保留各账号现有规则</n-checkbox></p>
         <template v-if="!keepRules">
-          <p v-if="dialog.items.length > 1" class="hint">以下设置将替换所选账号的屏蔽规则。</p>
+          <p v-if="dialog.items.length > 1" class="hint">以下设置将替换所选账号的屏蔽规则</p>
           <n-checkbox v-for="source in (['all', ...indirect] as Source[])" :key="source" :checked="blocked.includes(source)" :disabled="disabledSource(source)" :aria-disabled="disabledSource(source)" @update:checked="toggle(source, $event)">{{ labels[source] }}</n-checkbox>
           <p class="hint">不勾选即不屏蔽。规则适用于监控和手动导入，不影响已有帖子。</p>
         </template>

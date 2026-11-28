@@ -128,9 +128,9 @@ watch(importId, (id, _, onCleanup) => {
         timer = setTimeout(poll, 1000);
         return;
       }
-      if (job.status === 'failed') importError.value = job.error || '导入失败，请重新上传。';
+      if (job.status === 'failed') importError.value = job.error || '导入失败，请重新上传';
       else {
-        importNotice.value = `已导入 ${job.added} 条建议，记录 ${job.recorded} 条审核结论，跳过 ${job.duplicates} 条重复记录。`;
+        importNotice.value = `已导入 ${job.added} 条建议，记录 ${job.recorded} 条审核结论，跳过 ${job.duplicates} 条重复记录`;
         void load();
       }
     } catch (cause) {
@@ -178,10 +178,10 @@ async function apply(decision: Decision, items: Suggestion[]) {
     if (disposed) return;
     if (decision === 'acknowledge') {
       if (response.failures.length) actionError.value = response.failures[0].detail;
-      else notice.value = '已确认审核结论。';
+      else notice.value = '已确认审核结论';
     } else {
       failures.value = response.failures;
-      notice.value = `已${decision === 'accept' ? '接受' : '拒绝'} ${response.applied.length} 条建议。`;
+      notice.value = `已${decision === 'accept' ? '接受' : '拒绝'} ${response.applied.length} 条建议`;
     }
     selected.value = selected.value.filter(id => !response.applied.includes(id));
     await load();
@@ -215,7 +215,7 @@ function externalSource(item: Suggestion) {
         <n-button :disabled="uploading || !!importId" :loading="uploading" @click="fileInput?.click()"><template #icon><Upload /></template>导入审核结果</n-button>
       </div>
     </header>
-    <p v-if="importId || importNotice" role="status">{{ importId ? '正在后台导入审核结果，可以继续审核或离开此页。' : importNotice }}</p>
+    <p v-if="importId || importNotice" role="status">{{ importId ? '正在后台导入审核结果，可以继续审核或离开此页' : importNotice }}</p>
     <n-alert v-if="importError" type="error">{{ importError }}</n-alert>
     <p v-if="notice" role="status">{{ notice }}</p>
     <n-alert v-if="actionError" type="error">{{ actionError }}</n-alert>
@@ -232,7 +232,7 @@ function externalSource(item: Suggestion) {
       </div>
       <div v-if="!groups.length" class="empty-state" role="status">
         <h2>{{ loading ? '正在加载…' : status.value === 'review' ? '暂无建议或审核结论' : status.value === 'acknowledged' ? '暂无已确认结论' : `没有${status.label}的建议` }}</h2>
-        <p v-if="!loading && status.value === 'review'">可导入 review-result.json 或含附件的结果 ZIP。</p>
+        <p v-if="!loading && status.value === 'review'">可导入 review-result.json 或含附件的结果 ZIP</p>
       </div>
       <section v-for="{ items, ids, count, capped, clearGroup, disabled } in groups" :key="items[0].image_id" class="image-group" :aria-label="`图片 #${items[0].image_id} 的审核记录`">
         <div class="image-column">
@@ -241,7 +241,7 @@ function externalSource(item: Suggestion) {
             <n-checkbox v-if="ids.length" :checked="count === ids.length" :indeterminate="count > 0 && count < ids.length"
               :disabled="busy || disabled" :aria-disabled="busy || disabled" @update:checked="toggle(ids, !clearGroup)">{{ capped ? (clearGroup ? '取消本图选择' : '选择本图建议至上限') : '全选本图建议' }}<span class="sr-only">（图片 #{{ items[0].image_id }}）</span></n-checkbox>
           </div>
-          <p v-if="capped" class="hint">本图已选 {{ count }} / {{ ids.length }} 条，单次最多选 {{ selectionLimit }} 条。</p>
+          <p v-if="capped" class="hint">本图已选 {{ count }} / {{ ids.length }} 条，单次最多选 {{ selectionLimit }} 条</p>
           <ReviewPackageImage :src="`/api/v1/admin/media/${items[0].image_id}`" :fallback="`/api/v1/admin/media/${items[0].image_id}?thumbnail=true`"
             :width="items[0].width" :height="items[0].height" :alt="`图片 #${items[0].image_id}`" :boxes="positions(items)" />
           <p class="hint">{{ items[0].width }} × {{ items[0].height }} px</p>
@@ -272,9 +272,9 @@ function externalSource(item: Suggestion) {
                 :boxes="item.attachment.boxes.map((box, position) => ({ box, label: String(position + 1), active: position === faceChoices[item.id] }))" />
               <a v-if="externalSource(item)?.source_url" :href="externalSource(item)?.source_url ?? undefined" target="_blank" rel="noopener noreferrer">查看参考图来源</a>
               <template v-if="actionable(item)">
-                <p v-if="!item.attachment.boxes.length" class="error-text">未检测到有效人脸，无法接受此建议。</p>
+                <p v-if="!item.attachment.boxes.length" class="error-text">未检测到有效人脸，无法接受此建议</p>
                 <template v-else>
-                  <p class="hint">{{ canAccept(item) ? `目标人脸 ${faceChoices[item.id] + 1}：${coords(item.attachment.boxes[faceChoices[item.id]])} px` : '请选择要加入参考库的人脸。' }}</p>
+                  <p class="hint">{{ canAccept(item) ? `目标人脸 ${faceChoices[item.id] + 1}：${coords(item.attachment.boxes[faceChoices[item.id]])} px` : '请选择要加入参考库的人脸' }}</p>
                   <n-radio-group v-model:value="faceChoices[item.id]" :name="`faces-${item.id}`" :disabled="busy" aria-label="参考图目标人脸" class="controls face-options">
                     <n-radio v-for="(_, position) in item.attachment.boxes" :key="position" :value="position">人脸 {{ position + 1 }}</n-radio>
                   </n-radio-group>

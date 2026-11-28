@@ -226,7 +226,7 @@ onUnmounted(() => { clearInterval(timer); });
       <div class="monitor-history">
         <n-checkbox v-model:checked="history" :disabled="busy">指定起始时间，补拉历史</n-checkbox>
         <label v-if="history" class="field-label">起始时间<LocalDateTime aria-label="起始时间" v-model="start" :disabled="busy" /></label>
-        <p v-else class="hint">默认只收新增，以保存时刻为起点。</p>
+        <p v-else class="hint">默认只收新增，以保存时刻为起点</p>
       </div>
       <FeedFormActions :busy="busy" :disabled="invalidList || !pendingAccounts.length || !interval || (history && !start)">添加监控</FeedFormActions>
       <p v-if="accounts.length" class="hint">共 {{ accounts.length }} 项监控，统一使用以上间隔和起始时间</p>
@@ -250,7 +250,7 @@ onUnmounted(() => { clearInterval(timer); });
         #{{ result.id }}：{{ batchResultLabel(result) }}
       </p>
     </div>
-    <p v-if="loaded && !visibleMonitors.length" class="hint">还没有 {{ platformLabel(activePlatform) }} 发布者监控。</p>
+    <p v-if="loaded && !visibleMonitors.length" class="hint">还没有 {{ platformLabel(activePlatform) }} 发布者监控</p>
     <ul class="monitor-list" :aria-busy="loading">
       <li v-for="item in monitorRows" :key="item.id" :class="{ 'is-selected': selected.includes(item.id) }">
         <n-checkbox :aria-label="'选择 ' + item.username" :checked="selected.includes(item.id)" @update:checked="toggle([item.id], $event)" />
@@ -279,9 +279,9 @@ onUnmounted(() => { clearInterval(timer); });
     <n-modal :show="!!dialog" :mask-closable="!busy" @update:show="!busy && !$event && (dialog = null)">
       <n-card class="monitor-dialog" role="dialog" aria-modal="true" :title="dialogTitle" :aria-label="dialogTitle">
         <n-alert v-if="error" type="error">{{ error }}</n-alert>
-        <p v-if="dialog === 'delete'">将删除监控配置并取消未完成任务，已导入照片会保留。</p>
+        <p v-if="dialog === 'delete'">将删除监控配置并取消未完成任务，已导入照片会保留</p>
         <template v-else-if="dialog === 'scope'">
-          <p v-if="targets.length > 1">以下范围将覆盖所选 {{ targets.length }} 项 {{ platformLabel(editPlatform) }} 监控的设置，仅对新建任务生效。</p>
+          <p v-if="targets.length > 1">以下范围将覆盖所选 {{ targets.length }} 项 {{ platformLabel(editPlatform) }} 监控的设置，仅对新建任务生效</p>
           <FeedScopeFields v-model="editScope" :platform="editPlatform" :disabled="busy" />
         </template>
         <template v-else-if="dialog === 'hashtags'">
@@ -293,13 +293,13 @@ onUnmounted(() => { clearInterval(timer); });
           <span class="hint">统一应用于所选 {{ targets.length }} 项监控，最少 5 分钟</span>
         </label>
         <template v-else>
-          <p v-if="dialog === 'resume'">将按以下方式继续 {{ targets.length }} 项监控。</p>
+          <p v-if="dialog === 'resume'">将按以下方式继续 {{ targets.length }} 项监控</p>
           <n-select v-if="dialog === 'resume'" :to="false" v-model:value="mode" aria-label="恢复方式" :options="[{ value: 'catch_up', label: '补齐暂停期间' }, { value: 'new', label: '不补，只收之后新增' }, { value: 'start', label: '指定起始时间' }]" />
           <template v-if="dialog === 'backfill' || mode === 'start'">
             <label class="field-label">起始时间<LocalDateTime contained aria-label="起始时间" v-model="since" :disabled="busy" /></label>
             <p v-if="dialog === 'backfill'" class="hint">补拉该时刻至提交时刻的帖子，跳过已有媒体。一次性补齐不会修改自动监控进度。</p>
-            <p v-else class="hint">将以所选时间作为新的采集起点，重新开始自动增量检查，跳过已有媒体。</p>
-            <p v-if="since && !validSince" class="error-text">起始时间必须早于当前时间。</p>
+            <p v-else class="hint">将以所选时间作为新的采集起点，重新开始自动增量检查，跳过已有媒体</p>
+            <p v-if="since && !validSince" class="error-text">起始时间必须早于当前时间</p>
           </template>
         </template>
         <div class="monitor-toolbar">

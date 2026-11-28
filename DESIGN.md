@@ -181,6 +181,6 @@ components:
 
 主要控件高 44px，保留键盘焦点、减少动态效果及浅深主题。等高与瀑布流布局展示完整图像，方形布局可裁切。不要虚构照片库内容；预览占位图标明“布局示例”。
 
-简单文案末尾不要逗号。
+简单文案末尾不要句号
 
 [基础色与布局](frontend/src/style.css)；[组件主题色](frontend/src/theme-colors.ts)（浅色与深色的占位文字、悬停和按下状态，由 [App](frontend/src/App.vue) 应用）。详见[完整设计指南](.impeccable/design-full.md)。

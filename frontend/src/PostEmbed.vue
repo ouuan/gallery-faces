@@ -69,7 +69,7 @@ onBeforeUnmount(() => { generation++; observer?.disconnect(); });
   <article class="post-embed">
     <div v-show="!failed" ref="host" class="embed-host" :class="{ 'x-embed': post.platform === 'x' }" />
     <p v-if="busy" class="embed-status muted" role="status">投稿を読み込み中…</p>
-    <p v-if="failed" class="embed-status" role="status">投稿を表示できません。<n-button text @click="render">再試行</n-button></p>
+    <p v-if="failed" class="embed-status" role="status">投稿を表示できません<n-button text @click="render">再試行</n-button></p>
     <a v-if="url" class="post-source" :href="url" target="_blank" rel="noopener noreferrer">{{ post.platform === 'x' ? 'X' : 'Instagram' }}で投稿を見る</a>
   </article>
 </template>

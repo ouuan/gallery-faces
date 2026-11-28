@@ -150,7 +150,7 @@ watch([endpoint, () => props.group], () => { items.value = []; cursor.value = nu
         <template v-if="selected">
           <PersonSelect v-if="!draft.notFace" v-model="draft.personId" :disabled="busy" accessible-label="建议人物" placeholder="建议人物（可不选）" />
           <n-checkbox :checked="draft.notFace" :disabled="busy" @update:checked="setNotFace">不是人脸</n-checkbox>
-          <n-alert v-if="selected.locked" type="warning">这张人脸已经人工确认，你仍可提交反馈。</n-alert>
+          <n-alert v-if="selected.locked" type="warning">这张人脸已经人工确认，你仍可提交反馈</n-alert>
         </template>
       </template>
       <n-input :input-props="{ id: `feedback-${imageId}`, 'aria-label': '反馈内容' }" v-model:value="draft.content" type="textarea" :maxlength="1000" show-count :autosize="{ minRows: 3, maxRows: 8 }" :disabled="busy" :placeholder="selected ? '补充说明（可不填）' : '例如：人物识别有误、来源需要补充'" />

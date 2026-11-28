@@ -158,7 +158,7 @@ test('imports without applying changes, reloads the queue, and requires a valid 
   await page.reload();
   await expect(page.getByText(/正在后台导入/)).toBeVisible();
   finished = true;
-  await expect(page.getByText('已导入 3 条建议，记录 0 条审核结论，跳过 1 条重复记录。')).toBeVisible();
+  await expect(page.getByText('已导入 3 条建议，记录 0 条审核结论，跳过 1 条重复记录')).toBeVisible();
   const multi = page.getByRole('article', { name: '建议 #102' });
   const empty = page.getByRole('article', { name: '建议 #108' });
   await expect(multi.getByRole('button', { name: '接受', exact: true })).toBeDisabled();

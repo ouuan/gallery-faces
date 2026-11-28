@@ -149,7 +149,7 @@ for (const width of [375, 1280]) test(`filtered face game, shared feedback and s
   await expect(sidebarHeadings.first()).toHaveText('图片反馈');
   await expect(sidebarHeadings.nth(1)).toHaveText(peopleTitle);
   await expect(sidebarHeadings.nth(2)).toHaveText('来源 · 1');
-  await expect(page.getByText('这张人脸已经人工确认，你仍可提交反馈。')).toBeVisible();
+  await expect(page.getByText('这张人脸已经人工确认，你仍可提交反馈')).toBeVisible();
   const firstPreview = button('更换人脸 #1').locator('svg');
   await expect(firstPreview).toHaveAttribute('viewBox', '80 40 160 120');
   const firstCrop = await firstPreview.screenshot();

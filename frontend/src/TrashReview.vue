@@ -126,13 +126,13 @@ onUnmounted(() => { stopped = true; clearTimeout(timer); });
     </div>
     <div v-if="active" class="trash-detail">
       <div class="trash-heading"><h3>图片 #{{ active.id }}</h3><div class="trash-actions"><n-button :disabled="busy || loading || current === 0" aria-keyshortcuts="ArrowLeft" @click="move(current - 1)">上一张</n-button><span>{{ current + 1 }} / {{ images.length }}</span><n-button :disabled="busy || loading || current === images.length - 1" aria-keyshortcuts="ArrowRight" @click="move(current + 1)">下一张</n-button></div></div>
-      <n-alert v-if="active.cleanup_pending" type="warning">部分文件尚未清理，后台会自动重试。</n-alert>
+      <n-alert v-if="active.cleanup_pending" type="warning">部分文件尚未清理，后台会自动重试</n-alert>
       <n-alert v-if="restoring(active)" type="info">{{ active.restore_task?.stage }} <n-button :disabled="busy" @click="cancel">取消恢复</n-button></n-alert>
       <n-alert v-else-if="active.restore_task?.status === 'failed'" type="error">恢复失败：{{ active.restore_task.error }}。可使用上方恢复按钮重试。</n-alert>
-      <p v-else-if="active.restore_task?.status === 'cancelled'" class="hint">恢复已取消，图片仍在回收站。</p>
+      <p v-else-if="active.restore_task?.status === 'cancelled'" class="hint">恢复已取消，图片仍在回收站</p>
       <div class="trash-columns">
         <div class="trash-preview">
-          <p v-if="failedImages.has(active.id)" class="hint">缩略图不可用，来源与审核记录仍保留。</p>
+          <p v-if="failedImages.has(active.id)" class="hint">缩略图不可用，来源与审核记录仍保留</p>
           <img v-else :key="active.id" :src="`/api/v1/admin/media/${active.id}?thumbnail=true`" :alt="`图片 #${active.id} 的保留缩略图`" :width="active.width" :height="active.height" @error="failedImages.add(active.id)" />
           <p class="hint">保留的缩略图 · {{ active.width }} × {{ active.height }}（原尺寸）</p>
         </div>
