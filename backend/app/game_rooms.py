@@ -52,7 +52,8 @@ class RoomPreview(BaseModel):
     filters: GameFilters
 
 
-class CreateRoom(JoinRoom):
+class CreateRoom(BaseModel):
+    nickname: Annotated[str, StringConstraints(strip_whitespace=True, max_length=24)] = ''
     solo: bool = False
     settings: RoomSettings = Field(default_factory=RoomSettings)
     filters: GameFilters = Field(default_factory=GameFilters)
@@ -808,6 +809,7 @@ def router(draw, validate, save_feedback=None, *, room_type=Room):
     @routes.post('', response_model=Membership, status_code=201)
     async def create_room(body: CreateRoom, request: Request):
         guard(request)
+        check(body.solo or body.nickname, '请填写昵称', 422)
         validate(body.filters)
         cleanup()
         check(sum(room.phase != 'finished' and clock() - room.touched < 900 for room in rooms.values()) < 128,

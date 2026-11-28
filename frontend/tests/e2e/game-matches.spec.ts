@@ -1,6 +1,18 @@
 import { expect } from '@playwright/test';
 import { test } from '../room-fixture';
 
+test('admin sees an unfilled nickname for a solo game started without one', async ({ guests }) => {
+  const player = guests[0]!, admin = guests[1]!;
+  await player.goto('/face-game');
+  await player.getByRole('button', { name: '开始游戏' }).click();
+  await expect(player.getByRole('button', { name: '结束本局' })).toBeVisible();
+  await admin.goto('/admin/game-matches');
+  await admin.getByPlaceholder('输入管理员密码').fill('test-password');
+  await admin.getByRole('button', { name: '登录工作台' }).click();
+  await admin.getByRole('button', { name: '认脸游戏 · 单人' }).click();
+  await expect(admin.getByText('未填写昵称', { exact: true })).toBeVisible();
+});
+
 test('admin can inspect both matches from one room without uploading', async ({ guests }) => {
   const page = guests[1]!;
   await page.goto('/admin/game-matches');

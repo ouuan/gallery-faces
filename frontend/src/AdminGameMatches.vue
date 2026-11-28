@@ -36,7 +36,7 @@ watch([query, selected, retry], async (_, __, cleanup) => {
     <template v-else-if="detail"><h2>{{ games[detail.game] }} · {{ detail.solo ? '单人' : `房间 ${detail.code}` }}</h2>
       <p>{{ phases[detail.phase] }} · 第 {{ detail.round }} 题 · {{ detail.members }} 人</p>
       <GameRoomRules :settings="detail.settings" :history="detail.game === 'history-quiz'" :solo="detail.solo" /><GameFilterSummary :filter="fromQuery(detail.filters)" />
-      <h3>玩家成绩</h3><p v-for="member in detail.players" :key="member.name"><strong>{{ member.name }}</strong> · <template v-if="detail.game === 'history-quiz'">{{ member.points }} 分 · 平均偏差 {{ detail.settled ? (member.deviation / detail.settled).toFixed(1) + ' 天' : '—' }}</template><template v-else>正确 {{ member.correct }} · 错误 {{ member.wrong }}</template> · 未答 {{ member.unanswered }}</p>
+      <h3>玩家成绩</h3><p v-for="member in detail.players" :key="member.name"><strong>{{ member.name || '未填写昵称' }}</strong> · <template v-if="detail.game === 'history-quiz'">{{ member.points }} 分 · 平均偏差 {{ detail.settled ? (member.deviation / detail.settled).toFixed(1) + ' 天' : '—' }}</template><template v-else>正确 {{ member.correct }} · 错误 {{ member.wrong }}</template> · 未答 {{ member.unanswered }}</p>
     </template>
     <template v-else-if="list"><p v-if="!list.total">暂无符合条件的对局</p><table v-else><thead><tr><th>对局</th><th>状态</th><th>最近活动</th></tr></thead><tbody>
       <tr v-for="item in list.items" :key="item.id"><td><n-button text @click="selected = item.id">{{ games[item.game] }} · {{ item.solo ? '单人' : item.code }}</n-button></td><td>{{ phases[item.phase] }} · 第 {{ item.round }} 题</td><td>{{ new Date(item.activity).toLocaleString() }}</td></tr>

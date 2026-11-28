@@ -118,8 +118,8 @@ watch(() => room.value?.phase, phase => {
   }
 });
 function enterRoom() {
-  const name = nickname.value.trim() || (props.solo ? '我' : '');
-  if (!name) return;
+  const name = nickname.value.trim();
+  if (!props.solo && !name) return;
   if (isJoin.value) void enter(name, code.value || joinCode.value.trim().toUpperCase());
   else if (!rangeError(filters.value.start, filters.value.end)) void enter(name, '', { settings: settings.value, filters: roomFilters(filters.value) });
 }

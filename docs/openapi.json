@@ -6765,8 +6765,8 @@
           "nickname": {
             "type": "string",
             "maxLength": 24,
-            "minLength": 1,
-            "title": "Nickname"
+            "title": "Nickname",
+            "default": ""
           },
           "solo": {
             "type": "boolean",
@@ -6781,9 +6781,6 @@
           }
         },
         "type": "object",
-        "required": [
-          "nickname"
-        ],
         "title": "CreateRoom"
       },
       "Created": {

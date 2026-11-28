@@ -2053,7 +2053,10 @@ export interface components {
         };
         /** CreateRoom */
         CreateRoom: {
-            /** Nickname */
+            /**
+             * Nickname
+             * @default
+             */
             nickname: string;
             /**
              * Solo
