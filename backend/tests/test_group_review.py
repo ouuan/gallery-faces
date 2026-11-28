@@ -304,13 +304,17 @@ def test_repeated_person_counts_only_visible_faces_on_the_representative(client)
     assert listing(client, 'repeated_person') == []
     assert listing(client) == []
     with db.connect(True) as conn:
-        conn.execute('UPDATE faces SET ignored=0 WHERE id=?', (extra,))
+        conn.execute('UPDATE faces SET ignored=0,locked=0 WHERE id=?', (extra,))
     assert [row['id'] for row in listing(client, 'repeated_person')] == [large]
     assert [row['id'] for row in listing(client)] == [large]
     with db.connect(True) as conn:
-        conn.execute('UPDATE faces SET person_id=NULL WHERE id=?', (extra,))
+        conn.execute('UPDATE faces SET locked=1 WHERE id=?', (extra,))
     assert listing(client, 'repeated_person') == []
     assert listing(client) == []
+    with db.connect(True) as conn:
+        conn.execute('UPDATE faces SET locked=0 WHERE image_id=? AND person_id=?', (large, alice))
+    assert listing(client, 'repeated_person') == []
+    assert [row['id'] for row in listing(client)] == [large]
 
 
 def test_game_ineligible_filters_labeled_faces_without_marking_for_review(client):

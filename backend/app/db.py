@@ -296,7 +296,6 @@ def init():
                 db.execute('ALTER TABLE review_groups ADD COLUMN repeated_person INTEGER NOT NULL DEFAULT 0')
                 db.execute(f'UPDATE review_groups SET repeated_person={group_index.REPEATED_PERSON_SQL}')
                 db.execute('CREATE INDEX review_group_repeated_person ON review_groups(group_id) WHERE repeated_person=1')
-                db.execute('UPDATE review_groups SET review=1 WHERE repeated_person=1 AND review=0')
             db.execute('UPDATE schema_version SET version=17')
         if db.execute('SELECT version FROM schema_version').fetchone()[0] < 18:
             group_index.install_game_scores(db)
@@ -304,6 +303,9 @@ def init():
         if db.execute('SELECT version FROM schema_version').fetchone()[0] < 19:
             group_index.install_review_game_scores(db)
             db.execute('UPDATE schema_version SET version=19')
+        if db.execute('SELECT version FROM schema_version').fetchone()[0] < 20:
+            db.execute('INSERT OR IGNORE INTO dirty_groups SELECT group_id FROM review_groups WHERE repeated_person=1')
+            db.execute('UPDATE schema_version SET version=20')
     with startup_phase('interrupted restore cleanup scan'), connect(True) as db:
         recover_hidden_files(db)
     with startup_phase('media hash backfill'):

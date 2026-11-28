@@ -261,15 +261,6 @@ const reviewIssues = computed(() => {
   const automatic = unresolved.length - unknown;
   if (unknown) issues.push(`未知人物（${unknown} 个人脸）`);
   if (automatic) issues.push(`自动识别结果待确认（${automatic} 个人脸）`);
-  const counts = new Map<number, number>();
-  for (const { person_id } of visibleFaces.value) {
-    if (person_id != null) counts.set(person_id, (counts.get(person_id) ?? 0) + 1);
-  }
-  for (const [id, count] of counts) {
-    if (count < 2) continue;
-    const name = store.people.find(person => person.id === id)?.name ?? `#${id}`;
-    issues.push(`同一人物出现多次：${name}（${count} 个人脸）`);
-  }
   if (image.pending_feedback_count) issues.push(`用户反馈（${image.pending_feedback_count} 条待处理）`);
   return issues;
 });
@@ -629,7 +620,7 @@ onMounted(load);
           { value: 'review', label: '全部待审核' },
           { value: 'feedback', label: '用户反馈' },
           { value: 'unknown', label: '未知人物' },
-          { value: 'repeated_person', label: '同一人物出现多次' },
+          { value: 'repeated_person', label: '同一人物出现多次（待确认）' },
           { value: 'game_ineligible', label: '不能用于出题' },
           { value: 'no_faces', label: '无人脸' },
           { value: 'failed', label: '检测失败' },

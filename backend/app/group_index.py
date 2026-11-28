@@ -2,7 +2,7 @@
 
 REVIEW_FLAGS = ('review', 'unknown', 'no_faces', 'failed', 'pending', 'incomplete', 'feedback', 'repeated_person')
 REPEATED_PERSON_SQL = '''EXISTS(SELECT 1 FROM faces WHERE image_id=representative AND ignored=0
-    AND person_id IS NOT NULL GROUP BY person_id HAVING count(*) > 1)'''
+    AND person_id IS NOT NULL GROUP BY person_id HAVING count(*) > 1 AND min(locked)=0)'''
 SCOPES = ('public', 'review')
 GAME_FACE_SCORE = '''CASE WHEN length(f.embedding)>0 THEN (SELECT json_extract(candidate.value,'$.score')
     FROM json_each(f.candidates) candidate WHERE json_extract(candidate.value,'$.person_id')=f.person_id) END'''
@@ -125,7 +125,7 @@ def refresh(db):
                 EXISTS(SELECT 1 FROM images m JOIN feedback f ON f.image_id=m.id WHERE m.group_id=reps.group_id AND m.hidden=0 AND f.status='pending') AS feedback
                 FROM reps CROSS JOIN images i ON i.id=representative)
                 INSERT INTO review_groups(group_id,representative,{','.join(REVIEW_FLAGS)},min_game_score) SELECT group_id,representative,
-                detection IN ('pending','failed') OR empty OR unlocked OR incomplete OR feedback OR repeated_person,unknown,
+                detection IN ('pending','failed') OR empty OR unlocked OR incomplete OR feedback,unknown,
                 detection='done' AND no_active,detection='failed',detection='pending',incomplete,feedback,
                 repeated_person,min_game_score FROM flags''')
         score = f',max({GAME_FACE_SCORE})' if public else ''

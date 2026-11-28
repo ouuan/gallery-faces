@@ -42,10 +42,10 @@ test("review reasons follow the current photo and disappear in specific filters"
   await page.getByRole("button", { name: "审核图片（5，共 1 个版本）", exact: true }).click();
   await expect(issues).toHaveCount(0);
   await page.getByRole("button", { name: "审核图片（1，共 1 个版本）", exact: true }).click();
-  for (const label of ["全部待审核", "全部在库图片", "未知人物", "同一人物出现多次", "不能用于出题", "无人脸", "检测失败", "来源待补全", "等待检测"]) {
+  for (const label of ["全部待审核", "全部在库图片", "未知人物", "同一人物出现多次（待确认）", "不能用于出题", "无人脸", "检测失败", "来源待补全", "等待检测"]) {
     await page.locator('[aria-label="审核状态"]').click();
     await page.locator(".n-base-select-option").filter({ hasText: new RegExp(`^${label}$`) }).click();
-    if (label === "同一人物出现多次") await expect(page).toHaveURL(/state=repeated_person/);
+    if (label === "同一人物出现多次（待确认）") await expect(page).toHaveURL(/state=repeated_person/);
     if (label === "不能用于出题") {
       await expect(page).toHaveURL(/state=game_ineligible/);
       await page.reload();
@@ -53,7 +53,10 @@ test("review reasons follow the current photo and disappear in specific filters"
       await expect(page.locator('.face-crop')).toHaveAttribute('src', '/api/v1/admin/faces/3/crop');
     }
     await expect(page.getByRole("button", { name: "审核图片（1，共 1 个版本）", exact: true })).toBeVisible();
-    if (["全部待审核", "全部在库图片"].includes(label)) await expect(issues).toContainText("同一人物出现多次：测试人物（2 个人脸）");
+    if (["全部待审核", "全部在库图片"].includes(label)) {
+      await expect(issues).toContainText("自动识别结果待确认");
+      await expect(issues).not.toContainText("同一人物出现多次");
+    }
     else await expect(issues).toHaveCount(0);
   }
 });

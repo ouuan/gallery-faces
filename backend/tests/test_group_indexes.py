@@ -125,23 +125,27 @@ def test_v14_migration_rolls_back_and_restarts_once(client, monkeypatch):
     assert client.get('/api/v1/gallery').json()['total'] == 1
 
 
-def test_v17_backfills_repeated_person_review_for_existing_images(client):
+@pytest.mark.parametrize('version', [16, 19])
+def test_repeated_person_filter_migration(client, version):
     with db.connect(True) as conn:
         first = image(conn)
-        image(conn)
+        pending = image(conn)
         person = conn.execute("INSERT INTO people(name) VALUES('one')").lastrowid
         conn.execute('UPDATE faces SET person_id=?', (person,))
         conn.execute("INSERT INTO faces(image_id,box,person_id) VALUES(?,'[]',?)", (first, person))
         conn.execute('UPDATE faces SET locked=1')
+        conn.execute("INSERT INTO faces(image_id,box,person_id) VALUES(?,'[]',?)", (pending, person))
     with db.connect() as conn:
         conn.execute('BEGIN IMMEDIATE')
-        conn.execute('UPDATE review_groups SET review=0 WHERE repeated_person=1')
-        conn.execute('DROP INDEX review_group_repeated_person')
-        conn.execute('ALTER TABLE review_groups DROP COLUMN repeated_person')
-        conn.execute('UPDATE schema_version SET version=16')
+        if version == 16:
+            conn.execute('DROP INDEX review_group_repeated_person')
+            conn.execute('ALTER TABLE review_groups DROP COLUMN repeated_person')
+        else:
+            conn.execute('UPDATE review_groups SET repeated_person=1,review=1 WHERE representative=?', (first,))
+        conn.execute('UPDATE schema_version SET version=?', (version,))
     db.init()
-    assert [row['id'] for row in client.get('/api/v1/admin/images?state=repeated_person').json()] == [first]
-    assert [row['id'] for row in client.get('/api/v1/admin/images').json()] == [first]
+    assert [row['id'] for row in client.get('/api/v1/admin/images?state=repeated_person').json()] == [pending]
+    assert [row['id'] for row in client.get('/api/v1/admin/images').json()] == [pending]
 
 
 def test_game_ineligible_filter_backfills_existing_representatives(client):

@@ -116,7 +116,7 @@ def snapshot(db, image_id):
     members = [dict(id=row['id'], filename=row['filename'], already_trashed=bool(row['hidden'])) for row in rows]
     group = (image['group_id'],)
     flags = db.execute('SELECT * FROM review_groups WHERE group_id=?', group).fetchone()
-    reasons = [flag for flag in REVIEW_FLAGS if flag != 'review' and flags[flag]]
+    reasons = [flag for flag in REVIEW_FLAGS if flag not in ('review', 'repeated_person') and flags[flag]]
     if any(not face['ignored'] and not face['locked'] and face['person_id'] is not None for face in faces):
         reasons.append('unconfirmed_match')
     incomplete = [row[0] for row in db.execute(f'''SELECT id FROM images i WHERE i.group_id=? AND i.hidden=0
