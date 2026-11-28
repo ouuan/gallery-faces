@@ -4,6 +4,7 @@ from datetime import date, datetime
 
 from fastapi import HTTPException
 
+from . import face_draw
 from .db import connect
 from .list_queries import gallery_matches
 
@@ -17,11 +18,9 @@ def saved_pick(db, key):
     return tuple(row) if row else None
 
 
-def candidates(db, filters, *, group_id=None, last=None, first=False, game=False, first_source=False):
+def candidates(db, filters, *, group_id=None, last=None, first=False, first_source=False):
     matches, args = gallery_matches(*filters, group_id=group_id, first_source=first_source)
     sql = f'SELECT g.group_id,g.representative FROM ({matches}) hit JOIN public_groups g ON g.group_id=hit.group_id'
-    if game and not filters[0]:
-        sql += ' WHERE EXISTS(SELECT 1 FROM public_group_people who WHERE who.group_id=g.group_id)'
     if group_id is None:
         sql += ' ORDER BY g.group_id IS ?,random()'
         args.append(last)
@@ -30,13 +29,13 @@ def candidates(db, filters, *, group_id=None, last=None, first=False, game=False
     return [tuple(row) for row in db.execute(sql, args)]
 
 
-def draw(filters, last, *, game=False, first_source=False):
+def draw(filters, last, *, first_source=False):
     with connect() as db:
-        first = candidates(db, filters, last=last, first=True, game=game, first_source=first_source)
+        first = candidates(db, filters, last=last, first=True, first_source=first_source)
     if first:
         yield first[0]
         with connect() as db:
-            others = candidates(db, filters, last=last, game=game, first_source=first_source)
+            others = candidates(db, filters, last=last, first_source=first_source)
         yield from (candidate for candidate in others if candidate != first[0])
 
 
@@ -57,22 +56,24 @@ def game_choices(db, face, selected):
 
 def game_question(filters, last_group, last_face, pin):
     selected = filters[0]
-    for group, representative in draw(filters, last_group, game=True):
+    missing = set()
+    for person, group, representative in face_draw.candidates(filters, last_group, last_face):
+        if representative in missing:
+            continue
         try:
             asset = pin(representative)
         except HTTPException as error:
             if error.status_code == 404:
+                missing.add(representative)
                 continue
             raise
         with connect() as db:
             db.execute('BEGIN')
-            if candidates(db, filters, group_id=group, game=True) != [(group, representative)]:
-                continue
-            condition = ' AND person_id IN (SELECT value FROM json_each(?))' if selected else ''
-            face = db.execute('SELECT id,box,revision,locked,person_id,candidates, '
-                              '(SELECT name FROM people WHERE id=faces.person_id) AS answer_name FROM faces WHERE image_id=? '
-                              f'AND ignored=0 AND person_id IS NOT NULL{condition} ORDER BY id IS ?,random() LIMIT 1',
-                              [representative, *([json.dumps(selected)] if selected else []), last_face]).fetchone()
+            groups, args = face_draw.group_query(filters, group)
+            face = db.execute(f'''SELECT f.id,f.box,f.revision,f.locked,f.person_id,f.candidates,p.name AS answer_name
+                FROM ({groups}) hit JOIN public_groups g USING(group_id) JOIN faces f ON f.image_id=g.representative
+                JOIN people p ON p.id=f.person_id WHERE g.representative=? AND f.ignored=0 AND f.person_id=?
+                ORDER BY f.id IS ?,random() LIMIT 1''', [*args, representative, person, last_face]).fetchone()
             if face:
                 return group, asset, dict(id=face['id'], box=json.loads(face['box']), revision=face['revision'],
                                           locked=bool(face['locked']), person_id=face['person_id'],

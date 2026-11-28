@@ -15,6 +15,12 @@ A local copy of a v13 snapshot (42,712 images, 23,525 posts, 98,128 faces, 151 p
 
 With one CPU and eight concurrent requests, all 24 requests finished in each of three mixed read batches (P95 194–219 ms) at the unchanged two-second public SQL budget. The one-second public lock wait is separate. On a disposable copy, changing image sizes in 1, 32 and 256 groups took 4.3, 5.5 and 17.8 ms respectively, including connection, group refresh and commit (five-run medians). Single-face save and undo were about 10 ms each. No production requests or data changes were needed for these checks.
 
+## Face-game selection
+
+Run `PYTHONPATH=backend backend/.venv/bin/python scripts/validation/face_game_queries.py` from the repository root. It checks candidate person/group pairs against gallery eligibility and compares first-pick SQL with the former group-first draw under 22 filter combinations. It uses a temporary synthetic database, not gallery media. Timings exclude opening connections, media access, revalidation, and drawing answer choices.
+
+With 50,000 images and 500 people (nine-run local medians), default selection went from 15.8 to 0.4 ms, a broad date range from 127.6 to 54.1 ms, and any of 450 people from 31.5 to 0.4 ms. The largest measured regression was the 450-person subset filter, from 48.3 to 59.4 ms; mixed publishers went from 11.4 to 14.8 ms. Unit tests separately exercise the two-stage distribution on an unbalanced library, avoiding the previous group, and retrying after missing or changed media.
+
 ## Large-library request benchmark
 
 From the repository root, with backend development dependencies installed, run:

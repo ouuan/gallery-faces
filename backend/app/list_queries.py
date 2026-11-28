@@ -7,11 +7,17 @@ from datetime import datetime
 SPARSE_LIMIT = 512
 
 
-def matching_groups(scope, people, match):
+def matching_groups(scope, people, match, *, group_id=None):
     table = f'{scope}_group_people'
     marks = ','.join('?' for _ in people)
     args = list(people)
-    if match in ('all', 'exact') and len(people) <= 8:
+    if group_id is not None:
+        chosen = f'SELECT group_id FROM {table} WHERE group_id=? AND person_id IN ({marks}) GROUP BY group_id'
+        args.insert(0, group_id)
+        if match in ('all', 'exact'):
+            chosen += ' HAVING count(*)=?'
+            args.append(len(people))
+    elif match in ('all', 'exact') and len(people) <= 8:
         chosen = ' INTERSECT '.join(f'SELECT group_id FROM {table} WHERE person_id=?' for _ in people)
     elif match in ('all', 'exact'):
         chosen = f'SELECT group_id FROM {table} WHERE person_id IN ({marks}) GROUP BY group_id HAVING count(*)=?'

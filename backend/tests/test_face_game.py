@@ -1,9 +1,11 @@
 import json
+import random
+from collections import Counter
 
 import pytest
 from fastapi import HTTPException
 
-from app import db, game_rooms, main
+from app import db, face_draw, game_rooms, main, photo_draw
 from test_photo_draw import photo
 from test_workflows import client
 
@@ -94,6 +96,107 @@ def test_skips_unavailable_and_nonrepresentative(client):
     with db.connect(True) as conn:
         conn.execute("UPDATE faces SET candidates='[]'")
     assert draw(people='1')['choices'] == [{'id': 1, 'name': '人1'}]
+
+
+@pytest.mark.parametrize('filters', [{}, {'publishers': 'x:alice'}, {'people': '1,2', 'match': 'subset'}])
+def test_person_then_group_are_uniform(client, filters):
+    with db.connect(True) as conn:
+        common = [seed(conn)] + [photo(conn) for _ in range(9)]
+        conn.execute('UPDATE faces SET person_id=1')
+        for group in common[:2]:
+            for _ in range(5 if group == common[0] else 1):
+                conn.execute("INSERT INTO faces(image_id,person_id,box) VALUES(?,2,'[]')", (group,))
+    scope = main.game_scope(game_rooms.GameFilters(**filters))
+    with db.connect() as conn:
+        rng = random.Random(426)
+        conn.create_function('random', 0, lambda: rng.getrandbits(63))
+        draws = Counter(tuple(face_draw.first_candidate(conn, scope, None))[:2] for _ in range(2000))
+    assert set(draws) == {(1, group) for group in common} | {(2, group) for group in common[:2]}
+    for (person, _), count in draws.items():
+        expected = 100 if person == 1 else 500
+        assert abs(count - expected) < expected * .35
+
+
+@pytest.mark.parametrize('mode', ['any', 'all', 'subset', 'exact'])
+def test_filtered_person_group_pairs(client, mode):
+    with db.connect(True) as conn:
+        first = seed(conn)
+        conn.execute("INSERT INTO accounts(person_id,platform,username) VALUES(1,'x','ALICE')")
+        second = photo(conn)
+        solo = photo(conn)
+        conn.execute('UPDATE faces SET person_id=2 WHERE image_id=?', (solo,))
+        for person in [2, 3]:
+            conn.execute("INSERT INTO faces(image_id,person_id,box) VALUES(?,?,'[]')", (first, person))
+        for person in [1, 2, 3, 4]:
+            conn.execute("INSERT INTO faces(image_id,person_id,box) VALUES(?,?,'[]')", (second, person))
+        extra = photo(conn, author='alice', date='2025-01-01T00:00:00Z')
+        photo(conn, group=extra, author='bob', date='2026-01-01T00:00:00Z')
+        conn.execute('UPDATE faces SET person_id=3 WHERE image_id=?', (extra,))
+    scope = main.game_scope(game_rooms.GameFilters(people='1-3', match=mode, publishers='person:1,x:absent',
+                            start='2026-01-01T00:00:00Z', end='2026-01-02T00:00:00Z', include_no_faces=True))
+    expected = {(person, first) for person in (1, 2, 3)}
+    if mode in ('any', 'subset'):
+        expected.add((2, solo))
+    if mode in ('any', 'all'):
+        expected.update((person, second) for person in (1, 2, 3))
+    candidates = {(person, group) for person, group, _ in face_draw.candidates(scope, None, None)}
+    assert candidates == expected
+
+
+def test_retry_same_person_before_others_and_previous_group(client, monkeypatch):
+    with db.connect(True) as conn:
+        previous = seed(conn)
+        missing, same, other = [photo(conn) for _ in range(3)]
+        conn.execute('UPDATE faces SET person_id=2 WHERE image_id IN (?,?)', (missing, same))
+        conn.execute('UPDATE faces SET person_id=3 WHERE image_id=?', (other,))
+        conn.execute("INSERT INTO faces(image_id,person_id,box) VALUES(?,3,'[]')", (missing,))
+    monkeypatch.setattr(face_draw, 'first_candidate', lambda *_: (2, missing, missing))
+    scope = main.game_scope(game_rooms.GameFilters())
+    attempts = []
+
+    def pin(rep):
+        attempts.append(rep)
+        if rep in unavailable:
+            raise HTTPException(404)
+        return rep
+
+    for unavailable, expected, person in [({missing}, same, 2), ({missing, same}, other, 3),
+                                          ({missing, same, other}, previous, 1)]:
+        attempts.clear()
+        group, _, face, _ = photo_draw.game_question(scope, previous, None, pin)
+        assert attempts[:2] == [missing, same] and attempts[-1] == group == expected
+        assert len(attempts) == len(set(attempts)) and face['person_id'] == person
+
+
+@pytest.mark.parametrize('change', ['person', 'source'])
+def test_rechecks_after_pin(client, monkeypatch, change):
+    with db.connect(True) as conn:
+        changed = seed(conn)
+        other = photo(conn)
+        conn.execute('UPDATE faces SET person_id=2 WHERE image_id=?', (other,))
+    monkeypatch.setattr(face_draw, 'first_candidate', lambda *_: (1, changed, changed))
+    scope = main.game_scope(game_rooms.GameFilters(publishers='x:alice'))
+    def pin(rep):
+        if rep == changed:
+            with db.connect(True) as conn:
+                if change == 'source':
+                    conn.execute("UPDATE posts SET author='bob' WHERE id=?", (changed,))
+                else:
+                    conn.execute('UPDATE faces SET person_id=NULL WHERE image_id=?', (changed,))
+        return rep
+    group, _, face, _ = photo_draw.game_question(scope, None, None, pin)
+    assert (group, face['person_id']) == (other, 2)
+
+
+def test_only_previous_group_prefers_another_face_of_same_person(client):
+    with db.connect(True) as conn:
+        group = seed(conn)
+        previous = conn.execute('SELECT id FROM faces WHERE image_id=?', (group,)).fetchone()[0]
+        alternate = conn.execute("INSERT INTO faces(image_id,person_id,box) VALUES(?,1,'[1,2,3,4]')", (group,)).lastrowid
+    assert draw(group, previous)['face']['id'] == alternate
+    with db.connect(True) as conn:
+        conn.execute('UPDATE faces SET ignored=1 WHERE id=?', (alternate,))
+    assert draw(group, previous)['face']['id'] == previous
 
 
 @pytest.mark.parametrize('not_face', [True, False])
