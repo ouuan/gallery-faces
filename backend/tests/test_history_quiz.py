@@ -1,16 +1,28 @@
 import time
+from datetime import date
 
-from app import db, game_rooms, photo_draw
+import pytest
+from fastapi import HTTPException
+
+from app import db, game_rooms, main, photo_draw
 from test_photo_draw import photo
 from test_workflows import client
 
 
-QUIZ = '/api/v1/gallery/history-quiz'
 ROOMS = '/api/v1/history-quiz/rooms'
 
 
 def test_quiz_only_filters_first_public_source(client, monkeypatch):
-    assert client.get(QUIZ).status_code == 404
+    def draw(last_group=None, **filters):
+        previous = {'group_id': last_group} if last_group is not None else None
+        return main.draw_history_room_question(game_rooms.GameFilters(**filters), previous)
+
+    def assert_empty(**filters):
+        with pytest.raises(HTTPException) as error:
+            draw(**filters)
+        assert error.value.status_code == 404
+
+    assert_empty()
     try:
         with monkeypatch.context() as patch:
             patch.setenv('TZ', 'America/New_York')
@@ -24,14 +36,14 @@ def test_quiz_only_filters_first_public_source(client, monkeypatch):
                 photo(conn, author='carol', faces=False, date='2020-01-01T12:00:00Z')
             for params in ({'publishers': 'x:bob'}, {'start': '2026-07-01T00:00:00Z'}):
                 assert client.get('/api/v1/gallery', params=params).json()['total'] == 1
-                assert client.get(QUIZ, params=params).status_code == 404
-            result = client.get(QUIZ, params={'publishers': 'x:alice', 'last_group': other}).json()
+                assert_empty(**params)
+            result = draw(publishers='x:alice', last_group=other)
             assert (result['group_id'], result['correct_date'], result['first_date'], result['last_date']) == (
-                first, '2026-03-07', '2026-03-07', '2026-03-09')
-            only = client.get(QUIZ, params={'start': '2026-03-09T04:00:00Z'}).json()
-            assert only['first_date'] == only['last_date'] == only['correct_date'] == '2026-03-09'
-            assert client.get(QUIZ, params={'end': '2026-03-08T04:59:00Z'}).status_code == 404
-            assert client.get(QUIZ, params={'include_no_faces': True}).json()['first_date'] == '2020-01-01'
+                first, date(2026, 3, 7), date(2026, 3, 7), date(2026, 3, 9))
+            only = draw(start='2026-03-09T04:00:00Z')
+            assert only['first_date'] == only['last_date'] == only['correct_date'] == date(2026, 3, 9)
+            assert_empty(end='2026-03-08T04:59:00Z')
+            assert draw(include_no_faces=True)['first_date'] == date(2020, 1, 1)
     finally:
         time.tzset()
 

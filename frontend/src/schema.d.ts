@@ -520,40 +520,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/gallery/face-game": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Face Game */
-        get: operations["face_game_api_v1_gallery_face_game_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gallery/history-quiz": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** History Quiz */
-        get: operations["history_quiz_api_v1_gallery_history_quiz_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/gallery/{group_id}": {
         parameters: {
             query?: never;
@@ -2403,13 +2369,6 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** GameChoice */
-        GameChoice: {
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-        };
         /** GameFilters */
         GameFilters: {
             /**
@@ -2443,22 +2402,6 @@ export interface components {
              * @default false
              */
             include_no_faces: boolean;
-        };
-        /** GameQuestion */
-        GameQuestion: {
-            /** Group Id */
-            group_id: number;
-            /** Image Id */
-            image_id: number;
-            /** Width */
-            width: number;
-            /** Height */
-            height: number;
-            /** Image Url */
-            image_url: string;
-            face: components["schemas"]["PublicFace"];
-            /** Choices */
-            choices: components["schemas"]["GameChoice"][];
         };
         /** GridView */
         GridView: {
@@ -2550,34 +2493,6 @@ export interface components {
              * Format: date
              */
             last_date: string;
-        };
-        /** HistoryQuestion */
-        HistoryQuestion: {
-            /** Group Id */
-            group_id: number;
-            /** Image Id */
-            image_id: number;
-            /** Image Url */
-            image_url: string;
-            /** Width */
-            width: number;
-            /** Height */
-            height: number;
-            /**
-             * First Date
-             * Format: date
-             */
-            first_date: string;
-            /**
-             * Last Date
-             * Format: date
-             */
-            last_date: string;
-            /**
-             * Correct Date
-             * Format: date
-             */
-            correct_date: string;
         };
         /** HistoryStatus */
         HistoryStatus: {
@@ -4939,81 +4854,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-        };
-    };
-    face_game_api_v1_gallery_face_game_get: {
-        parameters: {
-            query?: {
-                people?: string;
-                match?: "any" | "all" | "exact" | "subset";
-                publishers?: string;
-                start?: string;
-                end?: string;
-                include_no_faces?: boolean;
-                last_group?: number | null;
-                last_face?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GameQuestion"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    history_quiz_api_v1_gallery_history_quiz_get: {
-        parameters: {
-            query?: {
-                last_group?: number | null;
-                people?: string;
-                publishers?: string;
-                match?: "any" | "all" | "exact" | "subset";
-                start?: string;
-                end?: string;
-                include_no_faces?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HistoryQuestion"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
             };
         };
     };

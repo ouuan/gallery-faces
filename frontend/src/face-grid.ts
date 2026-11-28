@@ -1,22 +1,6 @@
 export type FaceDisplay = { cropped: boolean; grid: boolean; grid_size: number; grid_seconds: number };
 export const defaultGrid = { grid_size: 10, grid_seconds: 0.2 };
 
-export function faceDisplay(saved?: Partial<FaceDisplay> | null, cropped = true): FaceDisplay {
-  const size = saved?.grid_size, seconds = saved?.grid_seconds;
-  return { cropped: typeof saved?.cropped === 'boolean' ? saved.cropped : cropped, grid: saved?.grid !== false,
-    grid_size: size !== undefined && Number.isInteger(size) && size >= 2 && size <= 16 ? size : defaultGrid.grid_size,
-    grid_seconds: typeof seconds === 'number' && seconds >= 0.1 && seconds <= 60 ? seconds : defaultGrid.grid_seconds };
-}
-
-export function gridOrder(size: number) {
-  const order = Array.from({ length: size ** 2 }, (_, index) => index);
-  for (let index = order.length - 1; index > 0; index--) {
-    const other = Math.floor(Math.random() * (index + 1));
-    [order[index], order[other]] = [order[other]!, order[index]!];
-  }
-  return order;
-}
-
 export function visibleCells(elapsed: number, seconds: number, total: number) {
   return Math.min(total, Math.floor(Math.max(0, elapsed) / (seconds * 1000)));
 }

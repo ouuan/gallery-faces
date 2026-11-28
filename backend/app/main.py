@@ -1187,31 +1187,6 @@ class PublicFace(BaseModel):
     locked: bool
 
 
-class GameChoice(BaseModel):
-    id: int
-    name: str
-
-
-class GameQuestion(BaseModel):
-    group_id: int
-    image_id: int
-    width: int
-    height: int
-    image_url: str
-    face: PublicFace
-    choices: list[GameChoice]
-
-
-@app.get('/api/v1/gallery/face-game', response_model=GameQuestion)
-def face_game(reads: MediaReads, people: str = '', match: PeopleMatch = 'any', publishers: str = '',
-              start: str = '', end: str = '', include_no_faces: bool = False,
-              last_group: int | None = Query(None, gt=0, le=9223372036854775807),
-              last_face: int | None = Query(None, gt=0, le=9223372036854775807)):
-    filters = game_rooms.GameFilters(people=people, match=match, publishers=publishers, start=start, end=end,
-                                     include_no_faces=include_no_faces)
-    return draw_game_question(reads, game_scope(filters), last_group, last_face)
-
-
 def game_scope(filters):
     ids, accounts = parse_people_publishers(filters.people, filters.publishers)
     source, args = source_filter(accounts, *date_bounds(filters.start, filters.end))
@@ -1237,12 +1212,6 @@ def draw_history_question(reads, scope, last_group):
     group, (variant, _, row), first, last, answer = photo_draw.history_question(scope, last_group, pin)
     return dict(group_id=group, image_id=row['id'], width=row['width'], height=row['height'],
                 image_url=variant_url(row, variant), first_date=first, last_date=last, correct_date=answer)
-
-
-@app.get('/api/v1/gallery/history-quiz', response_model=game_rooms.HistoryQuestion)
-def history_quiz(reads: MediaReads, filters: Annotated[game_rooms.GameFilters, Depends()],
-                 last_group: int | None = Query(None, gt=0, le=9223372036854775807)):
-    return draw_history_question(reads, game_scope(filters), last_group)
 
 
 class GalleryDetail(GalleryPhoto):

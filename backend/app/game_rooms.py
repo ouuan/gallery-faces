@@ -130,10 +130,6 @@ class HistoryPhoto(BaseModel):
     last_date: date
 
 
-class HistoryQuestion(HistoryPhoto, RevealedPhoto):
-    correct_date: date
-
-
 class HistoryStatus(BaseModel):
     photo: HistoryPhoto | None
     my_guess: date | None
