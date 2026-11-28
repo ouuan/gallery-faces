@@ -41,7 +41,7 @@ test('admin refreshes the current filtered snapshot manually', async ({ guests }
   await expect(page.locator('.match-filters')).toContainText('进行中');
 });
 
-test('admin sees the unfilled nickname and grid score of a solo player', async ({ guests }) => {
+test('admin sees the unfilled nickname and accuracy of a solo grid player', async ({ guests }) => {
   const player = guests[0]!, admin = guests[1]!;
   await player.goto('/face-game?people=1,2&t=90');
   await player.getByRole('button', { name: '开始游戏' }).click();
@@ -52,12 +52,30 @@ test('admin sees the unfilled nickname and grid score of a solo player', async (
   await admin.getByRole('link', { name: '认脸游戏 · 单人' }).click();
   await expect(admin.getByText('未填写昵称', { exact: true })).toBeVisible();
   await expect(admin.getByText('答对时平均 —', { exact: true })).toBeVisible();
+  await expect(admin.getByText('正确率 —', { exact: true })).toBeVisible();
   await player.getByRole('button', { name: '人1', exact: true }).click();
   const averageCells = player.getByRole('group', { name: '本局统计' }).getByText(/^答对时平均 \d+\.\d 格$/);
   await expect(averageCells).toBeVisible();
   await admin.reload();
   await expect(admin.getByText(await averageCells.innerText(), { exact: true })).toBeVisible();
-  await expect(admin.getByText('1 分', { exact: true })).toBeVisible();
+  await expect(admin.getByText('正确率 100%', { exact: true })).toBeVisible();
+  await expect(admin.locator('.player-result').getByText(/分$/)).toHaveCount(0);
+});
+
+test('admin sees the same deviation as a solo history player without points', async ({ guests }) => {
+  const player = guests[0]!, admin = guests[1]!;
+  await player.goto('/history-quiz');
+  await player.getByRole('button', { name: '开始游戏' }).click();
+  await player.getByRole('button', { name: '提交日期' }).click();
+  const deviation = player.getByRole('group', { name: '本局统计' }).getByText(/^平均偏差 .* 天$/);
+  await expect(deviation).toBeVisible();
+  await admin.goto('/admin/game-matches');
+  await admin.getByPlaceholder('输入管理员密码').fill('test-password');
+  await admin.getByRole('button', { name: '登录工作台' }).click();
+  await admin.getByRole('link', { name: '史官测验 · 单人' }).click();
+  const result = admin.locator('.player-result');
+  await expect(result.getByText(await deviation.innerText(), { exact: true })).toBeVisible();
+  await expect(result.getByText(/分$/)).toHaveCount(0);
 });
 
 test('admin can inspect both matches from one room without uploading', async ({ guests }) => {

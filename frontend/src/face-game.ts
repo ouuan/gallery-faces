@@ -1,3 +1,8 @@
+export function faceAccuracy(correct: number, wrong: number, disputed = 0) {
+  const counted = correct + wrong - disputed;
+  return counted > 0 ? `${Math.round(100 * correct / counted)}%` : '—';
+}
+
 export function faceZoom(box: number[], width: number, height: number) {
   const scale = Math.max(1, Math.min(width / (2 * box[2]!), height / (2 * box[3]!)));
   const offset = (center: number) => Math.max(1 - scale, Math.min(0, 0.5 - center * scale));

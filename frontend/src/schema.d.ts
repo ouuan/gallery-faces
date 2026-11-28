@@ -2791,6 +2791,10 @@ export interface components {
             correct: number;
             /** Wrong */
             wrong: number;
+            /** Disputed */
+            disputed: number;
+            /** Eliminated */
+            eliminated: boolean;
             /** Unanswered */
             unanswered: number;
             /** Public Correct */

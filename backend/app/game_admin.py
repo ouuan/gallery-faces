@@ -23,6 +23,8 @@ class MemberResult(BaseModel):
     name: str
     correct: int
     wrong: int
+    disputed: int
+    eliminated: bool
     unanswered: int
     public_correct: int
     correct_cells: int
@@ -76,6 +78,7 @@ def router(admin):
         games.check(row, '对局不存在或已失效', 404)
         state = games.MatchState.model_validate_json(row['state'])
         return MatchDetail(**summary(row, state), created_at=state.created_at, settings=state.settings, filters=state.filters, settled=state.settled,
-            players=[MemberResult(**vars(member), points=float(state.scores.get(member.id, 0))) for member in state.players.values()])
+            players=[MemberResult(**vars(member), eliminated=member.eliminated(state.settings.single_life),
+                points=float(state.scores.get(member.id, 0))) for member in state.players.values()])
 
     return routes

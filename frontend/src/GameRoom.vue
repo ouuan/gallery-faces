@@ -9,6 +9,7 @@ import { useGameRoom, type Settings } from './use-game-room';
 import { useLibrary } from './store';
 import { usePageTitle } from './page-title';
 import GameBoard from './GameBoard.vue';
+import { faceAccuracy } from './face-game';
 import { averageCells, compareGrid } from './face-grid';
 import { parseRules, ruleQuery } from './game-rules';
 import GameRoomSettings from './GameRoomSettings.vue';
@@ -81,7 +82,7 @@ const eliminationOver = computed(() => room.value?.settings.single_life && survi
 const lastRound = computed(() => eliminationOver.value || (room.value && room.value.settings.round_limit > 0 && room.value.round >= room.value.settings.round_limit));
 const readyLabel = computed(() => props.solo ? lastRound.value ? '查看结果' : '下一题' : lastRound.value ? (me.value?.ready ? '等待结算' : '确认结算') : (me.value?.ready ? '已准备继续' : '继续'));
 const myAnswered = computed(() => record.value ? record.value.settled - (me.value?.unanswered ?? 0) : (me.value?.correct ?? 0) + (me.value?.wrong ?? 0));
-const myAccuracy = computed(() => myAnswered.value > (me.value?.disputed ?? 0) ? `${Math.round(100 * (me.value?.correct ?? 0) / (myAnswered.value - (me.value?.disputed ?? 0)))}%` : '—');
+const myAccuracy = computed(() => faceAccuracy(me.value?.correct ?? 0, me.value?.wrong ?? 0, me.value?.disputed));
 const soloFeedback = computed(() => {
   const view = room.value;
   return (faceId: number | null, feedbackId: number) => {

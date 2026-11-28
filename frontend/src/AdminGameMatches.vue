@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { NButton, NSelect } from 'naive-ui';
 import { RefreshCw } from '@lucide/vue';
 import { api, dateLabel } from './api';
+import { faceAccuracy } from './face-game';
 import { averageCells } from './face-grid';
 import { fromQuery } from './filters';
 import { average, formatPoints } from './history-quiz';
@@ -70,15 +71,23 @@ watch([endpoint, refresh], async ([path], [previousPath], cleanup) => {
       <p v-for="member in detail.players" :key="member.name" class="player-result">
         <strong>{{ member.name || '未填写昵称' }}</strong>
         <template v-if="detail.game === 'history-quiz'">
-          <span>{{ formatPoints(member.points) }} 分</span><span>平均偏差 {{ average(member.deviation, detail.settled) }}</span>
+          <span v-if="!detail.solo">{{ formatPoints(member.points) }} 分</span><span>平均偏差 {{ average(member.deviation, detail.settled) }}</span>
           <span>已答 {{ detail.settled - member.unanswered }} 题</span>
         </template>
         <template v-else>
-          <template v-if="detail.settings.grid">
-            <span>{{ member.correct - member.wrong }} 分</span><span>答对时平均 {{ averageCells(member.correct_cells, member.correct) }}</span>
+          <template v-if="detail.solo">
+            <span>正确率 {{ faceAccuracy(member.correct, member.wrong, member.disputed) }}</span><span>已答 {{ member.correct + member.wrong }} 题</span>
+            <span>正确 {{ member.correct }}</span><span>错误 {{ member.wrong - member.disputed }}</span><span>存疑 {{ member.disputed }}</span>
           </template>
-          <span v-else>已答 {{ member.correct + member.wrong }} 题</span>
-          <span>正确 {{ member.correct }}</span><span>错误 {{ member.wrong }}</span>
+          <template v-else-if="detail.settings.single_life && !detail.settings.grid">
+            <span>已通过 {{ member.correct }} 题</span><span>{{ member.eliminated ? '已淘汰' : '存活' }}</span>
+          </template>
+          <template v-else>
+            <span v-if="detail.settings.grid">{{ member.correct - member.wrong }} 分</span>
+            <span v-else>正确率 {{ faceAccuracy(member.correct, member.wrong) }}</span>
+            <span>正确 {{ member.correct }}</span><span>错误 {{ member.wrong }}</span>
+          </template>
+          <span v-if="detail.settings.grid">答对时平均 {{ averageCells(member.correct_cells, member.correct) }}</span>
         </template>
         <span>未答 {{ member.unanswered }}</span>
       </p>

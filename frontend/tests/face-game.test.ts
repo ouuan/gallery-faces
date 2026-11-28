@@ -1,6 +1,11 @@
 import { expect, it } from 'vitest';
-import { cropBox, faceZoom, gridViewport } from '../src/face-game';
+import { cropBox, faceAccuracy, faceZoom, gridViewport } from '../src/face-game';
 import { averageCells, compareGrid, visibleCells } from '../src/face-grid';
+
+it('excludes disputed answers from face accuracy', () => {
+  expect(faceAccuracy(2, 2, 1)).toBe('67%');
+  expect(faceAccuracy(0, 1, 1)).toBe('—');
+});
 
 it('starts covered, reveals one cell per elapsed interval and stops at the full grid', () => {
   expect([0, 499, 500, 1000, 12499, 12500, 90000].map(time => visibleCells(time, 0.5, 25))).toEqual([0, 0, 1, 2, 24, 25, 25]);

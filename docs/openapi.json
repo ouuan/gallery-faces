@@ -8678,6 +8678,14 @@
             "type": "integer",
             "title": "Wrong"
           },
+          "disputed": {
+            "type": "integer",
+            "title": "Disputed"
+          },
+          "eliminated": {
+            "type": "boolean",
+            "title": "Eliminated"
+          },
           "unanswered": {
             "type": "integer",
             "title": "Unanswered"
@@ -8704,6 +8712,8 @@
           "name",
           "correct",
           "wrong",
+          "disputed",
+          "eliminated",
           "unanswered",
           "public_correct",
           "correct_cells",
