@@ -113,6 +113,45 @@ def rematch(task):
             # Reuse this same running task when references changed during work.
 
 
+def box_match(first, second):
+    left, top, width, height = first
+    other_left, other_top, other_width, other_height = second
+    intersection = max(0, min(left + width, other_left + other_width) - max(left, other_left)) * max(
+        0, min(top + height, other_top + other_height) - max(top, other_top))
+    area, other_area = width * height, other_width * other_height
+    if intersection <= 0.5 * max(1, min(area, other_area)):
+        return 0
+    return intersection / (area + other_area - intersection)
+
+
+def store_detections(db, image_id, detections, *, replace_manual):
+    db.execute('''DELETE FROM faces WHERE image_id=? AND locked=0 AND person_id IS NULL AND ignored=0
+        AND length(embedding)>0''', (image_id,))
+    manual, protected = {}, []
+    for face in db.execute('SELECT id,box,ignored,length(embedding) AS features FROM faces WHERE image_id=?', (image_id,)):
+        box = json.loads(face['box'])
+        if replace_manual and not face['ignored'] and not face['features']:
+            manual[face['id']] = box
+        else:
+            protected.append(box)
+    pending = {index: (box, embedding) for index, (box, embedding) in enumerate(detections)
+               if not any(box_match(box, old) for old in protected)}
+    matches = sorted((-score, face_id, index) for face_id, old in manual.items()
+                     for index, (box, _) in pending.items() if (score := box_match(box, old)))
+    adopted = []
+    for _, face_id, index in matches:
+        if face_id not in manual or index not in pending:
+            continue
+        box, embedding = pending.pop(index)
+        del manual[face_id]
+        db.execute('''UPDATE faces SET box=?,embedding=?,model_version=?,candidates='[]',revision=revision+1
+            WHERE id=?''', (json.dumps(box), embedding, MODEL_VERSION, face_id))
+        adopted.append(box)
+    db.executemany('INSERT INTO faces(image_id,box,embedding,model_version) VALUES(?,?,?,?)',
+                   ((image_id, json.dumps(box), embedding, MODEL_VERSION) for box, embedding in pending.values()
+                    if not any(box_match(box, old) for old in adopted)))
+
+
 def detect(task):
     started = time.monotonic()
     mode = json.loads(task["payload"]).get("mode", "auto")
@@ -129,30 +168,7 @@ def detect(task):
             "SELECT cancel_requested FROM tasks WHERE id=?", (task["id"],)
         ).fetchone()[0]:
             raise DetectionCancelled()
-        # Preserve manual boxes and labeled faces; rematching may revise unlocked labels.
-        db.execute(
-            "DELETE FROM faces WHERE image_id=? AND locked=0 AND person_id IS NULL AND ignored=0 AND embedding IS NOT NULL AND length(embedding)>0",
-            (row["id"],),
-        )
-        preserved = db.execute(
-            "SELECT box FROM faces WHERE image_id=?", (row["id"],)
-        ).fetchall()
-        for box, embedding in faces:
-
-            def overlaps(old):
-                x, y, w, h = json.loads(old[0])
-                a, b, c, d = box
-                intersection = max(0, min(x + w, a + c) - max(x, a)) * max(
-                    0, min(y + h, b + d) - max(y, b)
-                )
-                return intersection / max(1, min(w * h, c * d)) > 0.5
-
-            if any(overlaps(old) for old in preserved):
-                continue
-            db.execute(
-                "INSERT INTO faces(image_id,box,embedding,model_version) VALUES(?,?,?,?)",
-                (row["id"], json.dumps(box), embedding, MODEL_VERSION),
-            )
+        store_detections(db, row['id'], faces, replace_manual=mode == 'highres')
         db.execute(
             "UPDATE images SET detection='done',error=NULL WHERE id=?", (row["id"],)
         )

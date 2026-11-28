@@ -1,11 +1,12 @@
 import json
 import random
 from collections import Counter
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
 
-from app import db, face_draw, game_rooms, main, photo_draw
+from app import db, face_draw, game_rooms, main, photo_draw, worker
 from test_photo_draw import photo
 from test_workflows import client
 
@@ -235,6 +236,25 @@ def test_game_threshold_uses_current_identity_and_requires_detection(client):
     with pytest.raises(HTTPException) as empty:
         draw(people='2,7')
     assert empty.value.status_code == 404
+
+
+def test_redetected_manual_face_enters_game_after_matching(client, monkeypatch):
+    with db.connect(True) as conn:
+        image_id = seed(conn)
+        face_id, embedding = conn.execute('SELECT id,embedding FROM faces').fetchone()
+        conn.execute('INSERT INTO reference_images(person_id,embedding,model_version) VALUES(1,?,?)',
+                     (embedding, worker.MODEL_VERSION))
+        conn.execute("UPDATE faces SET embedding=NULL,model_version=NULL,candidates='[]'")
+    assert client.post('/api/v1/admin/images/actions', json={'action': 'redetect', 'ids': [image_id]}).status_code == 200
+    detected_box = [1, 1, 18, 18]
+    monkeypatch.setattr(worker, 'Vision', lambda: SimpleNamespace(detect=lambda *args, **kwargs: [(detected_box, embedding)]))
+    for _ in range(2):
+        with pytest.raises(HTTPException) as empty:
+            draw()
+        assert empty.value.status_code == 404
+        assert worker.step()
+    face = draw()['face']
+    assert (face['id'], face['person_id'], face['locked'], face['box']) == (face_id, 1, True, detected_box)
 
 
 def test_game_score_backfill(client):

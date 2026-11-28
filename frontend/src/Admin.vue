@@ -476,7 +476,7 @@ onUnmounted(() => {
             :input-props="{ 'aria-label': '出题最低相似度', 'aria-describedby': 'face-game-threshold-help' }"
             :min="0" :max="1" :step="0.01" :disabled="savingSettings"
           /></label>
-          <p id="face-game-threshold-help" class="hint">默认 0.3。只有当前标注人物的识别相似度达到此值，才可用于出题。手动补框或没有该人物识别分数的人脸不参与。</p>
+          <p id="face-game-threshold-help" class="hint">默认 0.3。只有自动检测到、且当前标注人物的识别相似度达到此值的人脸才可用于出题。</p>
           <h2>视觉去重</h2>
           <label class="field-label"
             >pHash 最大距离<n-input-number

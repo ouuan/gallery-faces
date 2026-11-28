@@ -183,7 +183,8 @@ def test_redetect_refreshes_candidates_and_reconsiders_unlocked_labels(
                               (target, '{"existing":true}')).lastrowid
     monkeypatch.setattr(worker, "Vision", lambda: SimpleNamespace(
         detect=lambda *args, **kwargs: [([0, 0, 10, 10], embedding),
-                                       ([60, 0, 10, 10], embedding),
+                                       ([49, 0, 10, 10], embedding),
+                                       ([61, 0, 10, 10], embedding),
                                        ([80, 0, 10, 10], embedding)]))
     assert worker.step()
     with db.connect() as conn:
@@ -202,17 +203,43 @@ def test_redetect_refreshes_candidates_and_reconsiders_unlocked_labels(
         assert [c['person_id'] for c in face['candidates']] == ([b, a] if scores else [])
         if scores:
             assert [c['score'] for c in face['candidates']] == pytest.approx(list(reversed(scores)))
-    for index in (3, 4, 5):
+    ignored = by_id[ids[3]]
+    assert (ignored['person_id'], ignored['locked'], ignored['ignored'], ignored['revision']) == (*states[3][:3], 0)
+    assert ignored['candidates'] == json.loads(old_candidates)
+    for index, left, expected_person in ((4, 49, a), (5, 61, b if expected_match else None)):
         face = by_id[ids[index]]
-        assert (face['person_id'], face['locked'], face['ignored'], face['revision']) == (*states[index][:3], 0)
-        assert face['candidates'] == (json.loads(old_candidates) if index == 3 else [])
-        assert face['has_embedding'] == (index == 3)
+        assert face['box'] == [left, 0, 10, 10] and face['has_embedding']
+        assert (face['person_id'], face['locked'], face['revision']) == (expected_person, states[index][1], 1 + int(index == 5 and expected_match))
+        assert face['candidates'] == by_id[ids[0]]['candidates']
     new_face = next(face for face in faces if face['id'] not in ids)
     assert new_face['person_id'] == (b if expected_match else None)
     assert new_face['candidates'] == by_id[ids[0]]['candidates']
     with db.connect() as conn:
         task = conn.execute('SELECT * FROM tasks WHERE id=?', (queued,)).fetchone()
-        assert (task['status'], task['done'], task['total']) == ('done', 4, 4)
+        assert (task['status'], task['done'], task['total']) == ('done', 6, 6)
+
+
+@pytest.mark.parametrize('replace_manual', [True, False])
+def test_manual_box_replacement_conflicts_and_boundary(client, replace_manual):
+    with db.connect(True) as conn:
+        target = image(conn, faces=False)
+        def manual(left, ignored=False, embedding=None):
+            return conn.execute('INSERT INTO faces(image_id,box,locked,ignored,embedding) VALUES(?,?,1,?,?)',
+                                (target, json.dumps([left, 0, 10, 10]), ignored, embedding)).lastrowid
+        closest, nearby = manual(0, embedding=b''), manual(3)
+        boundary, ignored, blocked = manual(20), manual(40, ignored=True), manual(60)
+        automatic = manual(60, embedding=b'old')
+        detections = [([left, 0, 10, 10], bytes([left])) for left in (4, 1, 25, 40, 60)]
+        worker.store_detections(conn, target, detections, replace_manual=replace_manual)
+        faces = {row['id']: (json.loads(row['box'])[0], row['embedding'], row['revision'])
+                 for row in conn.execute('SELECT * FROM faces WHERE image_id=?', (target,))}
+        assert faces.pop(closest) == ((1, b'\x01', 1) if replace_manual else (0, b'', 0))
+        assert faces.pop(nearby) == ((4, b'\x04', 1) if replace_manual else (3, None, 0))
+        assert faces.pop(boundary) == (20, None, 0)
+        assert faces.pop(ignored) == (40, None, 0)
+        assert faces.pop(blocked) == (60, None, 0)
+        assert faces.pop(automatic) == (60, b'old', 0)
+        assert list(faces.values()) == [(25, bytes([25]), 0)]
 
 
 @pytest.mark.parametrize('locked', [0, 1])
