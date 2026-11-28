@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import { NInputNumber, NRadioButton, NRadioGroup } from 'naive-ui';
 
 const limit = defineModel<number>({ required: true });
-const fixed = ref(limit.value || 10);
+const fixed = ref(limit.value || 25);
 function changeMode(mode: string) {
   if (limit.value) fixed.value = limit.value;
   limit.value = mode === 'fixed' ? fixed.value : 0;

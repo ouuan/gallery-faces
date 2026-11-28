@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft, Copy, RotateCcw } from '@lucide/vue';
 import { NAlert, NButton, NCheckbox, NInput, useMessage } from 'naive-ui';
 import { filterOnlyQuery, fromQuery, type Filter } from './filters';
@@ -9,7 +9,8 @@ import { useGameRoom, type Settings } from './use-game-room';
 import { useLibrary } from './store';
 import { usePageTitle } from './page-title';
 import GameBoard from './GameBoard.vue';
-import { averageCells, compareGrid, faceDisplay } from './face-grid';
+import { averageCells, compareGrid } from './face-grid';
+import { parseRules, ruleQuery } from './game-rules';
 import GameRoomSettings from './GameRoomSettings.vue';
 import GameRoomRules from './GameRoomRules.vue';
 import { api } from './api';
@@ -24,38 +25,26 @@ import { average, closestResult, compareHistory, dayLabel, difference, formatPoi
 
 const props = defineProps<{ history?: boolean; solo?: boolean }>();
 const gamePath = props.history ? '/history-quiz' : '/face-game';
-const route = useRoute(), toast = useMessage(), library = useLibrary();
+const route = useRoute(), router = useRouter(), toast = useMessage(), library = useLibrary();
 const { code, token, room, busy, error, syncError, seconds, gridStarted, enter, act } = useGameRoom(props.history, props.solo);
 const gameName = props.history ? '史官测验' : '认脸游戏';
 usePageTitle(() => props.solo ? gameName : code.value ? `对战房间 ${code.value}` : '多人对战');
 const filters = ref(fromQuery(route.query)), draftFilters = ref(filters.value);
-watch(() => route.query, value => { filters.value = fromQuery(value); });
 const activeFilter = computed(() => room.value ? fromQuery(room.value.filters) : filters.value);
 const query = computed(() => filterOnlyQuery(activeFilter.value));
 const roomFilters = (value: Filter) => ({ ...filterOnlyQuery(value), include_no_faces: value.include_no_faces });
 const nickname = ref(sessionStorage.getItem('face-room:name') || ''), joinCode = ref(''), joining = ref(false);
-const settingsKey = props.history ? 'history-room:settings' : 'face-room:settings';
-function loadSettings(): Settings {
-  const defaults = { ...faceDisplay(null, !props.history), single_life: false, allow_late_join: true, answer_seconds: 15, continue_seconds: 10, round_limit: 25 };
-  try {
-    const saved = JSON.parse(localStorage.getItem(settingsKey) ?? 'null');
-    if (!saved || typeof saved !== 'object') return defaults;
-    defaults.allow_late_join = saved.allow_late_join !== false;
-    if (Number.isInteger(saved.round_limit) && saved.round_limit >= 0 && saved.round_limit <= 999) defaults.round_limit = saved.round_limit;
-    if (!props.history) {
-      Object.assign(defaults, faceDisplay(saved));
-      defaults.single_life = !defaults.grid && saved.single_life === true;
-    }
-    for (const [key, minimum] of [['answer_seconds', 3], ['continue_seconds', 0]] as const) {
-      if (Number.isInteger(saved[key]) && saved[key] >= minimum && saved[key] <= 300) defaults[key] = saved[key];
-    }
-  } catch { return defaults; }
-  return defaults;
-}
-const settings = ref(loadSettings()), draftSettings = ref<Settings>({ ...settings.value });
-watch(settings, value => {
-  try { localStorage.setItem(settingsKey, JSON.stringify(value)); } catch { return; }
+const setupPath = props.solo ? gamePath : gamePath + '/rooms';
+const settings = ref(parseRules(route.query, !!props.history)), draftSettings = ref<Settings>({ ...settings.value });
+const rules = computed(() => ruleQuery(room.value?.settings ?? settings.value, activeFilter.value, !!props.history));
+watch(() => route.fullPath, () => {
+  if (route.path !== setupPath) return;
+  filters.value = fromQuery(route.query); settings.value = parseRules(route.query, !!props.history);
 });
+watch(() => ruleQuery(settings.value, filters.value, !!props.history, !props.solo), value => {
+  if (route.path === setupPath && router.resolve({ path: setupPath, query: value }).fullPath !== route.fullPath)
+    void router.replace({ path: setupPath, query: value });
+}, { immediate: true });
 const person = ref<number | null>(null), notFace = ref(false), content = ref(''), editing = ref(false), showLink = ref(false);
 const me = computed(() => room.value?.players.find(player => player.id === room.value?.me));
 const host = computed(() => me.value?.id === room.value?.host);
@@ -133,7 +122,7 @@ async function saveSettings() {
 <template>
   <main class="room-page" :class="{ 'game-start': !token || !inRound }">
     <header v-if="inRound && room" class="round-bar"><h1><template v-if="room.round">第 {{ room.round }}<template v-if="room.settings.round_limit">/{{ room.settings.round_limit }}</template> 题 · </template>{{ phaseName[room.phase] }}</h1><strong v-if="seconds !== null" role="timer">{{ seconds }} 秒</strong></header>
-    <header v-else><h1>{{ solo ? gameName : history ? '史官测验 · 多人对战' : '多人对战' }}</h1><nav><router-link :to="{ path: solo ? gamePath + '/rooms' : gamePath, query }"><ArrowLeft :size="16" />{{ solo ? '多人对战' : '单人游戏' }}</router-link><router-link :to="{ path: '/', query }">返回图库</router-link></nav></header>
+    <header v-else><h1>{{ solo ? gameName : history ? '史官测验 · 多人对战' : '多人对战' }}</h1><nav><router-link :to="{ path: solo ? gamePath + '/rooms' : gamePath, query: rules }"><ArrowLeft :size="16" />{{ solo ? '多人对战' : '单人游戏' }}</router-link><router-link :to="{ path: '/', query }">返回图库</router-link></nav></header>
     <n-alert v-if="error" type="error" role="alert" closable @close="error = ''">{{ error }}</n-alert>
     <p v-if="syncError" role="status">{{ syncError }}</p>
     <form v-if="!token" class="entry setup-entry" @submit.prevent="enterRoom">
@@ -206,10 +195,10 @@ async function saveSettings() {
       </template>
       <div v-if="!solo" class="room-bar"><strong>房间 <span class="code">{{ room.code }}</span></strong>
         <n-button v-if="canInvite" quaternary @click="copyInvite"><Copy :size="15" />复制邀请链接</n-button>
-        <span class="spacer" /><router-link v-if="inRound" :to="{ path: gamePath, query }">单人游戏</router-link><n-button quaternary :disabled="busy" @click="act('leave')">离开房间</n-button></div>
+        <span class="spacer" /><router-link v-if="inRound" :to="{ path: gamePath, query: rules }">单人游戏</router-link><n-button quaternary :disabled="busy" @click="act('leave')">离开房间</n-button></div>
       <n-input v-if="showLink && canInvite" readonly :value="invite" :input-props="{ 'aria-label': '邀请链接' }" />
       <RoomPersonalResult v-if="me && room.phase === 'finished'" :room="room" :player="me" :rank="showRank ? myRank : null" :tied="tied" />
-      <div v-if="solo" class="actions"><n-button v-if="inRound" :disabled="busy" @click="act('finish')">结束本局</n-button><router-link v-else :to="{ path: gamePath, query }">返回设置</router-link></div>
+      <div v-if="solo" class="actions"><n-button v-if="inRound" :disabled="busy" @click="act('finish')">结束本局</n-button><router-link v-else :to="{ path: gamePath, query: rules }">返回设置</router-link></div>
       <section v-else class="standings"><div class="standings-heading"><h2>{{ room.phase === 'finished' ? '最终排名' : room.phase === 'lobby' ? '房间成员' : '排行榜' }}</h2>
         <n-button v-if="host && room.phase === 'finished'" type="primary" :disabled="busy" @click="act('restart')"><RotateCcw :size="16" aria-hidden="true" />再来一局</n-button></div>
         <p v-if="room.phase === 'finished' && eliminationOver">{{ survivors.length ? `获胜：${survivors[0]!.name}` : '无人存活' }}</p>

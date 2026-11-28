@@ -8,7 +8,7 @@ defineProps<{ history?: boolean; solo?: boolean }>();
 </script>
 <template>
   <fieldset class="room-settings"><legend>{{ solo ? '玩法设置' : '房间设置' }}</legend>
-    <GameRoundLimit :model-value="model.round_limit" @update:model-value="round_limit => model = { ...model, round_limit }" />
+    <GameRoundLimit v-if="!model.single_life" :model-value="model.round_limit" @update:model-value="round_limit => model = { ...model, round_limit }" />
     <FaceDisplayMode v-if="!history" :model-value="model" @update:model-value="value => model = { ...model, ...value }" />
     <div class="timing">
     <label>每题答题时间（秒）<n-input-number aria-label="每题答题时间" :value="model.answer_seconds" :min="3" :max="300" @update:value="value => model = { ...model, answer_seconds: value ?? 15 }" /></label>
