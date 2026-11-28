@@ -14,7 +14,7 @@ defineEmits<{ start: [] }>();
 <template>
   <form class="solo-setup" aria-label="开局设置" @submit.prevent="!rangeError(filter.start, filter.end) && $emit('start')">
     <fieldset class="play-settings"><legend>玩法设置</legend>
-      <GameRoundLimit v-model="roundLimit" />
+      <GameRoundLimit :limit="roundLimit" @change="value => roundLimit = value" />
       <slot />
     </fieldset>
     <GameFilterEditor v-model="filter" :face="face" />

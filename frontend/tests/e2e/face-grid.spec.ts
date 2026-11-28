@@ -115,7 +115,7 @@ test('grid players can retry privately and see all attempted options after the r
   const [host, guest, late] = guests;
   await host.goto('/face-game/rooms?people=1,2');
   await host.getByText('逐格显示', { exact: true }).click();
-  await expect(host.getByRole('switch', { name: '一命模式' })).toBeVisible();
+  await expect(host.getByRole('radio', { name: '一命模式' })).toBeVisible();
   await expect(host.getByLabel('每题答题时间', { exact: true })).toBeVisible();
   await host.getByRole('textbox', { name: '昵称' }).fill('甲');
   await host.getByRole('button', { name: '创建并进入' }).click();
