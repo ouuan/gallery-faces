@@ -6,7 +6,7 @@ it('starts covered, reveals one cell per elapsed interval and stops at the full 
   const order = gridOrder(5);
   expect(new Set(order)).toEqual(new Set(Array.from({ length: 25 }, (_, index) => index)));
   expect([0, 499, 500, 1000, 12499, 12500, 90000].map(time => visibleCells(time, 0.5, 25))).toEqual([0, 0, 1, 2, 24, 25, 25]);
-  expect(faceDisplay({ cropped: false, grid_size: 0, grid_seconds: Infinity })).toEqual({ cropped: false, grid: false, grid_size: 5, grid_seconds: 0.5 });
+  expect(faceDisplay({ cropped: false, grid_size: 0, grid_seconds: Infinity })).toEqual({ cropped: false, grid: true, grid_size: 10, grid_seconds: 0.2 });
 });
 
 it('ranks by points, wins and exact mean, retaining true ties', () => {

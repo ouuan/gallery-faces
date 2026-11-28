@@ -1,10 +1,11 @@
 export type FaceDisplay = { cropped: boolean; grid: boolean; grid_size: number; grid_seconds: number };
+export const defaultGrid = { grid_size: 10, grid_seconds: 0.2 };
 
 export function faceDisplay(saved?: Partial<FaceDisplay> | null, cropped = true): FaceDisplay {
   const size = saved?.grid_size, seconds = saved?.grid_seconds;
-  return { cropped: typeof saved?.cropped === 'boolean' ? saved.cropped : cropped, grid: saved?.grid === true,
-    grid_size: size !== undefined && Number.isInteger(size) && size >= 2 && size <= 16 ? size : 5,
-    grid_seconds: typeof seconds === 'number' && seconds >= 0.1 && seconds <= 60 ? seconds : 0.5 };
+  return { cropped: typeof saved?.cropped === 'boolean' ? saved.cropped : cropped, grid: saved?.grid !== false,
+    grid_size: size !== undefined && Number.isInteger(size) && size >= 2 && size <= 16 ? size : defaultGrid.grid_size,
+    grid_seconds: typeof seconds === 'number' && seconds >= 0.1 && seconds <= 60 ? seconds : defaultGrid.grid_seconds };
 }
 
 export function gridOrder(size: number) {

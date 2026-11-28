@@ -43,6 +43,8 @@ const setupPath = props.solo ? gamePath : gamePath + '/rooms';
 const settings = ref(parseRules(route.query, !!props.history)), draftSettings = ref<Settings>({ ...settings.value });
 const activeSettings = computed(() => room.value?.settings ?? settings.value);
 const rules = computed(() => ruleQuery(activeSettings.value, activeFilter.value, !!props.history));
+const otherMode = computed(() => ({ path: props.solo ? gamePath + '/rooms' : gamePath,
+  query: ruleQuery(activeSettings.value, activeFilter.value, !!props.history, !!props.solo) }));
 const boardUnavailable = computed(() => !activeSettings.value.single_life && !activeSettings.value.round_limit ? '无尽模式不设榜单'
   : !props.solo && activeSettings.value.grid ? '多人逐格模式不参与公开排名' : '');
 watch(() => route.fullPath, () => {
@@ -140,7 +142,7 @@ async function saveSettings() {
 <template>
   <main class="room-page" :class="{ 'game-start': !token || !inRound }">
     <header v-if="inRound && room" class="round-bar"><h1><template v-if="room.round">第 {{ room.round }}<template v-if="room.settings.round_limit">/{{ room.settings.round_limit }}</template> 题 · </template>{{ phaseName[room.phase] }}</h1><strong v-if="seconds !== null" role="timer">{{ seconds }} 秒</strong></header>
-    <header v-else class="game-heading"><h1>{{ solo ? gameName : history ? '史官测验 · 多人对战' : '多人对战' }}</h1><nav><router-link :to="{ path: solo ? gamePath + '/rooms' : gamePath, query: rules }">{{ solo ? '多人对战' : '单人游戏' }}</router-link><router-link :to="{ path: '/', query }">返回图库</router-link></nav></header>
+    <header v-else class="game-heading"><h1>{{ solo ? gameName : history ? '史官测验 · 多人对战' : '多人对战' }}</h1><nav><router-link :to="otherMode">{{ solo ? '多人对战' : '单人游戏' }}</router-link><router-link :to="{ path: '/', query }">返回图库</router-link></nav></header>
     <n-alert v-if="error" type="error" role="alert" closable @close="error = ''">{{ error }}</n-alert>
     <p v-if="syncError" role="status">{{ syncError }}</p>
     <form v-if="!token" class="entry setup-entry" aria-label="开局设置" @submit.prevent="enterRoom">
@@ -223,7 +225,7 @@ async function saveSettings() {
         :detail="record ? `累计偏差 ${deviation(me.id)} 天 · 未答 ${me.unanswered} 题` : `答对 ${me.correct} 题 · 未答 ${me.unanswered} 题${room.grid ? ` · 每边 ${room.settings.grid_size} 格 · 答对时平均 ${averageCells(me.correct_cells ?? 0, me.correct)}` : ''}`"
         :breakdown="record ? [{ label: '猜早', count: me.early ?? 0, tone: 'amber' }, { label: '正好', count: myAnswered - (me.early ?? 0) - (me.late ?? 0), tone: 'success' }, { label: '猜晚', count: me.late ?? 0, tone: 'accent' }] : [{ label: '正确', count: me.correct, tone: 'success' }, { label: '错误', count: me.wrong - (me.disputed ?? 0), tone: 'error' }, { label: '存疑', count: me.disputed ?? 0, tone: 'muted' }]" @setup="router.push({ path: gamePath, query: rules })" />
       <RoomPersonalResult v-else-if="me && room.phase === 'finished'" :room="room" :player="me" :rank="showRank ? myRank : null" :tied="tied" />
-      <div v-if="solo && inRound" class="actions"><n-button :disabled="busy" @click="act('finish')">结束本局</n-button><router-link :to="{ path: gamePath + '/rooms', query: rules }">多人对战</router-link><router-link :to="{ path: '/', query }">返回图库</router-link></div>
+      <div v-if="solo && inRound" class="actions"><n-button :disabled="busy" @click="act('finish')">结束本局</n-button><router-link :to="otherMode">多人对战</router-link><router-link :to="{ path: '/', query }">返回图库</router-link></div>
       <section v-if="!solo" class="standings"><div class="standings-heading"><h2>{{ room.phase === 'finished' ? '最终排名' : room.phase === 'lobby' ? '房间成员' : '排行榜' }}</h2>
         <n-button v-if="host && room.phase === 'finished'" type="primary" :disabled="busy" @click="act('restart')"><RotateCcw :size="16" aria-hidden="true" />再来一局</n-button></div>
         <p v-if="room.phase === 'finished' && eliminationOver">{{ survivors.length ? `获胜：${survivors[0]!.name}` : '无人存活' }}</p>

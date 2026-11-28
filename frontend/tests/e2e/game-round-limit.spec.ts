@@ -8,15 +8,21 @@ for (const game of ['face-game', 'history-quiz']) test(`${game} solo stops at th
   const otherGame = game === 'face-game' ? 'history-quiz' : 'face-game';
   await page.goto(`/${otherGame}/rooms`);
   await page.getByRole('textbox', { name: '昵称' }).fill('阿林');
-  await page.goto(`/${game}?mode=fixed&round_limit=25&answer_seconds=15&people=&match=any&include_no_faces=false`);
-  await expect(page).toHaveURL(new URL(`/${game}`, page.url()).href);
+  await page.goto(`/${game}`);
+  const display = game === 'face-game' ? '&crop=1&grid=10x0.2' : '';
+  await expect(page).toHaveURL(new URL(`/${game}?n=25&t=15${display}`, page.url()).href);
+  await expect(page.getByRole('link', { name: '多人对战' })).toHaveAttribute('href', `/${game}/rooms?n=25&t=15${display}&next=10&join=1`);
   await expect(page.getByRole('textbox', { name: '昵称' })).toHaveValue('阿林');
   let boardRequests = 0;
   page.on('request', request => { if (request.url().endsWith('/boards/current')) boardRequests++; });
   await expect(page.getByRole('radio', { name: '固定局数' })).toBeChecked();
   const count = page.getByLabel('题数', { exact: true });
   await count.fill('2'); await count.press('Tab');
-  await expect(page).toHaveURL(new URL(`/${game}?round_limit=2`, page.url()).href);
+  await expect(page).toHaveURL(new URL(`/${game}?n=2&t=15${display}`, page.url()).href);
+  if (game === 'face-game') {
+    await page.getByText('直接显示', { exact: true }).click();
+    await expect(page).toHaveURL(new URL('/face-game?n=2&t=15&crop=1&grid=off', page.url()).href);
+  }
   await page.getByRole('button', { name: '开始游戏' }).click();
   for (const number of [1, 2]) {
     await page.getByRole('button', { name: game === 'face-game' ? '都不是' : '提交日期', exact: true }).click();
@@ -53,6 +59,7 @@ for (const game of ['face-game', 'history-quiz']) test(`${game} solo stops at th
   await page.screenshot({ path: info.outputPath('record-time.png') });
   await page.getByRole('link', { name: '按此规则开局' }).click();
   await expect(page.getByLabel('题数', { exact: true })).toHaveValue('2');
+  if (game === 'face-game') await expect(page.getByRole('radio', { name: '直接显示' })).toBeChecked();
   for (const name of ['当前筛选的榜单', '全部榜单']) {
     await page.getByRole('link', { name, exact: true }).click();
     await expect(page.getByText('1 人上榜')).toBeVisible();
@@ -65,7 +72,7 @@ for (const game of ['face-game', 'history-quiz']) test(`${game} solo stops at th
 test('board access follows the active rules and empty lists retain their filters', async ({ guests }) => {
   const page = guests[0]!;
   const current = page.getByRole('link', { name: '当前榜单', exact: true });
-  await page.goto('/face-game/rooms?grid=true&people=1');
+  await page.goto('/face-game/rooms?people=1');
   await expect(current).toBeDisabled();
   await expect(current).not.toHaveAttribute('href', /.+/);
   await page.getByRole('link', { name: '单人游戏' }).click();
@@ -84,7 +91,7 @@ test('board access follows the active rules and empty lists retain their filters
   await page.getByRole('link', { name: '当前筛选的榜单' }).click();
   await expect(page.getByRole('region', { name: '出题筛选' })).toContainText('人1');
   await expect(page.getByText('暂无榜单')).toBeVisible();
-  await page.goto('/history-quiz?mode=endless');
+  await page.goto('/history-quiz?n=0');
   await expect(page.getByRole('radiogroup', { name: '游戏局数' }).getByRole('radio')).toHaveCount(2);
   await expect(current).toBeDisabled();
   await page.getByRole('button', { name: '开始游戏' }).click();

@@ -31,7 +31,7 @@ test('room creation remembers preferences across reloads', async ({ page }) => {
 test('three guests share a cropped round, a correction and the final score', async ({ guests }, testInfo) => {
   test.setTimeout(60000);
     const [host, guest, late] = guests;
-    await host.goto('/face-game?people=1,2&publishers=x:alice&start=2025-01-01T00:00:00Z');
+    await host.goto('/face-game?grid=off&people=1,2&publishers=x:alice&start=2025-01-01T00:00:00Z');
     const mode = host.getByRole('switch', { name: '仅截取人脸' });
     await expect(mode).toBeChecked();
     await host.getByRole('button', { name: '开始游戏' }).click();
@@ -130,7 +130,7 @@ test('three guests share a cropped round, a correction and the final score', asy
     await host.screenshot({ path: testInfo.outputPath('final-mobile.png') });
     await guest.screenshot({ path: testInfo.outputPath('final-desktop.png') });
 
-    await host.goto('/face-game/rooms?people=1,2');
+    await host.goto('/face-game/rooms?grid=off&people=1,2');
     await expect(answerTime).toHaveValue('15');
     await host.getByText('一命模式', { exact: true }).click();
     await host.getByRole('button', { name: '创建并进入' }).click();

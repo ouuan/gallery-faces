@@ -28,9 +28,9 @@ class RoomSettings(BaseModel):
     cropped: bool = True
     single_life: bool = False
     allow_late_join: bool = True
-    grid: bool = False
-    grid_size: int = Field(default=5, ge=2, le=16)
-    grid_seconds: float = Field(default=0.5, ge=0.1, le=60)
+    grid: bool = True
+    grid_size: int = Field(default=10, ge=2, le=16)
+    grid_seconds: float = Field(default=0.2, ge=0.1, le=60)
 
 class GameFilters(BaseModel):
     people: str = ''

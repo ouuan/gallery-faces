@@ -17,7 +17,7 @@ def match(client, monkeypatch):
     monkeypatch.setattr('app.photo_draw.random.random', lambda: 1)
     with db.connect(True) as conn:
         seed(conn)
-    member = client.post(BASE, json={'nickname': '甲', 'filters': {'people': '1,2'}}).json()
+    member = client.post(BASE, json={'nickname': '甲', 'settings': {'grid': False}, 'filters': {'people': '1,2'}}).json()
     path = f"{BASE}/{member['code']}"
     credentials = [member['token']]
 
@@ -42,6 +42,8 @@ def match(client, monkeypatch):
         return view
 
     def act(action, who=0, status=200, stage=None, **fields):
+        if 'settings' in fields:
+            fields['settings'].setdefault('grid', False)
         if stage is None:
             stage = state(who)['stage']
         response = client.post(path + '/actions', headers={'X-Room-Token': credentials[who]},
@@ -131,7 +133,7 @@ def test_shared_round_feedback_and_reconnect(match):
     join, state, act, now = match
     act('start', 1, status=403)
     question = act('start')
-    assert question['settings'] == game_rooms.RoomSettings().model_dump()
+    assert question['settings'] == game_rooms.RoomSettings(grid=False).model_dump()
     assert question['photo'] == state(1)['photo']
     assert set(question['photo']) == {'box', 'width', 'height', 'choices', 'image_url'}
     assert question['answer_name'] is question['correct_choice'] is question['source_photo'] is None
@@ -292,7 +294,7 @@ def test_grid_waits_for_online_players_or_five_seconds(match):
     now[0] += 0.75
     assert state()['grid']['elapsed'] == 0.5
     assert act('image_loaded', 2, stage=pending['stage'])['phase'] == 'answer'
-    assert act('answer', 2, choice=1)['grid']['correct_cells'] == 1
+    assert act('answer', 2, choice=1)['grid']['correct_cells'] == 2
 
 
 def test_grid_wait_ends_when_unready_player_leaves(match):
@@ -325,7 +327,7 @@ def test_closed_room_allows_lobby_join_and_member_reconnect(client, match):
 
 def test_grid_round_privacy_timing_and_rescore(match):
     join, state, act, now = match
-    act('settings', settings={'grid': True, 'continue_seconds': 0})
+    act('settings', settings={'grid': True, 'grid_size': 5, 'grid_seconds': 0.5, 'continue_seconds': 0})
     act('start'); first = load_grid(act)
     assert not first['settings']['single_life'] and first['remaining'] == 27.5
     assert sorted(first['grid']['order']) == list(range(25))
@@ -387,7 +389,7 @@ def test_grid_void_round_restores_all_previous_statistics(match, proposal):
 
 def test_grid_give_up_waits_for_full_grid_and_all_players(match):
     _, state, act, now = match
-    act('settings', settings={'grid': True, 'grid_size': 2, 'continue_seconds': 0})
+    act('settings', settings={'grid': True, 'grid_size': 2, 'grid_seconds': 0.5, 'continue_seconds': 0})
     act('start'); load_grid(act); now[0] += 1.999
     act('give_up', status=409)
     act('answer', choice=2)
@@ -419,7 +421,7 @@ def test_grid_competing_correct_answers_score_once(match):
     _, _, act, now = match
     act('settings', settings={'grid': True})
     act('start'); start = load_grid(act)
-    now[0] += 0.5
+    now[0] += 0.25
     def submit(who):
         try:
             return act('answer', who, stage=start['stage'], choice=1)['phase']
@@ -436,7 +438,7 @@ def test_grid_competing_correct_answers_score_once(match):
 def test_grid_life_only_eliminates_attempted_wrong_answer(match):
     join, state, act, now = match
     join('丙')
-    act('settings', settings={'grid': True, 'single_life': True, 'grid_size': 2, 'answer_seconds': 3})
+    act('settings', settings={'grid': True, 'single_life': True, 'grid_size': 2, 'grid_seconds': 0.5, 'answer_seconds': 3})
     start = act('start'); load_grid(act, 3)
     now[0] += 2
     act('answer', choice=2); act('give_up', 1)

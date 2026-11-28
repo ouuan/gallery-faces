@@ -3,26 +3,29 @@ import { emptyFilter, fromQuery } from '../src/filters';
 import { parseRules, ruleQuery } from '../src/game-rules';
 
 describe('game sharing links', () => {
-  it('omits all defaults for both games and both player modes', () => {
+  it('writes every effective rule even when starting with the defaults', () => {
     for (const history of [false, true]) for (const multiplayer of [false, true]) {
-      expect(ruleQuery(parseRules({}, history), emptyFilter(), history, multiplayer)).toEqual({});
+      const settings = parseRules({}, history);
+      const encoded = ruleQuery(settings, emptyFilter(), history, multiplayer);
+      expect(encoded).toEqual({ n: '25', t: '15', ...(!history && { crop: '1', grid: '10x0.2' }),
+        ...(multiplayer && { next: '10', join: '1' }) });
+      expect(parseRules(encoded, history)).toEqual(settings);
     }
   });
 
-  it('round-trips non-default rules and filters from a verbose room link', () => {
-    const legacy = { people: '1,2,3', publishers: '', mode: 'fixed', round_limit: '10', answer_seconds: '20', cropped: 'false',
-      grid: 'true', grid_size: '8', grid_seconds: '0.25', continue_seconds: '0', allow_late_join: 'false', include_no_faces: 'false' };
-    const rules = parseRules(legacy, false), filter = fromQuery(legacy);
-    const compact = ruleQuery(rules, filter, false, true);
-    expect(compact).toEqual({ people: '1-3', round_limit: '10', answer_seconds: '20', cropped: 'false', grid: 'true',
-      grid_size: '8', grid_seconds: '0.25', continue_seconds: '0', allow_late_join: 'false' });
-    expect(parseRules(compact, false)).toEqual(rules);
-    expect(fromQuery(compact)).toEqual(filter);
+  it('round-trips custom room rules and filters', () => {
+    const query = { people: '1-3', n: '0', t: '20', crop: '0', grid: '8x0.25', next: '0', join: '0' };
+    const settings = parseRules(query, false);
+    expect(settings).toMatchObject({ round_limit: 0, answer_seconds: 20, cropped: false, grid_size: 8, grid_seconds: 0.25,
+      continue_seconds: 0, allow_late_join: false });
+    expect(ruleQuery(settings, fromQuery(query), false, true)).toEqual(query);
   });
 
-  it('keeps the mode but drops options that have no effect', () => {
-    const options = { mode: 'life', grid_size: '8', round_limit: '3', continue_seconds: '0', allow_late_join: 'false' };
-    expect(ruleQuery(parseRules(options, false), emptyFilter(), false)).toEqual({ mode: 'life' });
-    expect(ruleQuery(parseRules({ mode: 'endless', grid: 'true' }, true), emptyFilter(), true)).toEqual({ mode: 'endless' });
+  it('encodes direct display and one-life without inactive grid or join options', () => {
+    const query = { n: 'life', t: '3', crop: '1', grid: 'off', next: '0' };
+    const settings = parseRules(query, false);
+    expect(settings).toMatchObject({ single_life: true, round_limit: 0, grid: false, allow_late_join: false });
+    expect(ruleQuery(settings, emptyFilter(), false, true)).toEqual(query);
+    expect(parseRules({ n: '-1', t: '999', grid: '17x0' }, false)).toEqual(parseRules({}, false));
   });
 });

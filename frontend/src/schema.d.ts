@@ -3660,17 +3660,17 @@ export interface components {
             allow_late_join: boolean;
             /**
              * Grid
-             * @default false
+             * @default true
              */
             grid: boolean;
             /**
              * Grid Size
-             * @default 5
+             * @default 10
              */
             grid_size: number;
             /**
              * Grid Seconds
-             * @default 0.5
+             * @default 0.2
              */
             grid_seconds: number;
         };

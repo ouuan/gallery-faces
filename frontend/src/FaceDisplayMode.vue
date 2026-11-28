@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NInputNumber, NRadioButton, NRadioGroup, NSwitch } from 'naive-ui';
-import type { FaceDisplay } from './face-grid';
+import { defaultGrid, type FaceDisplay } from './face-grid';
 const display = defineModel<FaceDisplay>({ required: true });
 </script>
 
@@ -14,8 +14,8 @@ const display = defineModel<FaceDisplay>({ required: true });
       </n-radio-group>
     </div>
     <div v-if="display.grid" class="grid-settings">
-      <label>每边格数<n-input-number :value="display.grid_size" :min="2" :max="16" :precision="0" @update:value="value => display = { ...display, grid_size: value ?? 5 }" /></label>
-      <label>每格间隔（秒）<n-input-number :value="display.grid_seconds" :min="0.1" :max="60" :step="0.1" @update:value="value => display = { ...display, grid_seconds: value ?? 0.5 }" /></label>
+      <label>每边格数<n-input-number :value="display.grid_size" :min="2" :max="16" :precision="0" @update:value="value => display = { ...display, grid_size: value ?? defaultGrid.grid_size }" /></label>
+      <label>每格间隔（秒）<n-input-number :value="display.grid_seconds" :min="0.1" :max="60" :step="0.1" @update:value="value => display = { ...display, grid_seconds: value ?? defaultGrid.grid_seconds }" /></label>
     </div>
     <label class="mode-row crop-row" @click.self="display = { ...display, cropped: !display.cropped }">仅截取人脸<n-switch aria-label="仅截取人脸" :value="display.cropped" @update:value="cropped => display = { ...display, cropped }" /></label>
   </div>

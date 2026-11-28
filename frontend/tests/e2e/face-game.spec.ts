@@ -3,7 +3,7 @@ import { test } from '../room-fixture';
 
 for (const index of [0, 1]) test(`solo review and public one-life score at viewport ${index}`, async ({ guests }, info) => {
   const page = guests[index]!;
-  await page.goto('/face-game?people=1,2&cropped=false&mode=life');
+  await page.goto('/face-game?people=1,2&crop=0&grid=off&n=life');
   await page.getByRole('button', { name: '开始游戏' }).click();
   const choice = page.getByRole('button', { name: '人2', exact: true });
   await expect(choice).toBeEnabled();

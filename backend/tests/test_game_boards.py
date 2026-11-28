@@ -10,9 +10,9 @@ def test_equivalent_rules_use_the_same_board():
     def board(people, publishers, start, **settings):
         return game_boards.board_for('face-game', game_boards.BoardRules(settings=settings, filters=dict(
             people=people, publishers=publishers, start=start)), main.parse_people_publishers, main.date_bounds).id
-    first = board('2,1', 'x:ABC,person:1-2', '2026-01-01T08:00:00+08:00')
-    assert first == board('1-2', 'person:2,person:1,x:abc', '2026-01-01T00:00:00Z', continue_seconds=0, grid_size=8)
-    assert first != board('1-2', 'x:abc,person:1-2', '2026-01-01T00:00:00Z', answer_seconds=30)
+    first = board('2,1', 'x:ABC,person:1-2', '2026-01-01T08:00:00+08:00', grid=False)
+    assert first == board('1-2', 'person:2,person:1,x:abc', '2026-01-01T00:00:00Z', grid=False, continue_seconds=0, grid_size=8)
+    assert first != board('1-2', 'x:abc,person:1-2', '2026-01-01T00:00:00Z', grid=False, answer_seconds=30)
 
 
 def test_upload_atomic_best_and_time_survive_cleanup(client, monkeypatch):
@@ -21,7 +21,7 @@ def test_upload_atomic_best_and_time_survive_cleanup(client, monkeypatch):
         seed(conn)
     def play(choice):
         base = '/api/v1/face-game/rooms'
-        member = client.post(base, json={'solo': True, 'nickname': '我', 'settings': {'round_limit': 1}, 'filters': {'people': '1,2'}}).json()
+        member = client.post(base, json={'solo': True, 'nickname': '我', 'settings': {'round_limit': 1, 'grid': False}, 'filters': {'people': '1,2'}}).json()
         headers = {'X-Room-Token': member['token']}
         path = f"{base}/{member['code']}"
         view = client.get(path, headers=headers).json()

@@ -16,11 +16,12 @@ def test_solo_restores_original_question_and_deadline(client, monkeypatch):
         return client.get(path, headers=headers).json()
     start = read()
     assert start['phase'] == 'loading' and start['source_photo'] is None
+    assert start['settings']['grid_seconds'] == 0.2 and len(start['grid']['order']) == 100
     now[0] += 8
     game_rooms.rooms.clear()
     restored = read()
-    assert restored['photo'] == start['photo'] and restored['remaining'] == 12
-    now[0] += 12
+    assert restored['photo'] == start['photo'] and restored['remaining'] == 32
+    now[0] += 32
     game_rooms.rooms.clear()
     revealed = read()
     assert revealed['phase'] == 'reveal' and revealed['players'][0]['unanswered'] == 1

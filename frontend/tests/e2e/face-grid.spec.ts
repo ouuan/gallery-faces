@@ -25,9 +25,9 @@ test('solo reveals only the face and restores the winning cells during review', 
   await expect(page.getByRole('switch', { name: '仅截取人脸' })).toBeChecked();
   await page.screenshot({ path: info.outputPath('grid-setup.png') });
   await page.getByRole('button', { name: '开始游戏' }).click();
-  await expect(page.getByText('已显示 0 / 25 格')).toBeVisible();
+  await expect(page.getByText('已显示 0 / 100 格')).toBeVisible();
   await expectFaceOnly(page);
-  await expect(page.getByText('已显示 1 / 25 格')).toBeVisible();
+  await expect(page.getByText('已显示 1 / 100 格')).toBeVisible();
   const mask = () => page.locator('.grid-mask i').evaluateAll(cells => cells.map(cell => cell.className));
   const winningMask = await mask();
   await page.getByRole('button', { name: '人1', exact: true }).click();
@@ -47,8 +47,8 @@ test('solo reveals the magnified viewport and averages only correct answers', as
   await page.getByRole('switch', { name: '仅截取人脸' }).click();
   await page.getByText('逐格显示', { exact: true }).click();
   const inputs = page.locator('.grid-settings input');
-  await expect(inputs.nth(0)).toHaveValue('5');
-  await expect(inputs.nth(1)).toHaveValue('0.5');
+  await expect(inputs.nth(0)).toHaveValue('10');
+  await expect(inputs.nth(1)).toHaveValue('0.2');
   await inputs.nth(0).fill('3'); await inputs.nth(0).press('Tab');
   await inputs.nth(1).fill('3'); await inputs.nth(1).press('Tab');
   await page.getByRole('button', { name: '开始游戏' }).click();
@@ -140,7 +140,7 @@ test('grid players can retry privately and see all attempted options after the r
   expect((await (await hostLoaded).json()).phase).toBe('loading');
   await expect(host.getByRole('heading', { name: /等待玩家加载照片/ })).toBeVisible();
   await expect(host.locator('.grid-progress')).toHaveCount(0);
-  await expect(host.locator('.grid-mask .covered')).toHaveCount(25);
+  await expect(host.locator('.grid-mask .covered')).toHaveCount(100);
   await expect(host.locator('.game-options button:enabled')).toHaveCount(0);
   const guestLoaded = guest.waitForResponse(response => response.request().postDataJSON()?.action === 'image_loaded');
   releaseImage();
@@ -169,7 +169,7 @@ test('grid players can retry privately and see all attempted options after the r
   await expect(host.getByRole('button', { name: '都不是', exact: true }).locator('.option-tally')).toHaveCount(0);
   await host.getByRole('button', { name: '结束对战' }).click();
   await expect(late.getByRole('group', { name: '我的战绩' })).toContainText('第 1 名');
-  await expect(late.getByRole('group', { name: '我的战绩' })).toContainText('每边 5 格');
+  await expect(late.getByRole('group', { name: '我的战绩' })).toContainText('每边 10 格');
   await expect(host.getByRole('group', { name: '我的战绩' })).toContainText('并列第 2 名');
   await expect(guest.getByRole('table').getByRole('columnheader')).toHaveText(['名次', '玩家', '分数', '正确', '错误', '平均格数']);
   expect(await host.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

@@ -32,7 +32,7 @@ test('admin can inspect both matches from one room without uploading', async ({ 
 
 test('late answer messages leave the question in place on mobile and desktop', async ({ guests }) => {
   for (const page of guests.slice(0, 2)) {
-    await page.goto('/face-game?answer_seconds=90');
+    await page.goto('/face-game?t=90&grid=off');
     await page.getByRole('button', { name: '开始游戏' }).click();
     const choose = page.getByRole('button', { name: '都不是', exact: true });
     await expect(choose).toBeEnabled();
