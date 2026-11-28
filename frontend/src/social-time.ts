@@ -1,18 +1,30 @@
 import { onMounted, onUnmounted, ref } from 'vue';
+import { dateLabel } from './api';
 
-const now = ref(Date.now());
-let listeners = 0;
-let timer: ReturnType<typeof setInterval>;
+function sharedClock(interval: number) {
+  const now = ref(Date.now());
+  let listeners = 0;
+  let timer: ReturnType<typeof setInterval>;
+  return () => {
+    onMounted(() => {
+      if (++listeners === 1) {
+        now.value = Date.now();
+        timer = setInterval(() => { now.value = Date.now(); }, interval);
+      }
+    });
+    onUnmounted(() => { if (--listeners === 0) clearInterval(timer); });
+    return now;
+  };
+}
 
-export function useClock() {
-  onMounted(() => {
-    if (++listeners === 1) {
-      now.value = Date.now();
-      timer = setInterval(() => { now.value = Date.now(); }, 15_000);
-    }
-  });
-  onUnmounted(() => { if (--listeners === 0) clearInterval(timer); });
-  return now;
+export const useClock = sharedClock(15_000);
+export const useActivityClock = sharedClock(1000);
+
+export function activityTime(value: string, current: number) {
+  const seconds = Math.floor((current - Date.parse(value)) / 1000);
+  if (!Number.isFinite(seconds)) return '缺少日期';
+  if (seconds < 0 || seconds >= 3600) return dateLabel(value);
+  return seconds < 60 ? `${seconds}秒前` : `${Math.floor(seconds / 60)}分钟前`;
 }
 
 export function socialTime(value: string, current: number) {

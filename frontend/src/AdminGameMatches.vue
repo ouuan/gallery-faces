@@ -6,6 +6,7 @@ import { api } from './api';
 import { averageCells } from './face-grid';
 import { fromQuery } from './filters';
 import { average, formatPoints } from './history-quiz';
+import { activityTime, useActivityClock } from './social-time';
 import GameFilterSummary from './GameFilterSummary.vue';
 import GameRoomRules from './GameRoomRules.vue';
 import ListPagination from './ListPagination.vue';
@@ -16,6 +17,7 @@ const phases = { lobby: '等待开局', loading: '加载中', answer: '答题中
 const games = { 'face-game': '认脸游戏', 'history-quiz': '史官测验' };
 const options = (map: Record<string, string>) => Object.entries(map).map(([value, label]) => ({ value, label }));
 const route = useRoute();
+const now = useActivityClock();
 const matchId = computed(() => String(route.params.matchId || ''));
 const game = ref(''), mode = ref(''), phase = ref(''), page = ref(1), retry = ref(0);
 const list = ref<Schema['Matches']>(), detail = ref<Schema['MatchDetail']>(), error = ref('');
@@ -59,7 +61,7 @@ watch([query, matchId, retry], async (_, __, cleanup) => {
       </p>
     </template>
     <template v-else-if="list"><p v-if="!list.total">暂无符合条件的对局</p><table v-else><thead><tr><th>对局</th><th>状态</th><th>最近活动</th></tr></thead><tbody>
-      <tr v-for="item in list.items" :key="item.id"><td><router-link :to="`/admin/game-matches/${item.id}`">{{ games[item.game] }} · {{ item.solo ? '单人' : item.code }}</router-link></td><td>{{ phases[item.phase] }} · 第 {{ item.round }} 题</td><td>{{ new Date(item.activity).toLocaleString() }}</td></tr>
+      <tr v-for="item in list.items" :key="item.id"><td><router-link :to="`/admin/game-matches/${item.id}`">{{ games[item.game] }} · {{ item.solo ? '单人' : item.code }}</router-link></td><td>{{ phases[item.phase] }} · 第 {{ item.round }} 题</td><td><time :datetime="item.activity">{{ activityTime(item.activity, now) }}</time></td></tr>
     </tbody></table><ListPagination v-if="list.total > 20" :page="page" :page-count="Math.ceil(list.total / 20)" :disabled="false" @change="page = $event" /></template>
     <p v-else role="status">正在读取对局…</p>
   </div>
