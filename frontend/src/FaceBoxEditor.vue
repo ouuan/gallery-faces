@@ -7,6 +7,7 @@ const props = defineProps<{
   image: { id: number; width: number; height: number; faces: any[] };
   modelValue: string;
   disabled?: boolean;
+  selectedIds?: number[];
 }>();
 const emit = defineEmits<{ "update:modelValue": [value: string] }>();
 const { urls, failed } = useReviewImages(() => [props.image.id]);
@@ -144,9 +145,9 @@ function clear() {
       v-for="(face, index) in image.faces"
       :key="face.id"
       class="face-box"
-      :class="{ ignored: face.ignored }"
+      :class="{ ignored: face.ignored, selected: selectedIds?.includes(face.id) }"
       :style="style(face.box)"
-      >#{{ index + 1 }}</span
+      ><span class="box-number">#{{ index + 1 }}</span></span
     >
     <span v-if="draft" class="face-box draft-box" :style="style(draft)"
       ><span>待保存</span></span
@@ -168,6 +169,18 @@ function clear() {
 }
 .draft-box {
   border-style: dashed;
+}
+.face-box.selected {
+  outline: 2px solid white;
+  z-index: 1;
+}
+.face-box.selected .box-number, .face-box.ignored .box-number {
+  background: var(--accent);
+  color: white;
+  padding: 0 2px;
+}
+.face-box.ignored {
+  opacity: 1;
 }
 .draft-box > span {
   display: inline-block;

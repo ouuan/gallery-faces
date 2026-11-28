@@ -998,6 +998,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/faces/{face_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Face */
+        post: operations["restore_face_api_v1_admin_faces__face_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/faces/{face_id}/undo": {
         parameters: {
             query?: never;
@@ -3327,6 +3344,11 @@ export interface components {
             kind: "remove_face";
             /** Face Id */
             face_id: number;
+        };
+        /** RestoreFaceInput */
+        RestoreFaceInput: {
+            /** Revision */
+            revision: number;
         };
         /** Resume */
         Resume: {
@@ -5974,6 +5996,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["FaceEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_face_api_v1_admin_faces__face_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                face_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreFaceInput"];
             };
         };
         responses: {

@@ -1675,11 +1675,12 @@ def review_images(db, rows, *, grouped=False, game_ineligible=False):
     items = {row['id']: dict(row, faces=[], sources=[], pending_feedback_count=0) for row in rows}
     if not items:
         return []
-    face_filter = f'AND f.ignored=0 AND f.person_id IS NOT NULL AND {REVIEW_GAME_SCORE} < {GAME_THRESHOLD}' if game_ineligible else ''
+    face_filter = f'AND (f.ignored=1 OR (f.person_id IS NOT NULL AND {REVIEW_GAME_SCORE} < {GAME_THRESHOLD}))' if game_ineligible else ''
     for row in db.execute(f'''SELECT id,image_id,box,person_id,locked,ignored,candidates,revision,
             (embedding IS NOT NULL AND length(embedding)>0) AS has_embedding FROM faces f
             WHERE image_id IN ({placeholders(items)}) {face_filter} ORDER BY image_id,json_extract(box,'$[0]') + json_extract(box,'$[2]') / 2.0,id''', list(items)):
-        items[row['image_id']]['faces'].append(dict(row, box=json.loads(row['box']), candidates=json.loads(row['candidates'])))
+        collection = 'deleted_faces' if game_ineligible and row['ignored'] else 'faces'
+        items[row['image_id']].setdefault(collection, []).append(dict(row, box=json.loads(row['box']), candidates=json.loads(row['candidates'])))
 
     by_owner = {item['group_id']: item for item in items.values()} if grouped else items
     owner = 'i.group_id' if grouped else 'i.id'
@@ -1966,6 +1967,24 @@ def face_edit(face_id: int, body: FaceEdit, _: None = Depends(admin)):
     with connect(True) as db:
         write_face_edit(db, face_id, body)
     return {"ok": True}
+
+
+class RestoreFaceInput(BaseModel):
+    revision: int
+
+
+@app.post('/api/v1/admin/faces/{face_id}/restore')
+def restore_face(face_id: int, body: RestoreFaceInput, _: None = Depends(admin)):
+    with connect(True) as db:
+        require_representative_face(db, face_id)
+        face = db.execute('SELECT ignored,revision FROM faces WHERE id=?', (face_id,)).fetchone()
+        if not face['ignored'] or face['revision'] != body.revision:
+            fail('人脸已更新，请刷新后再操作', 409)
+        history = db.execute('SELECT before_json FROM review_history WHERE face_id=? AND after_revision=? ORDER BY id DESC LIMIT 1',
+                             (face_id, body.revision)).fetchone()
+        before = json.loads(history[0]) if history else {}
+        write_face_edit(db, face_id, FaceEdit(revision=body.revision, person_id=before.get('person_id'), locked=bool(before.get('locked')) and not before.get('ignored')))
+    return {'ok': True}
 
 
 @app.post("/api/v1/admin/faces/{face_id}/undo")

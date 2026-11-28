@@ -702,6 +702,25 @@ def test_review_undo_and_ignored_no_faces(client):
     assert len(client.get("/api/v1/gallery").json()["items"]) == 1
 
 
+@pytest.mark.parametrize('keep_history', [True, False])
+def test_restore_deleted_face(client, keep_history):
+    with db.connect(True) as conn:
+        image(conn)
+        person = conn.execute("INSERT INTO people(name) VALUES('Alice')").lastrowid
+        conn.execute('UPDATE faces SET person_id=?,locked=1', (person,))
+        face = conn.execute('SELECT id FROM faces').fetchone()[0]
+    endpoint = f'/api/v1/admin/faces/{face}'
+    assert client.put(endpoint, json={'ignored': True, 'revision': 0}).status_code == 200
+    if not keep_history:
+        assert client.delete(f'/api/v1/admin/people/{person}').status_code == 200
+    assert client.post(endpoint + '/restore', json={'revision': 0}).status_code == 409
+    assert client.post(endpoint + '/restore', json={'revision': 1}).status_code == 200
+    assert client.post(endpoint + '/restore', json={'revision': 2}).status_code == 409
+    with db.connect() as conn:
+        row = conn.execute('SELECT ignored,person_id,locked,revision,box FROM faces WHERE id=?', (face,)).fetchone()
+        assert tuple(row) == (0, person if keep_history else None, int(keep_history), 2, '[0,0,20,20]')
+
+
 def test_stable_pagination(client):
     with db.connect(True) as conn:
         for _ in range(5):

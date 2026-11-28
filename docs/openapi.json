@@ -3547,6 +3547,53 @@
         }
       }
     },
+    "/api/v1/admin/faces/{face_id}/restore": {
+      "post": {
+        "summary": "Restore Face",
+        "operationId": "restore_face_api_v1_admin_faces__face_id__restore_post",
+        "parameters": [
+          {
+            "name": "face_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Face Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreFaceInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/faces/{face_id}/undo": {
       "post": {
         "summary": "Undo",
@@ -10284,6 +10331,19 @@
           "face_id"
         ],
         "title": "Remove"
+      },
+      "RestoreFaceInput": {
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "revision"
+        ],
+        "title": "RestoreFaceInput"
       },
       "Resume": {
         "properties": {

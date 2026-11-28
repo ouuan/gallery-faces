@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import LocalDateTime from "./LocalDateTime.vue";
+import { ArchiveRestore, Trash2 } from '@lucide/vue';
 import LoadingOverlay from "./LoadingOverlay.vue";
 import ListPagination from "./ListPagination.vue";
 import Filters from "./Filters.vue";
@@ -227,13 +228,27 @@ async function changePage(number: number) {
 useReviewShortcuts({
   arrowleft: { run: () => moveImage(current.value - 1), enabled: () => current.value > 0 },
   arrowright: { run: () => moveImage(current.value + 1), enabled: () => current.value < images.value.length - 1 },
-  c: { run: confirmAll, enabled: () => !actionsDisabled.value && pendingFaces.value.length > 0 },
-  d: { run: () => deleteImages(actionIds.value), enabled: () => state.value !== "trash" && !actionsDisabled.value },
+  c: { run: () => batchEdit(), enabled: () => !showDeleted.value && !actionsDisabled.value && pendingFaces.value.length > 0 },
+  d: { run: () => deleteImages(actionIds.value), enabled: () => !selectedFaces.value.length && !showDeleted.value && state.value !== "trash" && !actionsDisabled.value },
 }, () => !suggestionsView.value && state.value !== "trash" && !!active.value && !navigationDisabled.value && !sourceEdit.value && !newPersonFace.value && moreFace.value === null);
 const visibleFaces = computed<any[]>(() =>
   active.value?.faces.filter((face: any) => !face.ignored) ?? [],
 );
-const editorImage = computed(() => ({ ...active.value, faces: visibleFaces.value }));
+const deletedFaces = computed<any[]>(() => [
+  ...(active.value?.deleted_faces ?? []), ...(active.value?.faces.filter((face: any) => face.ignored) ?? []),
+]);
+const showDeleted = ref(false);
+watch(() => deletedFaces.value.length, count => { if (!count) showDeleted.value = false; });
+const selectedFaceIds = ref<number[]>([]);
+const selectedFaces = computed(() => visibleFaces.value.filter(face => selectedFaceIds.value.includes(face.id)));
+const editorImage = computed(() => ({ ...active.value, faces: showDeleted.value ? deletedFaces.value : visibleFaces.value }));
+function toggleFace(faceId: number, checked: boolean) {
+  selectedFaceIds.value = checked ? [...selectedFaceIds.value, faceId] : selectedFaceIds.value.filter(id => id !== faceId);
+}
+function toggleDeleted() {
+  selectedFaceIds.value = [];
+  showDeleted.value = !showDeleted.value;
+}
 const reviewIssues = computed(() => {
   const image = active.value;
   if (!image || !["review", "all", "image", "hidden"].includes(state.value))
@@ -271,6 +286,8 @@ watch(
     boxPerson.value = null;
     facePeople.value = {};
     moreFace.value = null;
+    selectedFaceIds.value = [];
+    showDeleted.value = false;
   },
 );
 let loadVersion = 0;
@@ -437,7 +454,7 @@ function faceConfirmed(face: any): boolean {
   return personId === (face.person_id ?? null) && (!!face.locked || personId === null);
 }
 const pendingFaces = computed(() =>
-  visibleFaces.value.filter((face: any) => !faceConfirmed(face)),
+  (selectedFaces.value.length ? selectedFaces.value : visibleFaces.value).filter(face => !faceConfirmed(face)),
 );
 async function saveFace(face: any, remove = false) {
   const personId = remove ? null : facePerson(face);
@@ -467,37 +484,53 @@ async function edit(face: any, remove = false) {
     savingFaces.value = false;
   }
 }
-async function confirmAll() {
-  if (actionsDisabled.value || !pendingFaces.value.length) return;
-  const faces = [...pendingFaces.value];
+async function batchEdit(remove = false) {
+  const faces = remove ? selectedFaces.value : pendingFaces.value;
+  if (actionsDisabled.value || showDeleted.value || !faces.length) return;
   savingFaces.value = true;
   try {
+    if (remove && !await confirm(`删除所选的 ${faces.length} 个人脸框？删除后可在「已删除」中恢复`)) return;
+    const verb = remove ? '已删除' : '已确认';
     const result = await send("/admin/faces", {
       faces: faces.map(face => ({
         id: face.id,
         revision: face.revision,
-        person_id: facePerson(face),
-        ignored: false,
-        locked: facePerson(face) !== null,
+        person_id: remove ? null : facePerson(face),
+        ignored: remove,
+        locked: remove || facePerson(face) !== null,
       })),
     }, "PUT");
     for (const face of faces) {
       if (result.saved.includes(face.id)) {
-        const personId = facePerson(face);
-        Object.assign(face, { person_id: personId, ignored: false, locked: personId !== null, revision: face.revision + 1 });
+        const personId = remove ? null : facePerson(face);
+        Object.assign(face, { person_id: personId, ignored: remove, locked: remove || personId !== null, revision: face.revision + 1 });
         delete facePeople.value[face.id];
       }
     }
     const failures = result.failures.map((failure: { id: number; detail: string }) =>
       `人脸 #${failure.id}：${failure.detail}`);
+    selectedFaceIds.value = selectedFaceIds.value.filter(id => result.failures.some((failure: {id: number}) => failure.id === id));
     if (failures.length)
-      message.error(`已确认 ${result.saved.length} 个人脸，${failures.length} 个失败。${failures.join("；")}`, { duration: 8000 });
+      message.error(`${verb} ${result.saved.length} 个人脸，${failures.length} 个失败。${failures.join("；")}`, { duration: 8000 });
     else {
-      message.success(`已确认 ${result.saved.length} 个人脸`);
+      message.success(`${verb} ${result.saved.length} 个人脸`);
       await loadCurrent();
     }
   } catch (e) {
     message.error((e as Error).message);
+  } finally {
+    savingFaces.value = false;
+  }
+}
+async function restoreFace(face: any) {
+  if (navigationDisabled.value) return;
+  savingFaces.value = true;
+  try {
+    await send(`/admin/faces/${face.id}/restore`, { revision: face.revision });
+    message.success('人脸框已恢复');
+    await loadCurrent();
+  } catch (error) {
+    message.error((error as Error).message);
   } finally {
     savingFaces.value = false;
   }
@@ -747,6 +780,7 @@ onMounted(load);
             <FaceBoxEditor
               :key="active.id"
               :image="editorImage"
+              :selected-ids="selectedFaceIds"
               v-model="box"
               :disabled="savingBox || savingFaces"
             />
@@ -781,21 +815,46 @@ onMounted(load);
           <section class="review-faces" aria-labelledby="review-faces-title">
             <div class="review-heading">
               <h3 id="review-faces-title">
-                人脸审核 <span class="muted">（{{ visibleFaces.length }}）</span>
+                {{ showDeleted ? '已删除的人脸框' : '人脸审核' }} <span class="muted">（{{ editorImage.faces.length }}）</span>
               </h3>
+              <div v-if="!showDeleted" class="face-batch-actions">
               <n-button class="stable-loading-button"
                 type="primary"
                 :disabled="actionsDisabled || !pendingFaces.length"
                 :loading="savingFaces"
-                aria-label="全部确认"
+                :aria-label="selectedFaces.length ? '批量确认' : '全部确认'"
                 aria-keyshortcuts="c"
-                title="确认当前显示的所有待确认人脸，采用当前选择的人物"
-                @click="confirmAll"
-                >全部确认<kbd class="shortcut-key" aria-hidden="true">C</kbd></n-button
+                :title="selectedFaces.length ? '确认所选人脸的当前人物' : '确认当前显示的所有待确认人脸'"
+                @click="batchEdit()"
+                >{{ selectedFaces.length ? '批量确认' : '全部确认' }}<kbd class="shortcut-key" aria-hidden="true">C</kbd></n-button
               >
+              <n-button v-if="selectedFaces.length" secondary type="error" :disabled="actionsDisabled" @click="batchEdit(true)">
+                <template #icon><Trash2 :size="16" /></template>批量删除
+              </n-button>
+              </div>
+              <n-button v-else :disabled="navigationDisabled" @click="toggleDeleted">返回人脸审核</n-button>
             </div>
+            <div v-if="!showDeleted && (visibleFaces.length || deletedFaces.length)" class="face-list-tools">
+              <n-checkbox v-if="visibleFaces.length" class="face-check" aria-label="全选人脸"
+                :checked="selectedFaces.length === visibleFaces.length" :indeterminate="!!selectedFaces.length && selectedFaces.length < visibleFaces.length"
+                :disabled="navigationDisabled" @update:checked="selectedFaceIds = $event ? visibleFaces.map(face => face.id) : []">
+                {{ selectedFaces.length ? `已选 ${selectedFaces.length} 个` : '全选人脸' }}
+              </n-checkbox>
+              <n-button v-if="deletedFaces.length" text class="deleted-link" :disabled="navigationDisabled" @click="toggleDeleted">
+                查看已删除（{{ deletedFaces.length }}）
+              </n-button>
+            </div>
+            <template v-if="showDeleted">
+              <div v-for="(face, index) in deletedFaces" :key="face.id" class="deleted-face">
+                <img class="face-crop" :src="`/api/v1/admin/faces/${face.id}/crop`" alt="" loading="lazy" />
+                <span>已删除 #{{ index + 1 }}</span>
+                <n-button :disabled="navigationDisabled" :aria-label="`恢复人脸框 #${index + 1}`" @click="restoreFace(face)">
+                  <template #icon><ArchiveRestore :size="16" /></template>恢复
+                </n-button>
+              </div>
+            </template>
             <div
-              v-for="(face, index) in visibleFaces"
+              v-for="(face, index) in showDeleted ? [] : visibleFaces"
               :key="face.id"
               class="face-review"
             >
@@ -807,7 +866,10 @@ onMounted(load);
                   loading="lazy"
                 />
                 <div class="face-selection">
-                  <h4>人脸 #{{ index + 1 }}</h4>
+                  <h4><n-checkbox :checked="selectedFaceIds.includes(face.id)" :disabled="navigationDisabled"
+                    class="face-check" @update:checked="toggleFace(face.id, $event)">
+                    人脸 #{{ index + 1 }}
+                  </n-checkbox></h4>
                   <PersonSelect
                     :model-value="facePerson(face)"
                     :disabled="savingFaces"
@@ -1128,6 +1190,33 @@ onMounted(load);
 }
 .face-review {
   padding: 16px 0;
+}
+.face-batch-actions, .face-list-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.face-list-tools {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+}
+.face-check, .deleted-link {
+  min-height: 44px;
+  align-items: center;
+}
+.deleted-face {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.deleted-face .face-crop {
+  width: 56px;
+  height: 56px;
+  margin: 0;
 }
 .face-identity {
   display: grid;

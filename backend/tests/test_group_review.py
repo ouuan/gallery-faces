@@ -337,6 +337,7 @@ def test_game_ineligible_filters_labeled_faces_without_marking_for_review(client
         result = listing(client, 'game_ineligible', page=1, page_size=1, image_id=small)
         assert result['total'] == 1 and result['items'][0]['id'] == large
         assert [item['id'] for item in result['items'][0]['faces']] == [face]
+        assert [item['ignored'] for item in result['items'][0]['deleted_faces']] == [1]
         assert listing(client) == []
     with db.connect(True) as conn:
         conn.execute("UPDATE settings SET value='0.299' WHERE key='face_game_threshold'")
