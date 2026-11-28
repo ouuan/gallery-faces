@@ -513,7 +513,6 @@ class Room:
             if self.grid:
                 self.grid.submit(key, choice, self.settings.grid_seconds)
                 if self.solo:
-                    self.answers[key] = choice
                     self.grid.ended_by_pass = True
                 person = self.question['face']['person_id']
                 correct = next((item['id'] for item in self.question['choices'] if item['id'] == person), None)
@@ -523,6 +522,7 @@ class Room:
                         self.changed()
                         await self.advance()
                     return
+                self.answers[key] = choice
                 self.score()
                 self.reveal()
             else:

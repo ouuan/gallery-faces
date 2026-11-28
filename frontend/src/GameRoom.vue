@@ -196,11 +196,11 @@ async function saveSettings() {
           :locked="busy || room.phase !== 'answer' || !me?.playing || me.answered || !!room.grid?.gave_up" :selected="me?.answered ? room.choice : undefined"
           :correct-id="room.correct_choice" :voided="room.void" :tallies="solo ? null : room.tallies" :answer-name="room.accepted ? room.proposal?.suggested_name : room.answer_name" @choose="choice => act('answer', { choice })">
           <p v-if="!me?.playing" role="status">{{ me?.eliminated ? '已淘汰，正在观战' : '你将从下一题起参赛' }}</p>
-          <div v-else-if="room.grid && room.phase === 'answer'" class="grid-answer-help">
-            <p role="status">{{ room.grid.gave_up ? (room.settings.single_life ? '本题不再作答，等待揭晓' : '已放弃本题，等待其他玩家') : solo ? '请选择答案' : room.settings.single_life ? '答错即淘汰' : '答对 +1 分，答错 −1 分，可继续抢答' }}</p>
-            <n-button v-if="!solo && gridComplete && !room.grid.gave_up" :disabled="busy" @click="act('give_up')">放弃作答</n-button>
+          <div v-else-if="!solo && room.grid && room.phase === 'answer'" class="grid-answer-help">
+            <p role="status">{{ room.grid.gave_up ? (room.settings.single_life ? '本题不再作答，等待揭晓' : '已放弃本题，等待其他玩家') : room.settings.single_life ? '答错即淘汰' : '答对 +1 分，答错 −1 分，可继续抢答' }}</p>
+            <n-button v-if="gridComplete && !room.grid.gave_up" :disabled="busy" @click="act('give_up')">放弃作答</n-button>
           </div>
-          <p v-else-if="room.phase === 'answer'" role="status">{{ me.answered ? '已提交，等待揭晓' : '请选择答案' }} · {{ room.players.filter(player => player.answered).length }}/{{ room.players.filter(player => player.playing).length }} 人已答</p>
+          <p v-else-if="!solo && room.phase === 'answer'" role="status">{{ me.answered ? '已提交，等待揭晓' : '请选择答案' }} · {{ room.players.filter(player => player.answered).length }}/{{ room.players.filter(player => player.playing).length }} 人已答</p>
           <div v-if="room.phase === 'reveal' && me?.playing" class="actions round-actions"><n-button type="primary" :disabled="busy || me.ready" @click="act('ready')">{{ readyLabel }}</n-button><n-button v-if="!solo && room.accepted === null" :disabled="busy" @click="act('draft')">我要反馈</n-button></div>
           <p v-if="room.phase !== 'loading' && room.phase !== 'answer'" role="status">图库答案：{{ room.answer_name }}<template v-if="room.accepted !== null"> · {{ solo ? (me?.answered && room.choice !== room.correct_choice ? '本题已记为存疑' : '反馈已提交') : room.accepted ? (room.void ? '反馈已采纳，本题不计分' : `反馈已采纳，按${voteName}计分`) : '反馈未通过，保留原判' }}</template></p>
           <p v-if="lastRound && room.phase === 'reveal'" role="status">本题结算后结束对战</p>

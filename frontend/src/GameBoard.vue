@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, watchEffect } from 'vue';
-import { Check, Grid2X2, X, ZoomIn } from '@lucide/vue';
+import { Check, Flag, Grid2X2, X, ZoomIn } from '@lucide/vue';
 import { NButton } from 'naive-ui';
 import { facePosition } from './api';
 import { cropBox, faceZoom, gridViewport } from './face-game';
@@ -38,8 +38,14 @@ watchEffect(cleanup => {
   tick(); cleanup(() => clearTimeout(timer));
 });
 const visible = computed(() => new Set(props.order?.slice(0, shown.value)));
+const resultLabels = { right: '你答对了', 'answer-key': '正确答案', wrong: '已答错' };
+function optionResult(id: number | null): keyof typeof resultLabels | undefined {
+  if (props.voided) return;
+  if (props.revealed && id === props.correctId) return id === props.selected ? 'right' : 'answer-key';
+  if (props.wrongChoices?.includes(id) || (props.revealed && id === props.selected)) return 'wrong';
+}
 const choices = computed(() => [...(props.photo?.choices ?? []), { id: null, name: '都不是' }].map(choice => ({
-  ...choice, tally: props.revealed ? props.tallies?.find(item => item.choice === choice.id) : undefined,
+  ...choice, result: optionResult(choice.id), tally: props.revealed ? props.tallies?.find(item => item.choice === choice.id) : undefined,
 })));
 const bounds = computed(() => {
   const photo = props.photo;
@@ -117,14 +123,15 @@ const imageStyle = computed(() => {
         </div>
         <div v-else class="game-options" role="group" aria-labelledby="game-prompt">
           <button v-for="choice in choices" :key="choice.id ?? 'none'" type="button" :disabled="locked || !imageReady || (grid && shown === 0) || wrongChoices?.includes(choice.id)"
-            :aria-description="!voided && wrongChoices?.includes(choice.id) ? '已答错' : undefined"
-            :class="{ fallback: choice.id === null, selected: !revealed && choice.id === selected, right: revealed && !voided && choice.id === correctId, wrong: !voided && (wrongChoices?.includes(choice.id) || (revealed && choice.id === selected && choice.id !== correctId)) }"
+            :aria-description="choice.result && resultLabels[choice.result]" :title="choice.result && resultLabels[choice.result]"
+            :class="[choice.result, { fallback: choice.id === null, selected: !revealed && choice.id === selected }]"
             @click="emit('choose', choice.id, shown)">
             <span class="option-label">{{ choice.name }}<template v-if="revealed && !voided && choice.id === null && correctId === null && answerName">（{{ answerName }}）</template>
               <small v-if="choice.tally" class="option-tally" :title="choice.tally.nickname ?? undefined">{{ choice.tally.nickname ?? `${choice.tally.count} 人` }}</small>
             </span>
-            <Check v-if="revealed && !voided && choice.id === correctId" :size="16" aria-hidden="true" />
-            <X v-else-if="!voided && (wrongChoices?.includes(choice.id) || (revealed && choice.id === selected))" :size="16" aria-hidden="true" />
+            <Check v-if="choice.result === 'right'" :size="16" aria-hidden="true" />
+            <Flag v-else-if="choice.result === 'answer-key'" :size="16" aria-hidden="true" />
+            <X v-else-if="choice.result === 'wrong'" :size="16" aria-hidden="true" />
           </button>
         </div>
       <slot v-if="photo" :grid-complete="liveGrid && liveCells === order?.length" />
@@ -159,6 +166,7 @@ const imageStyle = computed(() => {
 .game-options button:disabled { cursor: default; color: var(--muted); }
 @media (hover: hover) { .game-options button:enabled:hover { border-color: var(--accent); color: var(--accent); } }
 .game-options button.right { border-color: var(--success); background: var(--success-bg); color: var(--success); }
+.game-options button.answer-key { border: 1px dashed var(--muted); color: var(--text); }
 .game-options button.wrong { border-color: var(--error); color: var(--error); }
 .game-options button.selected { border-color: var(--accent); color: var(--accent); }
 @media (max-width: 768px) and (orientation: portrait), (max-width: 599px) {

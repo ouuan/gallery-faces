@@ -7,6 +7,7 @@ for (const index of [0, 1]) test(`solo review and public one-life score at viewp
   await page.getByRole('button', { name: '开始游戏' }).click();
   const choice = page.getByRole('button', { name: '人2', exact: true });
   await expect(choice).toBeEnabled();
+  await expect(page.getByText(/请选择答案|人已答/)).toHaveCount(0);
   const frame = page.locator('.game-frame'), target = page.getByLabel('要辨认的人脸');
   await expect(target).toBeVisible();
   const zoom = page.getByRole('button', { name: '按住放大人脸' });

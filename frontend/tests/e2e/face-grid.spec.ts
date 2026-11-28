@@ -158,7 +158,8 @@ test('grid players can retry privately and see all attempted options after the r
   await guest.screenshot({ path: info.outputPath('grid-desktop.png') });
   await join(late, '丙');
   await late.getByRole('button', { name: '人1', exact: true }).click();
-  await expect(host.getByRole('button', { name: /人1.*丙/ })).toHaveClass(/right/);
+  await expect(host.getByRole('button', { name: /人1.*丙/ })).toHaveAccessibleDescription('正确答案');
+  await expect(late.getByRole('button', { name: /人1.*丙/ })).toHaveAccessibleDescription('你答对了');
   await expect(host.getByRole('button', { name: /人2.*2 人/ })).toBeVisible();
   const review = host.getByRole('button', { name: '按住查看答对时的格子' });
   await review.focus(); await host.keyboard.down('Space');
@@ -201,7 +202,8 @@ test('players can pass a fully revealed grid and reveal the answer together', as
   await expect(guest.getByRole('button', { name: '人1', exact: true })).toBeEnabled();
   await guest.getByRole('button', { name: '放弃作答' }).click();
   for (const page of [host, guest]) {
-    await expect(page.getByRole('button', { name: '人1', exact: true })).toHaveClass(/right/);
+    await expect(page.getByRole('button', { name: '人1', exact: true })).toHaveAccessibleDescription('正确答案');
+    await expect(page.locator('.game-options .right')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '按住查看答对时的格子' })).toHaveCount(0);
   }
 });
