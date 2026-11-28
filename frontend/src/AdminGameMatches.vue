@@ -29,7 +29,7 @@ watch([query, selected, retry], async (_, __, cleanup) => {
 <template>
   <div class="matches">
     <n-button v-if="selected" @click="selected = ''">返回对局列表</n-button>
-    <div v-else class="filters"><label>游戏<n-select v-model:value="game" :options="options({ '': '全部游戏', ...games })" /></label>
+    <div v-else class="match-filters"><label>游戏<n-select v-model:value="game" :options="options({ '': '全部游戏', ...games })" /></label>
       <label>人数模式<n-select v-model:value="mode" :options="options({ '': '全部模式', solo: '单人', multi: '多人' })" /></label>
       <label>状态<n-select v-model:value="phase" :options="options({ '': '全部状态', ...phases })" /></label></div>
     <p v-if="error" role="alert">{{ error }} <n-button @click="retry++">重试</n-button></p>
@@ -45,7 +45,8 @@ watch([query, selected, retry], async (_, __, cleanup) => {
   </div>
 </template>
 <style scoped>
-.matches { display: grid; align-content: start; justify-items: start; gap: 12px; } .filters { display: flex; flex-wrap: wrap; gap: 12px; }
-label { display: grid; gap: 4px; min-width: 8em; } table { width: 100%; border-collapse: collapse; }
+.matches { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; justify-items: start; gap: 16px; overflow-wrap: anywhere; }
+.match-filters { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 8em), 1fr)); gap: 12px; }
+label { display: grid; gap: 4px; } table { width: 100%; border-collapse: collapse; }
 th, td { text-align: start; padding: 8px 4px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; } td button { min-height: 44px; }
 </style>
