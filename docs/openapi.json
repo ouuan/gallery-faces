@@ -8532,6 +8532,18 @@
             "format": "date-time",
             "title": "Activity"
           },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "settings": {
             "$ref": "#/components/schemas/RoomSettings-Output"
           },
@@ -8560,6 +8572,7 @@
           "round",
           "members",
           "activity",
+          "created_at",
           "settings",
           "filters",
           "settled",

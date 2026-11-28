@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { NButton, NSelect } from 'naive-ui';
 import { RefreshCw } from '@lucide/vue';
-import { api } from './api';
+import { api, dateLabel } from './api';
 import { averageCells } from './face-grid';
 import { fromQuery } from './filters';
 import { average, formatPoints } from './history-quiz';
@@ -63,6 +63,8 @@ watch([endpoint, refresh], async ([path], [previousPath], cleanup) => {
     <p v-if="error" role="alert">{{ error }} <n-button v-if="matchId" @click="refresh++">重试</n-button></p>
     <template v-if="detail"><h2>{{ games[detail.game] }} · {{ detail.solo ? '单人' : `房间 ${detail.code}` }}</h2>
       <p>{{ phases[detail.phase] }} · 第 {{ detail.round }} 题 · {{ detail.members }} 人</p>
+      <p class="match-times"><span>创建时间：<time v-if="detail.created_at" :datetime="detail.created_at">{{ dateLabel(detail.created_at) }}</time><template v-else>未记录</template></span>
+        <span>最后活动时间：<time :datetime="detail.activity">{{ dateLabel(detail.activity) }}</time></span></p>
       <GameRoomRules :settings="detail.settings" :history="detail.game === 'history-quiz'" :solo="detail.solo" /><GameFilterSummary :filter="fromQuery(detail.filters)" />
       <h3>玩家成绩</h3>
       <p v-for="member in detail.players" :key="member.name" class="player-result">
@@ -91,7 +93,7 @@ watch([endpoint, refresh], async ([path], [previousPath], cleanup) => {
 .matches { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; justify-items: start; gap: 16px; overflow-wrap: anywhere; }
 .match-filters { width: 100%; display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
 .match-filters label { flex: 1 1 8em; min-width: 0; }
-.player-result { display: flex; flex-wrap: wrap; gap: 4px 16px; font-variant-numeric: tabular-nums; }
+.match-times, .player-result { display: flex; flex-wrap: wrap; gap: 4px 16px; font-variant-numeric: tabular-nums; }
 label { display: grid; gap: 4px; } table { width: 100%; border-collapse: collapse; }
 th, td { text-align: start; padding: 8px 4px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; } .matches a { display: inline-flex; align-items: center; min-height: 44px; }
 </style>

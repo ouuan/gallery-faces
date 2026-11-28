@@ -4,7 +4,7 @@ import secrets
 import time
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from fractions import Fraction
 from typing import Annotated, Literal
 
@@ -280,11 +280,12 @@ class Room:
         self.host = self.serial = self.version = self.stage = 0
         self.phase = 'lobby'
         self.lock, self.event = asyncio.Lock(), asyncio.Event()
-        self.touched = clock()
         self.reset_match()
 
     def reset_match(self):
         self.match_id = secrets.token_hex(16)
+        self.touched = clock()
+        self.created_at = datetime.fromtimestamp(self.touched, timezone.utc)
         self.loaded = set()
         self.public_round = 0
         self.natural = False
@@ -713,6 +714,7 @@ polls = 0
 
 
 class MatchState(BaseModel):
+    created_at: datetime | None = None
     natural: bool
     public_round: int
     settings: RoomSettings

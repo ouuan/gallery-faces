@@ -31,6 +31,7 @@ class MemberResult(BaseModel):
 
 
 class MatchDetail(MatchSummary):
+    created_at: datetime | None
     settings: games.RoomSettings
     filters: games.GameFilters
     settled: int
@@ -74,7 +75,7 @@ def router(admin):
             row = conn.execute('SELECT * FROM game_matches WHERE id=? AND touched>?', (match_id, games.clock() - games.RETENTION)).fetchone()
         games.check(row, '对局不存在或已失效', 404)
         state = games.MatchState.model_validate_json(row['state'])
-        return MatchDetail(**summary(row, state), settings=state.settings, filters=state.filters, settled=state.settled,
+        return MatchDetail(**summary(row, state), created_at=state.created_at, settings=state.settings, filters=state.filters, settled=state.settled,
             players=[MemberResult(**vars(member), points=float(state.scores.get(member.id, 0))) for member in state.players.values()])
 
     return routes

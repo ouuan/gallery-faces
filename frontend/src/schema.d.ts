@@ -2739,6 +2739,8 @@ export interface components {
              * Format: date-time
              */
             activity: string;
+            /** Created At */
+            created_at: string | null;
             settings: components["schemas"]["RoomSettings-Output"];
             filters: components["schemas"]["GameFilters"];
             /** Settled */

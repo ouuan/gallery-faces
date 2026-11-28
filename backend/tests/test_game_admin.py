@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from app import db, game_rooms
 from test_game_rooms import match
 from test_workflows import client
@@ -5,7 +7,14 @@ from test_workflows import client
 
 def test_admin_lists_matches_without_advancing_or_touching(client, match):
     _, _, act, now = match
-    first = act('start'); act('finish'); second = act('restart')
+    created = datetime.fromtimestamp(now[0], timezone.utc)
+    first = act('start')
+    now[0] += 5
+    ended = act('finish')
+    finished = datetime.fromtimestamp(now[0], timezone.utc)
+    now[0] += 5
+    second = act('restart', stage=ended['stage'])
+    restarted = datetime.fromtimestamp(now[0], timezone.utc)
     path = '/api/v1/admin/game-matches'
     now[0] += 100
     def snapshot():
@@ -20,6 +29,10 @@ def test_admin_lists_matches_without_advancing_or_touching(client, match):
     assert active['total'] == 1 and active['items'][0]['id'] == second['match_id']
     assert client.get(path, params={'mode': 'solo'}).json()['total'] == 0
     detail = client.get(path + '/' + second['match_id']).json()
+    previous = client.get(path + '/' + first['match_id']).json()
+    assert datetime.fromisoformat(previous['created_at']) == created
+    assert datetime.fromisoformat(previous['activity']) == finished
+    assert datetime.fromisoformat(detail['created_at']) == restarted
     assert detail['phase'] == 'answer' and detail['round'] == 1 and len(detail['players']) == 2
     assert all('token' not in player for player in detail['players']) and 'question' not in detail
     assert snapshot() == before

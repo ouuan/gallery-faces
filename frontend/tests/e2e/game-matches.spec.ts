@@ -87,6 +87,9 @@ test('admin can inspect both matches from one room without uploading', async ({ 
   await expect(page).toHaveURL(`/admin/game-matches/${result.firstMatch}${query}`);
   await page.reload();
   await expect(page.getByText(/已结束 · 第 1 题/)).toBeVisible();
+  for (const label of ['创建时间', '最后活动时间']) {
+    await expect(page.getByText(new RegExp(`^${label}：\\d{4}/\\d{2}/\\d{2} \\d{2}:\\d{2}:\\d{2}$`))).toBeVisible();
+  }
   await page.goBack();
   await expect(page).toHaveURL('/admin/game-matches' + query);
   await page.goForward();
