@@ -13,6 +13,7 @@ const router = createRouter({
     ] },
     { path: "/:mode(daily|random)", component: () => import("./PhotoDraw.vue"), props: true },
     { path: '/heatmap', component: () => import('./Heatmap.vue') },
+    { path: '/:game(face-game|history-quiz)/boards/:scope(current|filters|all)', component: () => import('./GameBoards.vue') },
     { path: '/face-game', component: () => import('./GameRoom.vue'), props: { solo: true, key: 'face-solo' } },
     { path: '/face-game/play/:code', component: () => import('./GameRoom.vue'), props: { solo: true, key: 'face-play' } },
     { path: '/face-game/rooms/:code?', component: () => import('./GameRoom.vue') },

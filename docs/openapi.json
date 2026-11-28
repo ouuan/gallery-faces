@@ -2583,6 +2583,130 @@
         }
       }
     },
+    "/api/v1/{game}/boards/current": {
+      "post": {
+        "summary": "Current",
+        "operationId": "current_api_v1__game__boards_current_post",
+        "parameters": [
+          {
+            "name": "game",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "face-game",
+                "history-quiz"
+              ],
+              "type": "string",
+              "title": "Game"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BoardRules"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/{game}/boards/list": {
+      "post": {
+        "summary": "Boards",
+        "operationId": "boards_api_v1__game__boards_list_post",
+        "parameters": [
+          {
+            "name": "game",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "face-game",
+                "history-quiz"
+              ],
+              "type": "string",
+              "title": "Game"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "filters",
+                "all"
+              ],
+              "type": "string",
+              "default": "filters",
+              "title": "Scope"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BoardRules"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Board"
+                  },
+                  "title": "Response Boards Api V1  Game  Boards List Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/{game}/matches/{match_id}/score": {
       "post": {
         "summary": "Upload",
@@ -6062,6 +6186,73 @@
           "blocked"
         ],
         "title": "BlockRule"
+      },
+      "Board": {
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/RoomSettings"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/GameFilters"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "game": {
+            "type": "string",
+            "enum": [
+              "face-game",
+              "history-quiz"
+            ],
+            "title": "Game"
+          },
+          "members": {
+            "type": "integer",
+            "title": "Members",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "settings",
+          "filters",
+          "id",
+          "game"
+        ],
+        "title": "Board"
+      },
+      "BoardRules": {
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/RoomSettings"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/GameFilters"
+          }
+        },
+        "type": "object",
+        "title": "BoardRules"
+      },
+      "BoardView": {
+        "properties": {
+          "board": {
+            "$ref": "#/components/schemas/Board"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/RankedRecord"
+            },
+            "type": "array",
+            "title": "Records"
+          }
+        },
+        "type": "object",
+        "required": [
+          "board",
+          "records"
+        ],
+        "title": "BoardView"
       },
       "Body_cookie_upload_api_v1_admin_cookies__platform__post": {
         "properties": {
@@ -9801,6 +9992,50 @@
           "page_size"
         ],
         "title": "QueuePage"
+      },
+      "RankedRecord": {
+        "properties": {
+          "nickname": {
+            "type": "string",
+            "title": "Nickname"
+          },
+          "correct": {
+            "type": "integer",
+            "title": "Correct"
+          },
+          "cells": {
+            "type": "integer",
+            "title": "Cells"
+          },
+          "deviation": {
+            "type": "integer",
+            "title": "Deviation"
+          },
+          "rounds": {
+            "type": "integer",
+            "title": "Rounds"
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Recorded At"
+          },
+          "rank": {
+            "type": "integer",
+            "title": "Rank"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nickname",
+          "correct",
+          "cells",
+          "deviation",
+          "rounds",
+          "recorded_at",
+          "rank"
+        ],
+        "title": "RankedRecord"
       },
       "Record": {
         "properties": {

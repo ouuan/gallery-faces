@@ -126,6 +126,9 @@ async function saveSettings() {
     <header v-else><h1>{{ solo ? gameName : history ? '史官测验 · 多人对战' : '多人对战' }}</h1><nav><router-link :to="{ path: solo ? gamePath + '/rooms' : gamePath, query: rules }"><ArrowLeft :size="16" />{{ solo ? '多人对战' : '单人游戏' }}</router-link><router-link :to="{ path: '/', query }">返回图库</router-link></nav></header>
     <n-alert v-if="error" type="error" role="alert" closable @close="error = ''">{{ error }}</n-alert>
     <p v-if="syncError" role="status">{{ syncError }}</p>
+    <nav v-if="(!token && !code && !joining) || room?.phase === 'finished'" class="board-links" aria-label="公开排行榜">
+      <router-link :to="{ path: gamePath + '/boards/current', query: rules }">当前榜单</router-link><router-link :to="{ path: gamePath + '/boards/filters', query: rules }">当前筛选的榜单</router-link><router-link :to="{ path: gamePath + '/boards/all', query: rules }">全部榜单</router-link>
+    </nav>
     <form v-if="!token" class="entry setup-entry" @submit.prevent="enterRoom">
       <h2 v-if="code">加入房间 {{ code }}</h2>
       <div v-else-if="!solo" class="tabs" aria-label="对战入口"><button type="button" :aria-pressed="!joining" @click="joining = false">创建房间</button><button type="button" :aria-pressed="joining" @click="joining = true">加入房间</button></div>
@@ -221,6 +224,8 @@ async function saveSettings() {
 header, header a, .room-bar, .round-bar, .actions, .tabs, .my-record { display: flex; align-items: center; gap: 10px; }
 header, .round-bar { justify-content: space-between; }
 header nav { display: flex; flex-wrap: wrap; gap: 12px; }
+.board-links { display: flex; flex-wrap: wrap; gap: 0 16px; }
+.board-links a { display: inline-flex; align-items: center; min-height: 44px; }
 header a, .room-bar button, .actions button, .entry > button, .standings > button { min-height: 44px; }
 .room-bar { flex-wrap: wrap; border-bottom: 1px solid var(--line); padding: 4px 0; }
 .code { font-variant-numeric: tabular-nums; user-select: all; }

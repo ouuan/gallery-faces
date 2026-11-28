@@ -19,7 +19,9 @@ class BoardRules(BaseModel):
     filters: games.GameFilters = Field(default_factory=games.GameFilters)
 
 
-class Board(BoardRules):
+class Board(BaseModel):
+    settings: games.RoomSettings
+    filters: games.GameFilters
     id: str
     game: Game
     members: int = 0
@@ -36,6 +38,15 @@ class Record(BaseModel):
     deviation: int
     rounds: int
     recorded_at: datetime
+
+
+class RankedRecord(Record):
+    rank: int
+
+
+class BoardView(BaseModel):
+    board: Board
+    records: list[RankedRecord]
 
 
 def board_for(game, rules, parse, bounds):
@@ -61,6 +72,31 @@ def rank_key(board, record):
 
 def router(parse, bounds):
     routes = APIRouter(prefix='/api/v1/{game}')
+
+    @routes.post('/boards/current', response_model=BoardView)
+    def current(game: Game, rules: BoardRules):
+        board = board_for(game, rules, parse, bounds)
+        with db.connect() as conn:
+            rows = conn.execute('SELECT * FROM game_records WHERE board=? ORDER BY nickname', (board.id,))
+            ordered = sorted((Record(**row) for row in rows), key=lambda record: rank_key(board, record))
+        records = []
+        previous, rank = None, 0
+        for index, record in enumerate(ordered, 1):
+            key = rank_key(board, record)
+            if key != previous:
+                previous, rank = key, index
+            records.append(RankedRecord(**record.model_dump(), rank=rank))
+        board.members = len(records)
+        return BoardView(board=board, records=records)
+
+    @routes.post('/boards/list', response_model=list[Board])
+    def boards(game: Game, rules: BoardRules, scope: Literal['filters', 'all'] = 'filters'):
+        board = board_for(game, rules, parse, bounds)
+        with db.connect() as conn:
+            rows = conn.execute('SELECT b.*,count(*) AS members FROM game_boards b JOIN game_records r ON b.id=r.board '
+                'WHERE b.game=? AND (? OR b.filters=?) GROUP BY b.id ORDER BY members DESC,b.id',
+                (game, scope == 'all', board.filters.model_dump_json()))
+            return [Board(id=row['id'], game=game, settings=json.loads(row['settings']), filters=json.loads(row['filters']), members=row['members']) for row in rows]
 
     @routes.post('/matches/{match_id}/score', response_model=Record)
     def upload(game: Game, match_id: str, body: Upload, request: Request, x_room_token: Annotated[str, Header()]):

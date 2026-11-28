@@ -708,6 +708,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/{game}/boards/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Current */
+        post: operations["current_api_v1__game__boards_current_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/{game}/boards/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Boards */
+        post: operations["boards_api_v1__game__boards_list_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/{game}/matches/{match_id}/score": {
         parameters: {
             query?: never;
@@ -1802,6 +1836,34 @@ export interface components {
         BlockRule: {
             /** Blocked */
             blocked: ("all" | "retweets" | "quoted" | "tagged" | "reposts")[];
+        };
+        /** Board */
+        Board: {
+            settings: components["schemas"]["RoomSettings"];
+            filters: components["schemas"]["GameFilters"];
+            /** Id */
+            id: string;
+            /**
+             * Game
+             * @enum {string}
+             */
+            game: "face-game" | "history-quiz";
+            /**
+             * Members
+             * @default 0
+             */
+            members: number;
+        };
+        /** BoardRules */
+        BoardRules: {
+            settings?: components["schemas"]["RoomSettings"];
+            filters?: components["schemas"]["GameFilters"];
+        };
+        /** BoardView */
+        BoardView: {
+            board: components["schemas"]["Board"];
+            /** Records */
+            records: components["schemas"]["RankedRecord"][];
         };
         /** Body_cookie_upload_api_v1_admin_cookies__platform__post */
         Body_cookie_upload_api_v1_admin_cookies__platform__post: {
@@ -3113,6 +3175,26 @@ export interface components {
             page_count: number;
             /** Page Size */
             page_size: number;
+        };
+        /** RankedRecord */
+        RankedRecord: {
+            /** Nickname */
+            nickname: string;
+            /** Correct */
+            correct: number;
+            /** Cells */
+            cells: number;
+            /** Deviation */
+            deviation: number;
+            /** Rounds */
+            rounds: number;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Rank */
+            rank: number;
         };
         /** Record */
         Record: {
@@ -5146,6 +5228,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoomView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    current_api_v1__game__boards_current_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game: "face-game" | "history-quiz";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoardRules"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    boards_api_v1__game__boards_list_post: {
+        parameters: {
+            query?: {
+                scope?: "filters" | "all";
+            };
+            header?: never;
+            path: {
+                game: "face-game" | "history-quiz";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoardRules"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Board"][];
                 };
             };
             /** @description Validation Error */
