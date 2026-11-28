@@ -11,6 +11,7 @@ test('solo reveals the magnified viewport and averages only correct answers', as
   await inputs.nth(0).fill('3'); await inputs.nth(0).press('Tab');
   await inputs.nth(1).fill('10'); await inputs.nth(1).press('Tab');
   await page.clock.install();
+  const firstQuestion = page.waitForResponse('**/gallery/face-game?**').then(response => response.json());
   await page.getByRole('button', { name: '开始游戏' }).click();
   await expect(page.getByText('已显示 0 / 9 格')).toBeVisible();
   await expect(page.locator('.grid-mask .covered')).toHaveCount(9);
@@ -52,7 +53,18 @@ test('solo reveals the magnified viewport and averages only correct answers', as
   expect((await page.locator('.game-frame img').boundingBox())!.width).toBeCloseTo(image.width, 1);
   await page.mouse.up();
   await expect(page.locator('.grid-mask')).toHaveCount(0);
+  let releaseQuestion!: () => void;
+  const delayedQuestion = new Promise<void>(resolve => { releaseQuestion = resolve; });
+  await page.route('**/gallery/face-game?**', async route => {
+    await delayedQuestion;
+    await route.fulfill({ json: await firstQuestion });
+  });
   await page.getByRole('button', { name: '下一题' }).click();
+  await expect(page.getByText('正在出题…')).toBeVisible();
+  await expect(page.locator('.grid-progress')).toHaveCount(0);
+  await page.clock.fastForward(20000);
+  await expect(page.locator('.grid-progress')).toHaveCount(0);
+  releaseQuestion();
   await expect(page.getByLabel('要辨认的人脸')).toBeVisible();
   await expect(page.getByText('已显示 0 / 9 格')).toBeVisible();
   await page.clock.fastForward(10000);
@@ -91,6 +103,7 @@ test('grid players can retry privately and see all attempted options after the r
   await host.getByRole('button', { name: '开始对战' }).click();
   expect((await (await hostLoaded).json()).phase).toBe('loading');
   await expect(host.getByRole('heading', { name: /等待玩家加载照片/ })).toBeVisible();
+  await expect(host.locator('.grid-progress')).toHaveCount(0);
   await expect(host.locator('.grid-mask .covered')).toHaveCount(25);
   await expect(host.locator('.game-options button:enabled')).toHaveCount(0);
   const guestLoaded = guest.waitForResponse(response => response.request().postDataJSON()?.action === 'image_loaded');

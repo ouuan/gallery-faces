@@ -22,11 +22,12 @@ const canReview = computed(() => props.revealed && !!props.order && props.correc
 const grid = computed(() => liveGrid.value || (canReview.value && preview.value === 'grid'));
 const crop = computed(() => props.cropped && !grid.value && !props.revealed);
 const liveCells = ref(0);
+const gridStart = computed(() => props.photo && imageReady.value && liveGrid.value ? props.started : null);
 const shown = computed(() => props.revealed ? props.correctCells ?? 0 : liveCells.value);
 watchEffect(cleanup => {
-  const order = props.order, start = props.started, seconds = props.interval;
+  const order = props.order, start = gridStart.value, seconds = props.interval;
   liveCells.value = 0;
-  if (!liveGrid.value || !imageReady.value || !order || start == null || !seconds) return;
+  if (!order || start == null || !seconds) return;
   let timer: number;
   function tick() {
     const elapsed = performance.now() - start!;
@@ -108,7 +109,7 @@ const imageStyle = computed(() => {
             @keydown.space.enter.prevent="preview = 'grid'" @keyup.space.enter.prevent="releasePreview('grid')" @blur="releasePreview('grid')">
             <Grid2X2 :size="18" aria-hidden="true" />
           </n-button>
-          <span v-if="grid && order" class="grid-progress">已显示 {{ shown }} / {{ order.length }} 格</span>
+          <span v-if="grid && order && (revealed || gridStart != null)" class="grid-progress">已显示 {{ shown }} / {{ order.length }} 格</span>
         </div>
         <div v-if="!photo" class="game-options" aria-hidden="true">
           <span v-for="index in pendingChoices" :key="index" class="option-placeholder" />
