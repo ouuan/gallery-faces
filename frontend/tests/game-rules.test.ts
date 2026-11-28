@@ -14,11 +14,17 @@ describe('game sharing links', () => {
   });
 
   it('round-trips custom room rules and filters', () => {
-    const query = { people: '1-3', n: '0', t: '20', crop: '0', grid: '8x0.25', next: '0', join: '0' };
+    const query = { people: '1-3', n: '0', t: '20', crop: '0', grid: '8x0.25', cells: '32', next: '0', join: '0' };
     const settings = parseRules(query, false);
     expect(settings).toMatchObject({ round_limit: 0, answer_seconds: 20, cropped: false, grid_size: 8, grid_seconds: 0.25,
-      continue_seconds: 0, allow_late_join: false });
+      grid_cells: 32, continue_seconds: 0, allow_late_join: false });
     expect(ruleQuery(settings, fromQuery(query), false, true)).toEqual(query);
+  });
+
+  it('uses the full grid for old links and invalid display counts', () => {
+    for (const cells of [undefined, '0', '65', '1.5']) {
+      expect(parseRules({ grid: '8x0.25', cells }, false).grid_cells).toBe(64);
+    }
   });
 
   it('encodes direct display and one-life without inactive grid or join options', () => {

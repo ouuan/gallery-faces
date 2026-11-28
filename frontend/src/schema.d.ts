@@ -1839,7 +1839,7 @@ export interface components {
         };
         /** Board */
         Board: {
-            settings: components["schemas"]["RoomSettings"];
+            settings: components["schemas"]["RoomSettings-Output"];
             filters: components["schemas"]["GameFilters"];
             /** Id */
             id: string;
@@ -1856,7 +1856,7 @@ export interface components {
         };
         /** BoardRules */
         BoardRules: {
-            settings?: components["schemas"]["RoomSettings"];
+            settings?: components["schemas"]["RoomSettings-Input"];
             filters?: components["schemas"]["GameFilters"];
         };
         /** BoardView */
@@ -2063,7 +2063,7 @@ export interface components {
              * @default false
              */
             solo: boolean;
-            settings?: components["schemas"]["RoomSettings"];
+            settings?: components["schemas"]["RoomSettings-Input"];
             filters?: components["schemas"]["GameFilters"];
         };
         /** Created */
@@ -2739,7 +2739,7 @@ export interface components {
              * Format: date-time
              */
             activity: string;
-            settings: components["schemas"]["RoomSettings"];
+            settings: components["schemas"]["RoomSettings-Output"];
             filters: components["schemas"]["GameFilters"];
             /** Settled */
             settled: number;
@@ -3478,7 +3478,7 @@ export interface components {
             stage: number;
             /** Match Id */
             match_id: string;
-            settings?: components["schemas"]["RoomSettings"] | null;
+            settings?: components["schemas"]["RoomSettings-Input"] | null;
             filters?: components["schemas"]["GameFilters"] | null;
             /** Choice */
             choice?: number | null;
@@ -3523,11 +3523,11 @@ export interface components {
             phase: "lobby" | "loading" | "answer" | "reveal" | "draft" | "vote" | "waiting" | "finished";
             /** Members */
             members: number;
-            settings: components["schemas"]["RoomSettings"];
+            settings: components["schemas"]["RoomSettings-Output"];
             filters: components["schemas"]["GameFilters"];
         };
         /** RoomSettings */
-        RoomSettings: {
+        "RoomSettings-Input": {
             /**
              * Round Limit
              * @default 25
@@ -3568,6 +3568,58 @@ export interface components {
              * @default 10
              */
             grid_size: number;
+            /** Grid Cells */
+            grid_cells?: number;
+            /**
+             * Grid Seconds
+             * @default 0.2
+             */
+            grid_seconds: number;
+        };
+        /** RoomSettings */
+        "RoomSettings-Output": {
+            /**
+             * Round Limit
+             * @default 25
+             */
+            round_limit: number;
+            /**
+             * Answer Seconds
+             * @default 15
+             */
+            answer_seconds: number;
+            /**
+             * Continue Seconds
+             * @default 10
+             */
+            continue_seconds: number;
+            /**
+             * Cropped
+             * @default true
+             */
+            cropped: boolean;
+            /**
+             * Single Life
+             * @default false
+             */
+            single_life: boolean;
+            /**
+             * Allow Late Join
+             * @default true
+             */
+            allow_late_join: boolean;
+            /**
+             * Grid
+             * @default true
+             */
+            grid: boolean;
+            /**
+             * Grid Size
+             * @default 10
+             */
+            grid_size: number;
+            /** Grid Cells */
+            grid_cells: number;
             /**
              * Grid Seconds
              * @default 0.2
@@ -3597,7 +3649,7 @@ export interface components {
             host: number;
             /** Me */
             me: number;
-            settings: components["schemas"]["RoomSettings"];
+            settings: components["schemas"]["RoomSettings-Output"];
             filters: components["schemas"]["GameFilters"];
             /** Remaining */
             remaining: number | null;

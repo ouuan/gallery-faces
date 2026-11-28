@@ -1,4 +1,4 @@
-export type FaceDisplay = { cropped: boolean; grid: boolean; grid_size: number; grid_seconds: number };
+export type FaceDisplay = { cropped: boolean; grid: boolean; grid_size: number; grid_cells: number; grid_seconds: number };
 export const defaultGrid = { grid_size: 10, grid_seconds: 0.2 };
 
 export function visibleCells(elapsed: number, seconds: number, total: number) {

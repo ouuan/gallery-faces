@@ -67,6 +67,8 @@ def board_for(game, rules, parse, bounds):
         rules_key.update(single_life=life, cropped=source.cropped, grid=grid)
     if grid:
         rules_key.update(grid_size=source.grid_size, grid_seconds=source.grid_seconds)
+        if source.grid_cells != source.grid_size ** 2:
+            rules_key['grid_cells'] = source.grid_cells
     settings = games.RoomSettings(**(dict(cropped=False, grid=False) | rules_key))
     key = json.dumps([game, rules_key, filters.model_dump()], sort_keys=True).encode()
     return Board(id=hashlib.sha256(key).hexdigest(), game=game, settings=settings, filters=filters)

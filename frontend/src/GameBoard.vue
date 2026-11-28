@@ -11,7 +11,7 @@ import type { components } from './schema';
 const props = withDefaults(defineProps<{ photo?: components['schemas']['RoomPhoto'] | null; cropped: boolean; revealed: boolean;
   pendingChoices?: number; preloading?: boolean;
   locked: boolean; selected?: number | null; correctId?: number | null; answerName?: string | null; voided?: boolean;
-  order?: number[]; started?: number | null; interval?: number; reviewCells?: number | null; reviewLabel?: string; wrongChoices?: (number | null)[];
+  gridSize: number; order?: number[]; started?: number | null; interval?: number; reviewCells?: number | null; reviewLabel?: string; wrongChoices?: (number | null)[];
   tallies?: components['schemas']['ChoiceTally'][] | null }>(), { reviewLabel: '按住查看答对时的格子' });
 const emit = defineEmits<{ choose: [choice: number | null, cells: number]; loaded: [] }>();
 const imageReady = ref(false), failed = ref(false);
@@ -95,8 +95,8 @@ const imageStyle = computed(() => {
       <div v-else-if="failed" role="alert">照片加载失败 <n-button @click="failed = false">重试加载照片</n-button></div>
       <div v-else class="game-frame" :class="{ preloading }" :style="frame">
         <img :src="photo.image_url" :style="imageStyle" alt="题目照片" @load="imageReady = true; emit('loaded')" @error="imageReady = false; failed = true" />
-        <div v-if="grid && order" class="grid-mask" aria-hidden="true" :style="{ '--side': Math.sqrt(order.length) }">
-          <i v-for="cell in order.length" :key="cell" :class="{ covered: !visible.has(cell - 1) }" />
+        <div v-if="grid && order" class="grid-mask" aria-hidden="true" :style="{ '--side': gridSize }">
+          <i v-for="cell in gridSize ** 2" :key="cell" :class="{ covered: !visible.has(cell - 1) }" />
         </div>
         <span v-if="imageReady && !crop && !zoomed" class="target-face" :class="{ 'grid-target': grid }" :style="targetStyle" aria-label="要辨认的人脸" />
         <LoadingOverlay :show="!imageReady || !!preloading" center label="正在加载照片…" />

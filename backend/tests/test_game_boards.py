@@ -19,6 +19,9 @@ def test_only_active_grid_settings_distinguish_boards():
     def board(game, **settings):
         return game_boards.board_for(game, game_boards.BoardRules(settings=settings), main.parse_people_publishers, main.date_bounds)
     assert board('face-game', grid=True, grid_size=8).id != board('face-game', grid=True, grid_size=10).id
+    assert board('face-game', grid_size=8, grid_cells=64).id == board('face-game', grid_size=8).id
+    assert board('face-game', grid_size=8, grid_cells=32).id != board('face-game', grid_size=8).id
+    assert board('face-game', grid=False, grid_cells=1).id == board('face-game', grid=False).id
     assert board('history-quiz', grid=True, grid_size=8, cropped=True).id == board('history-quiz', grid=False, cropped=False).id
     direct = board('face-game', grid=False, grid_size=8).settings
     defaults = game_rooms.RoomSettings()

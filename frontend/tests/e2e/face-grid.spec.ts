@@ -16,7 +16,7 @@ test('solo reveals only the face and restores the winning cells during review', 
   const [page] = guests;
   await page.goto('/face-game?people=1,2');
   await page.getByText('逐格显示', { exact: true }).click();
-  const seconds = page.locator('.grid-settings input').nth(1);
+  const seconds = page.getByLabel('每格间隔（秒）', { exact: true });
   await seconds.fill('2'); await seconds.press('Tab');
   await page.getByText('直接显示', { exact: true }).click();
   await expect(seconds).toHaveCount(0);
@@ -46,11 +46,12 @@ test('solo reveals the magnified viewport and averages only correct answers', as
   await page.goto('/face-game?people=1,2');
   await page.getByRole('switch', { name: '仅截取人脸' }).click();
   await page.getByText('逐格显示', { exact: true }).click();
-  const inputs = page.locator('.grid-settings input');
-  await expect(inputs.nth(0)).toHaveValue('10');
-  await expect(inputs.nth(1)).toHaveValue('0.2');
-  await inputs.nth(0).fill('3'); await inputs.nth(0).press('Tab');
-  await inputs.nth(1).fill('3'); await inputs.nth(1).press('Tab');
+  const size = page.getByLabel('每边格数', { exact: true }), seconds = page.getByLabel('每格间隔（秒）', { exact: true });
+  await expect(size).toHaveValue('10');
+  await expect(seconds).toHaveValue('0.2');
+  await size.fill('3'); await size.press('Tab');
+  await expect(page.getByLabel('显示格数', { exact: true })).toHaveValue('9');
+  await seconds.fill('3'); await seconds.press('Tab');
   await page.getByRole('button', { name: '开始游戏' }).click();
   await expect(page.getByText('已显示 0 / 9 格')).toBeVisible();
   await expect(page.locator('.grid-mask .covered')).toHaveCount(9);
@@ -108,7 +109,7 @@ test('solo reveals the magnified viewport and averages only correct answers', as
   await page.getByRole('button', { name: '再来一局' }).click();
   await expect(page.getByRole('radio', { name: '逐格显示' })).toBeChecked();
   await expect(page.getByRole('switch', { name: '仅截取人脸' })).not.toBeChecked();
-  await expect(inputs.nth(0)).toHaveValue('3');
+  await expect(size).toHaveValue('3');
 });
 
 test('grid players can retry privately and see all attempted options after the race', async ({ guests }, info) => {
@@ -176,13 +177,16 @@ test('grid players can retry privately and see all attempted options after the r
   expect(await host.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test('players can pass a fully revealed grid and reveal the answer together', async ({ guests }) => {
+test('players can pass at the scaled display limit while the remaining grid stays covered', async ({ guests }) => {
   const [host, guest] = guests;
   await host.goto('/face-game/rooms?people=1,2');
   await host.getByRole('switch', { name: '仅截取人脸' }).click();
   await host.getByText('逐格显示', { exact: true }).click();
-  const size = host.locator('.grid-settings input').first();
+  const size = host.getByLabel('每边格数', { exact: true }), cells = host.getByLabel('显示格数', { exact: true });
+  await expect(cells).toHaveValue('100');
+  await cells.fill('40'); await cells.press('Tab');
   await size.fill('2'); await size.press('Tab');
+  await expect(cells).toHaveValue('2');
   await host.getByRole('textbox', { name: '昵称' }).fill('甲');
   await host.getByRole('button', { name: '创建并进入' }).click();
   await expect(host.getByRole('heading', { name: /等待开局/ })).toBeVisible();
@@ -194,10 +198,11 @@ test('players can pass a fully revealed grid and reveal the answer together', as
   const pass = host.getByRole('button', { name: '放弃作答' });
   await expect(host.locator('.grid-mask')).toBeVisible();
   await expect(pass).toHaveCount(0);
-  await expect(host.getByText('已显示 4 / 4 格')).toBeVisible();
+  await expect(host.getByText('已显示 2 / 2 格')).toBeVisible();
   await pass.click();
   await host.reload();
   await expect(host.getByText('已放弃本题，等待其他玩家')).toBeVisible();
+  await expect(host.locator('.grid-mask .covered')).toHaveCount(2);
   await expect(host.locator('.game-options button:enabled')).toHaveCount(0);
   await expect(guest.getByRole('button', { name: '人1', exact: true })).toBeEnabled();
   await guest.getByRole('button', { name: '放弃作答' }).click();

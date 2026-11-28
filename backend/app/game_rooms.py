@@ -9,7 +9,7 @@ from fractions import Fraction
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationInfo, field_validator
 from starlette.concurrency import run_in_threadpool
 
 from . import db
@@ -22,6 +22,8 @@ RETENTION = 24 * 3600
 
 
 class RoomSettings(BaseModel):
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
     round_limit: int = Field(default=25, ge=0, le=999)
     answer_seconds: int = Field(default=15, ge=3, le=300)
     continue_seconds: int = Field(default=10, ge=0, le=300)
@@ -30,7 +32,15 @@ class RoomSettings(BaseModel):
     allow_late_join: bool = True
     grid: bool = True
     grid_size: int = Field(default=10, ge=2, le=16)
+    grid_cells: int = Field(default_factory=lambda data: data['grid_size'] ** 2, ge=1, le=256)
     grid_seconds: float = Field(default=0.2, ge=0.1, le=60)
+
+    @field_validator('grid_cells')
+    @classmethod
+    def validate_grid_cells(cls, value: int, info: ValidationInfo) -> int:
+        if 'grid_size' in info.data and value > info.data['grid_size'] ** 2:
+            raise ValueError('显示格数不能超过网格总数')
+        return value
 
 class GameFilters(BaseModel):
     people: str = ''
@@ -378,7 +388,7 @@ class Room:
         self.enter('loading', 5)
         if self.settings.grid:
             count = self.settings.grid_size ** 2
-            self.grid = GridRound(random.sample(range(count), count), self.deadline)
+            self.grid = GridRound(random.sample(range(count), self.settings.grid_cells), self.deadline)
 
     @property
     def minimum(self):
@@ -529,7 +539,7 @@ class Room:
                 self.answers[key] = choice
         elif action == 'give_up':
             check(self.phase == 'answer' and self.grid, '当前不能放弃作答')
-            check(self.grid.visible_cells(self.settings.grid_seconds) == len(self.grid.order), '全部格子显示后才能放弃作答')
+            check(self.grid.visible_cells(self.settings.grid_seconds) == len(self.grid.order), '达到显示格数后才能放弃作答')
             check(key not in self.grid.passed, '本题已放弃作答')
             self.grid.passed.add(key)
         elif action == 'ready':

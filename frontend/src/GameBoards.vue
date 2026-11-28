@@ -34,7 +34,7 @@ const boardQuery = (board: Board) => ruleQuery(board.settings, fromQuery(board.f
 function label(board: Board) {
   const rules = board.settings;
   const mode = rules.single_life ? '一命' : rules.round_limit ? `固定 ${rules.round_limit} 题` : '无尽';
-  const display = history.value ? '' : ` · ${rules.cropped ? '仅截取人脸' : '全图'} · ${rules.grid ? `逐格 ${rules.grid_size}×${rules.grid_size}（${rules.grid_seconds} 秒）` : '直接显示'}`;
+  const display = history.value ? '' : ` · ${rules.cropped ? '仅截取人脸' : '全图'} · ${rules.grid ? `逐格 ${rules.grid_size}×${rules.grid_size}（显示 ${rules.grid_cells} 格，每格 ${rules.grid_seconds} 秒）` : '直接显示'}`;
   return `${mode} · 每题 ${rules.answer_seconds} 秒${display}`;
 }
 </script>

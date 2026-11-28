@@ -392,6 +392,23 @@ def test_grid_void_round_restores_all_previous_statistics(match, proposal):
         assert all(before[key] == after[key] for key in ('correct', 'wrong', 'correct_cells'))
 
 
+def test_partial_grid_deadline_and_score(match):
+    _, _, act, now = match
+    for invalid in (0, 10):
+        act('settings', settings={'grid': True, 'grid_size': 3, 'grid_cells': invalid}, status=422)
+    act('settings', settings={'grid': True, 'grid_size': 3, 'grid_cells': 2, 'grid_seconds': 0.5})
+    act('start'); first = load_grid(act)
+    order = first['grid']['order']
+    assert len(order) == len(set(order)) == 2 and set(order) <= set(range(9))
+    assert first['remaining'] == 16
+    now[0] += 0.5
+    act('give_up', status=409)
+    now[0] += 0.5
+    act('give_up')
+    now[0] += 10
+    assert act('answer', 1, choice=1)['grid']['correct_cells'] == 2
+
+
 def test_grid_give_up_waits_for_full_grid_and_all_players(match):
     _, state, act, now = match
     act('settings', settings={'grid': True, 'grid_size': 2, 'grid_seconds': 0.5, 'continue_seconds': 0})

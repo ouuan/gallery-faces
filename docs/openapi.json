@@ -6103,7 +6103,7 @@
       "Board": {
         "properties": {
           "settings": {
-            "$ref": "#/components/schemas/RoomSettings"
+            "$ref": "#/components/schemas/RoomSettings-Output"
           },
           "filters": {
             "$ref": "#/components/schemas/GameFilters"
@@ -6138,7 +6138,7 @@
       "BoardRules": {
         "properties": {
           "settings": {
-            "$ref": "#/components/schemas/RoomSettings"
+            "$ref": "#/components/schemas/RoomSettings-Input"
           },
           "filters": {
             "$ref": "#/components/schemas/GameFilters"
@@ -6774,7 +6774,7 @@
             "default": false
           },
           "settings": {
-            "$ref": "#/components/schemas/RoomSettings"
+            "$ref": "#/components/schemas/RoomSettings-Input"
           },
           "filters": {
             "$ref": "#/components/schemas/GameFilters"
@@ -8529,7 +8529,7 @@
             "title": "Activity"
           },
           "settings": {
-            "$ref": "#/components/schemas/RoomSettings"
+            "$ref": "#/components/schemas/RoomSettings-Output"
           },
           "filters": {
             "$ref": "#/components/schemas/GameFilters"
@@ -10651,7 +10651,7 @@
           "settings": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/RoomSettings"
+                "$ref": "#/components/schemas/RoomSettings-Input"
               },
               {
                 "type": "null"
@@ -10808,7 +10808,7 @@
             "title": "Members"
           },
           "settings": {
-            "$ref": "#/components/schemas/RoomSettings"
+            "$ref": "#/components/schemas/RoomSettings-Output"
           },
           "filters": {
             "$ref": "#/components/schemas/GameFilters"
@@ -10823,7 +10823,7 @@
         ],
         "title": "RoomPreview"
       },
-      "RoomSettings": {
+      "RoomSettings-Input": {
         "properties": {
           "round_limit": {
             "type": "integer",
@@ -10873,6 +10873,12 @@
             "title": "Grid Size",
             "default": 10
           },
+          "grid_cells": {
+            "type": "integer",
+            "maximum": 256.0,
+            "minimum": 1.0,
+            "title": "Grid Cells"
+          },
           "grid_seconds": {
             "type": "number",
             "maximum": 60.0,
@@ -10882,6 +10888,85 @@
           }
         },
         "type": "object",
+        "title": "RoomSettings"
+      },
+      "RoomSettings-Output": {
+        "properties": {
+          "round_limit": {
+            "type": "integer",
+            "maximum": 999.0,
+            "minimum": 0.0,
+            "title": "Round Limit",
+            "default": 25
+          },
+          "answer_seconds": {
+            "type": "integer",
+            "maximum": 300.0,
+            "minimum": 3.0,
+            "title": "Answer Seconds",
+            "default": 15
+          },
+          "continue_seconds": {
+            "type": "integer",
+            "maximum": 300.0,
+            "minimum": 0.0,
+            "title": "Continue Seconds",
+            "default": 10
+          },
+          "cropped": {
+            "type": "boolean",
+            "title": "Cropped",
+            "default": true
+          },
+          "single_life": {
+            "type": "boolean",
+            "title": "Single Life",
+            "default": false
+          },
+          "allow_late_join": {
+            "type": "boolean",
+            "title": "Allow Late Join",
+            "default": true
+          },
+          "grid": {
+            "type": "boolean",
+            "title": "Grid",
+            "default": true
+          },
+          "grid_size": {
+            "type": "integer",
+            "maximum": 16.0,
+            "minimum": 2.0,
+            "title": "Grid Size",
+            "default": 10
+          },
+          "grid_cells": {
+            "type": "integer",
+            "maximum": 256.0,
+            "minimum": 1.0,
+            "title": "Grid Cells"
+          },
+          "grid_seconds": {
+            "type": "number",
+            "maximum": 60.0,
+            "minimum": 0.1,
+            "title": "Grid Seconds",
+            "default": 0.2
+          }
+        },
+        "type": "object",
+        "required": [
+          "round_limit",
+          "answer_seconds",
+          "continue_seconds",
+          "cropped",
+          "single_life",
+          "allow_late_join",
+          "grid",
+          "grid_size",
+          "grid_cells",
+          "grid_seconds"
+        ],
         "title": "RoomSettings"
       },
       "RoomView": {
@@ -10933,7 +11018,7 @@
             "title": "Me"
           },
           "settings": {
-            "$ref": "#/components/schemas/RoomSettings"
+            "$ref": "#/components/schemas/RoomSettings-Output"
           },
           "filters": {
             "$ref": "#/components/schemas/GameFilters"

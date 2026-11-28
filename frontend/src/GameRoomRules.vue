@@ -8,7 +8,7 @@ defineProps<{ settings: Settings; history?: boolean; solo?: boolean }>();
     <h3>对战规则</h3>
     <p>{{ settings.single_life ? '一命模式' : settings.round_limit ? `固定局数 · 共 ${settings.round_limit} 题` : '无尽模式' }}</p>
     <p v-if="history">史官测验 · 每题 {{ settings.answer_seconds }} 秒</p>
-    <p v-else-if="settings.grid">{{ settings.cropped ? '仅截取人脸' : '人脸及周围' }} · 逐格显示 · {{ settings.grid_size }}×{{ settings.grid_size }} · 每格 {{ settings.grid_seconds }} 秒 · 全图揭晓后 {{ settings.answer_seconds }} 秒</p>
+    <p v-else-if="settings.grid">{{ settings.cropped ? '仅截取人脸' : '人脸及周围' }} · 逐格显示 · {{ settings.grid_size }}×{{ settings.grid_size }} · 每格 {{ settings.grid_seconds }} 秒 · 显示 {{ settings.grid_cells }} 格后还有 {{ settings.answer_seconds }} 秒作答</p>
     <p v-else>{{ settings.cropped ? '仅截取人脸' : '全图' }} · 直接显示 · 每题 {{ settings.answer_seconds }} 秒</p>
     <p>参赛者加载照片后开始，最多等 5 秒</p>
     <p v-if="history">每题猜得最接近的人得 1 分，并列则均分。分数相同时，平均偏差小的排在前面。未答不得分，按居中日期计算偏差。</p>

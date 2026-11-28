@@ -9,7 +9,7 @@ type Schema = components['schemas'];
 export type RoomView = Schema['RoomView'];
 type FilterInput = Partial<Schema['GameFilters']>;
 type RoomAction = Omit<Schema['RoomAction'], 'filters'> & { filters?: FilterInput };
-export type Settings = Required<Schema['RoomSettings']>;
+export type Settings = RoomView['settings'];
 
 export function useGameRoom(history = false, solo = false) {
   const message = useMessage();
