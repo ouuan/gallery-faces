@@ -414,7 +414,18 @@ class Room:
 
     async def act(self, player, body, save):
         action, key = body.action, player.id
-        check(body.stage == self.stage, '房间状态已更新，请重试')
+        if body.stage != self.stage:
+            if action in ('image_loaded', 'ready'):
+                return
+            if action == 'answer':
+                if self.grid and self.phase == 'reveal' and body.stage + 1 == self.stage:
+                    winner = next((member for member, right, _, _ in self.grid.credited if right), None)
+                    if winner is not None:
+                        raise HTTPException(409, f'{self.players[winner].name}已抢先答对')
+                raise HTTPException(409, '答题时间已到，本次答案未计入')
+            if action == 'vote':
+                raise HTTPException(409, '投票已结束，本次投票未计入')
+            raise HTTPException(409, '房间状态已更新，请确认当前题目')
         if action in ('start', 'restart', 'settings', 'finish'):
             check(key == self.host, '仅房主可操作', 403)
         if action in ('image_loaded', 'answer', 'give_up', 'ready', 'draft', 'cancel', 'submit', 'vote'):

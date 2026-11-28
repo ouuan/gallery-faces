@@ -1,5 +1,6 @@
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useMessage } from 'naive-ui';
 import { api, ApiError } from './api';
 import { filterOnlyQuery, fromQuery } from './filters';
 import type { components } from './schema';
@@ -11,6 +12,7 @@ type RoomAction = Omit<Schema['RoomAction'], 'filters'> & { filters?: FilterInpu
 export type Settings = Required<Schema['RoomSettings']>;
 
 export function useGameRoom(history = false) {
+  const message = useMessage();
   const base = history ? '/history-quiz/rooms' : '/face-game/rooms';
   const key = (code: string) => `${history ? 'history' : 'face'}-room:${code}`;
   const route = useRoute(), router = useRouter();
@@ -88,7 +90,9 @@ export function useGameRoom(history = false) {
         if (view.phase === 'lobby') sessionStorage.removeItem(key(view.code));
         await router.push({ path: base, query: filterOnlyQuery(fromQuery(view.filters)) });
       } else apply(result);
-    } catch (cause) { if (!background && view.code === code.value) error.value = (cause as Error).message; }
+    } catch (cause) {
+      if (!background && view.code === code.value) message.error((cause as Error).message);
+    }
     finally { if (!background) busy.value = false; }
   }
   return { code, token, room, busy, error, syncError, seconds, gridStarted, enter, act };

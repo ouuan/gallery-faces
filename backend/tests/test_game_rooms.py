@@ -408,7 +408,7 @@ def test_grid_competing_correct_answers_score_once(match):
         try:
             return act('answer', who, stage=start['stage'], choice=1)['phase']
         except AssertionError as error:
-            assert '房间状态已更新' in str(error)
+            assert '已抢先答对' in str(error)
             return 'stale'
     with ThreadPoolExecutor(2) as pool:
         assert sorted(pool.map(submit, (0, 1))) == ['reveal', 'stale']
