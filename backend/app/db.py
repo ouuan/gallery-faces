@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS review_result_keys(batch TEXT NOT NULL, key TEXT NOT 
 CREATE UNIQUE INDEX IF NOT EXISTS review_person_keys ON review_suggestions(batch,json_extract(payload,'$.person_id')) WHERE json_extract(payload,'$.kind')='create_person';
 CREATE TABLE IF NOT EXISTS pending_file_deletions(path TEXT PRIMARY KEY, sha256 TEXT NOT NULL, filename TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS pending_deduplications(image_id INTEGER PRIMARY KEY REFERENCES images ON DELETE CASCADE);
+CREATE TABLE IF NOT EXISTS pending_restore_checks(image_id INTEGER PRIMARY KEY REFERENCES images ON DELETE CASCADE);
 CREATE TABLE IF NOT EXISTS feedback(id INTEGER PRIMARY KEY AUTOINCREMENT, image_id INTEGER NOT NULL REFERENCES images ON DELETE CASCADE, content TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','resolved')), created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')), resolved_at TEXT);
 CREATE INDEX IF NOT EXISTS feedback_image_status ON feedback(image_id,status,id);
 CREATE TABLE IF NOT EXISTS private_config(key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -284,6 +285,11 @@ def init():
             db.execute('UPDATE schema_version SET version=15')
         for column in ("image_sha256", "thumbnail_sha256"):
             db.execute(f"CREATE INDEX IF NOT EXISTS image_{column} ON images({column})")
+        db.execute('''CREATE INDEX IF NOT EXISTS image_pending_backfill ON images(id) WHERE hidden=0
+            AND (image_sha256 IS NULL OR thumbnail_sha256 IS NULL OR original_filename IS NULL)''')
+        if db.execute('SELECT version FROM schema_version').fetchone()[0] < 16:
+            db.execute('INSERT OR IGNORE INTO pending_restore_checks SELECT id FROM images WHERE hidden=1')
+            db.execute('UPDATE schema_version SET version=16')
     with startup_phase('interrupted restore cleanup scan'), connect(True) as db:
         recover_hidden_files(db)
     with startup_phase('media hash backfill'):
@@ -291,19 +297,23 @@ def init():
 
 
 def recover_hidden_files(db):
-    hidden = {row['sha256']: row for row in db.execute('SELECT sha256,filename FROM images WHERE hidden=1')}
-    if not hidden:
+    if not db.execute('SELECT 1 FROM pending_restore_checks LIMIT 1').fetchone():
         return
+    hidden = {row['sha256']: row for row in db.execute('''SELECT sha256,filename FROM pending_restore_checks c
+        CROSS JOIN images i ON i.id=c.image_id WHERE i.hidden=1''')}
     originals = {}
-    with os.scandir(DATA / 'originals') as entries:
-        for entry in entries:
-            digest, separator, _ = entry.name.partition('.')
-            if separator and digest in hidden:
-                originals.setdefault(digest, []).append(Path(entry.path))
+    if hidden:
+        with os.scandir(DATA / 'originals') as entries:
+            for entry in entries:
+                digest, separator, _ = entry.name.partition('.')
+                if separator and digest in hidden:
+                    originals.setdefault(digest, []).append(Path(entry.path))
     for digest, row in hidden.items():
         paths = originals.get(digest, ())
         if paths or (DATA / 'images' / row['filename']).exists():
             queue_image_cleanup(db, row, paths)
+    db.execute('''DELETE FROM pending_restore_checks WHERE NOT EXISTS (SELECT 1 FROM tasks
+        WHERE tasks.image_id=pending_restore_checks.image_id AND kind='restore' AND status='running')''')
 
 
 def file_hash(path):
@@ -318,7 +328,7 @@ def backfill_media_hashes(batch_size=100):
     while True:
         with connect(True) as db:
             rows = db.execute(
-                "SELECT * FROM images WHERE hidden=0 AND id>? AND (image_sha256 IS NULL OR thumbnail_sha256 IS NULL OR original_filename IS NULL) ORDER BY id LIMIT ?",
+                "SELECT * FROM images INDEXED BY image_pending_backfill WHERE hidden=0 AND id>? AND (image_sha256 IS NULL OR thumbnail_sha256 IS NULL OR original_filename IS NULL) ORDER BY id LIMIT ?",
                 (last_id, batch_size),
             ).fetchall()
             if not rows:

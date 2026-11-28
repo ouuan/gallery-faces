@@ -134,6 +134,45 @@ def test_failed_deduplication_remains_retryable(client, tmp_path, monkeypatch):
         assert conn.execute('SELECT count(*) FROM pending_deduplications').fetchone()[0] == 0
 
 
+def test_crashed_restore_cleanup(client, tmp_path, monkeypatch):
+    from app import trash
+    monkeypatch.setattr(importer, 'IMPORT', tmp_path)
+    path = source(tmp_path)
+    digest = db.file_hash(path)
+    image_id = importer.import_file(path, RAW)
+    with db.connect() as conn:
+        token = trash.preview(conn, [image_id])['scope_token']
+    trash.recycle([image_id], token)
+    trash.enqueue_restore([image_id])
+    crash(tmp_path, '''
+import os
+from app import db, importer, worker, trash
+importer.IMPORT = db.DATA
+restore_file = trash.restore_file
+def concurrent_startup(*args):
+    db.init()
+    return restore_file(*args)
+trash.restore_file = concurrent_startup
+write = importer.write_assets
+def interrupted(*args, **kwargs):
+    write(*args, **kwargs)
+    os._exit(73)
+importer.write_assets = interrupted
+worker.execute(worker.claim(('restore',)))
+''')
+    original = tmp_path / 'originals' / (digest + '.png')
+    display = tmp_path / 'images' / (digest + '.jpg')
+    assert original.exists() and display.exists()
+    db.init()
+    assert db.cleanup_deleted_files() == 0
+    assert not original.exists() and not display.exists()
+    assert (tmp_path / 'thumbs' / (digest + '.jpg')).exists()
+    worker.recover_tasks()
+    db.init()
+    with db.connect() as conn:
+        assert not conn.execute('SELECT 1 FROM pending_restore_checks').fetchone()
+
+
 def test_crashed_download_cleanup_and_requeue(client, tmp_path):
     crash(tmp_path, '''
 import os

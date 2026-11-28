@@ -367,6 +367,7 @@ def restore_task(task):
         return
     with connect(True) as db:
         db.execute("UPDATE tasks SET stage='查找原文件',total=1 WHERE id=?", (task["id"],))
+        db.execute('INSERT OR IGNORE INTO pending_restore_checks VALUES(?)', (row['id'],))
     try:
         for path in (DATA / "originals").glob(row["sha256"] + ".*"):
             if restore_file(task, path):
@@ -417,6 +418,7 @@ def restore_task(task):
             current = db.execute("SELECT * FROM images WHERE id=?", (task["image_id"],)).fetchone()
             if current and current["hidden"]:
                 queue_image_cleanup(db, current)
+            db.execute('DELETE FROM pending_restore_checks WHERE image_id=?', (row['id'],))
 
 
 def claim(kinds=("detect", "rematch", "import", "download", "restore", "monitor", "avatar")):

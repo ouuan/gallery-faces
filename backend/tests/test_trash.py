@@ -320,12 +320,13 @@ def test_cleanup_serializes_with_restore_commit(client, tmp_path, monkeypatch):
     assert (db.DATA / "images" / row["filename"]).is_file()
 
 
-def test_startup_cleans_assets_left_by_interrupted_restore(client, tmp_path, monkeypatch):
+def test_upgrade_checks_untracked_restores_once(client, tmp_path, monkeypatch):
     identifier, path, _ = photo(tmp_path, monkeypatch)
     other, _, _ = photo(tmp_path, monkeypatch, '2', 'blue')
     _, active, _ = photo(tmp_path, monkeypatch, '3', 'green')
     assert recycle(client, [identifier, other]).status_code == 200
-    with db.connect() as conn:
+    with db.connect(True) as conn:
+        conn.execute('UPDATE schema_version SET version=15')
         row = conn.execute("SELECT * FROM images WHERE id=?", (identifier,)).fetchone()
     # Simulate a process exit after writing files but before committing activation.
     importer.write_assets(path, row["sha256"])
@@ -346,6 +347,9 @@ def test_startup_cleans_assets_left_by_interrupted_restore(client, tmp_path, mon
     assert not (db.DATA / "images" / row["filename"]).exists()
     assert list(originals.iterdir()) == [originals / (db.file_hash(active) + '.png')]
     assert (db.DATA / "thumbs" / row["filename"]).exists()
+    scans.clear()
+    db.init()
+    assert not scans
 
 
 def test_missing_group_member_prevents_automatic_merge(client, monkeypatch):
