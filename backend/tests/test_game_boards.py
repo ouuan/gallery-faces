@@ -47,3 +47,20 @@ def test_upload_atomic_best_and_time_survive_cleanup(client, monkeypatch):
         assert conn.execute('SELECT count(*) FROM game_matches').fetchone()[0] == 0
         record = conn.execute('SELECT * FROM game_records').fetchone()
         assert record['correct'] == 1 and datetime.fromisoformat(record['recorded_at']) == datetime.fromisoformat(winners[0]['recorded_at'])
+
+
+def test_board_scopes_population_and_unrounded_history_ties(client):
+    base = '/api/v1/history-quiz/boards/'
+    rules = game_boards.BoardRules()
+    first = game_boards.board_for('history-quiz', rules, main.parse_people_publishers, main.date_bounds)
+    other = game_boards.board_for('history-quiz', game_boards.BoardRules(filters={'people': '1'}), main.parse_people_publishers, main.date_bounds)
+    with db.connect(True) as conn:
+        for board in [other, first]:
+            conn.execute('INSERT INTO game_boards VALUES(?,?,?,?)', (board.id, board.game, board.settings.model_dump_json(), board.filters.model_dump_json()))
+        for board, name, deviation, rounds, second in [(first, '甲', 20, 60, 10), (first, '乙', 1, 3, 21), (first, '丙', 34, 100, 1), (other, '甲', 1, 5, 10)]:
+            conn.execute('INSERT INTO game_records VALUES(?,?,0,0,?,?,?)', (board.id, name, deviation, rounds, f'2026-11-28T00:00:{second:02d}Z'))
+    records = client.post(base + 'current', json={}).json()['records']
+    assert {item['nickname']: item['rank'] for item in records} == {'甲': 1, '乙': 1, '丙': 3}
+    assert [board['members'] for board in client.post(base + 'list?scope=all', json={}).json()] == [3, 1]
+    assert [board['id'] for board in client.post(base + 'list', json={}).json()] == [first.id]
+    assert client.post('/api/v1/face-game/boards/list?scope=all', json={}).json() == []

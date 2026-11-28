@@ -2,11 +2,12 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { expect, test as base, type Page } from '@playwright/test';
 
-export const test = base.extend<{ guests: Page[] }>({
-  guests: async ({ browser, baseURL }, use) => {
-    const server = spawn('.venv/bin/python', ['tests/serve_room_fixture.py'], { cwd: '../backend', env: { ...process.env, PYTHONPATH: '.' }, stdio: ['ignore', 'pipe', 'inherit'] });
+export const test = base.extend<{ guests: Page[]; dateRange: boolean }>({
+  dateRange: [false, { option: true }],
+  guests: async ({ browser, baseURL, dateRange, timezoneId }, use) => {
+    const server = spawn('.venv/bin/python', ['tests/serve_room_fixture.py'], { cwd: '../backend', env: { ...process.env, PYTHONPATH: '.', FIXTURE_DATE_RANGE: dateRange ? '1' : '0' }, stdio: ['ignore', 'pipe', 'inherit'] });
     const exited = new Promise(resolve => server.once('exit', resolve));
-    const contexts = await Promise.all([{ width: 375, height: 667 }, { width: 1280, height: 860 }, { width: 390, height: 844 }].map(viewport => browser.newContext({ baseURL, viewport })));
+    const contexts = await Promise.all([{ width: 375, height: 667 }, { width: 1280, height: 860 }, { width: 390, height: 844 }].map(viewport => browser.newContext({ baseURL, viewport, timezoneId })));
     try {
       let origin = '';
       for await (const line of createInterface({ input: server.stdout })) {

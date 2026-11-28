@@ -1,6 +1,8 @@
 import { expect } from '@playwright/test';
 import { test } from '../room-fixture';
 
+test.use({ timezoneId: 'America/Los_Angeles' });
+
 for (const game of ['face-game', 'history-quiz']) test(`${game} solo stops at the configured question count`, async ({ guests }) => {
   const page = guests[0]!;
   await page.goto(`/${game}`);
@@ -11,7 +13,7 @@ for (const game of ['face-game', 'history-quiz']) test(`${game} solo stops at th
   for (const number of [1, 2]) {
     await page.getByRole('button', { name: game === 'face-game' ? '都不是' : '提交日期', exact: true }).click();
     await expect(page.getByRole('heading', { name: `第 ${number}/2 题 · 答案揭晓` })).toBeVisible();
-    await page.getByRole('button', { name: number === 1 ? '继续' : '确认结算', exact: true }).click();
+    await page.getByRole('button', { name: number === 1 ? '下一题' : '查看结果', exact: true }).click();
   }
   await page.getByText('上榜昵称').locator('input').fill('小林');
   await page.getByRole('button', { name: '上传个人成绩' }).click();

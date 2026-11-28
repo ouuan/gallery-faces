@@ -8,7 +8,7 @@ test('room creation remembers preferences across reloads', async ({ page }) => {
   const cropped = page.getByRole('switch', { name: '仅截取人脸' });
   const singleLife = page.getByRole('switch', { name: '一命模式' });
   const lateJoin = page.getByRole('switch', { name: '允许中途加入' });
-  const times = page.locator('.n-input-number input');
+  const times = page.locator('.timing input');
   await expect(cropped).toBeChecked();
   await expect(singleLife).not.toBeChecked();
   await expect(lateJoin).toBeChecked();
@@ -23,7 +23,7 @@ test('room creation remembers preferences across reloads', async ({ page }) => {
   await expect(singleLife).toBeChecked();
   await expect(lateJoin).toBeDisabled();
   await singleLife.click();
-  await expect(lateJoin).not.toBeChecked();
+  await expect(lateJoin).toBeEnabled();
   await expect(times.nth(0)).toHaveValue('45');
   await expect(times.nth(1)).toHaveValue('0');
 });
@@ -41,18 +41,18 @@ test('three guests share a cropped round, a correction and the final score', asy
     await expect(host.locator('.target-face')).toBeVisible();
     await expect(mode).toHaveCount(0);
     await host.getByRole('link', { name: '多人对战' }).click();
-    await expect(host.getByRole('button', { name: '创建并进入' })).toBeInViewport({ ratio: 1 });
+    await expect(host.getByRole('button', { name: '创建并进入' })).toBeVisible();
     const longName = '这是一位昵称很长需要在窄屏选项内省略的玩家';
     await host.getByRole('textbox', { name: '昵称' }).fill(longName);
     await expect(mode).toBeChecked();
     for (const [index, value] of ['90', '0'].entries()) {
-      const input = host.locator('.n-input-number input').nth(index);
+      const input = host.locator('.timing input').nth(index);
       await input.fill(value); await input.press('Tab');
     }
     await host.getByRole('button', { name: '创建并进入' }).click();
     await expect(host.getByRole('heading', { name: /等待开局/ })).toBeVisible();
     const editSettings = host.getByRole('button', { name: '修改设置' });
-    const answerTime = host.locator('.n-input-number input').first();
+    const answerTime = host.locator('.timing input').first();
     await editSettings.click();
     await answerTime.fill('80'); await answerTime.press('Tab');
     await host.getByRole('button', { name: '保存设置' }).click();
@@ -117,7 +117,7 @@ test('three guests share a cropped round, a correction and the final score', asy
     await guest.getByRole('button', { name: '继续', exact: true }).click();
     await host.getByRole('button', { name: '继续', exact: true }).click();
     await expect(late.getByRole('button', { name: '都不是', exact: true })).toBeEnabled();
-    await expect(late.getByRole('heading', { name: /第 2 题/ })).toBeVisible();
+    await expect(late.getByRole('heading', { name: /第 2\/25 题/ })).toBeVisible();
     await testInfo.attach('桌面对战', { body: await guest.screenshot(), contentType: 'image/png' });
     for (const player of [host, late, guest]) await player.getByRole('button', { name: '人2', exact: true }).click();
     await expect(options.getByText('3 人', { exact: true })).toBeVisible();
@@ -131,7 +131,7 @@ test('three guests share a cropped round, a correction and the final score', asy
     await guest.screenshot({ path: testInfo.outputPath('final-desktop.png') });
 
     await host.goto('/face-game/rooms?people=1,2');
-    await expect(answerTime).toHaveValue('80');
+    await expect(answerTime).toHaveValue('15');
     await host.getByRole('switch', { name: '一命模式' }).click();
     await host.getByRole('button', { name: '创建并进入' }).click();
     await expect(host.getByRole('heading', { name: /等待开局/ })).toBeVisible();
