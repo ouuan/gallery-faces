@@ -9544,6 +9544,21 @@
             "type": "boolean",
             "title": "Eligible",
             "default": false
+          },
+          "disputed": {
+            "type": "integer",
+            "title": "Disputed",
+            "default": 0
+          },
+          "early": {
+            "type": "integer",
+            "title": "Early",
+            "default": 0
+          },
+          "late": {
+            "type": "integer",
+            "title": "Late",
+            "default": 0
           }
         },
         "type": "object",
@@ -11021,6 +11036,7 @@
               "cancel",
               "submit",
               "vote",
+              "dispute",
               "finish",
               "leave"
             ],
@@ -11029,6 +11045,17 @@
           "stage": {
             "type": "integer",
             "title": "Stage"
+          },
+          "match_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Id"
           },
           "settings": {
             "anyOf": [
@@ -11107,6 +11134,19 @@
             "maxLength": 1000,
             "title": "Content",
             "default": ""
+          },
+          "feedback_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback Id"
           }
         },
         "type": "object",
@@ -11343,6 +11383,17 @@
                 "type": "null"
               }
             ]
+          },
+          "revealed_face_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revealed Face Id"
           },
           "tallies": {
             "anyOf": [

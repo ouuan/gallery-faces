@@ -20,7 +20,11 @@ export function useGameRoom(history = false, solo = false) {
   const token = ref(''), room = ref<RoomView | null>(null), busy = ref(false), error = ref(''), syncError = ref('');
   const now = ref(Date.now()), deadline = ref<number | null>(null);
   const gridStarted = ref<number | null>(null);
-  const seconds = computed(() => deadline.value === null ? null : Math.max(0, Math.ceil((deadline.value - now.value) / 1000)));
+  const seconds = computed(() => {
+    if (deadline.value === null) return null;
+    const remaining = Math.max(0, Math.ceil((deadline.value - now.value) / 1000));
+    return room.value?.grid && room.value.phase === 'answer' && remaining > room.value.settings.answer_seconds ? null : remaining;
+  });
   const timer = window.setInterval(() => { now.value = Date.now(); }, 250);
   onScopeDispose(() => clearInterval(timer));
   watch(code, value => {
@@ -84,12 +88,13 @@ export function useGameRoom(history = false, solo = false) {
     if (!background) { busy.value = true; error.value = ''; }
     try {
       const result = await api<RoomView>(`${base}/${view.code}/actions`, { method: 'POST', headers: { 'X-Room-Token': token.value },
-        body: JSON.stringify({ ...fields, action, stage: view.stage }) });
+        body: JSON.stringify({ ...fields, action, stage: view.stage, match_id: view.match_id }) });
       if (view.code !== code.value) return;
       if (action === 'leave') {
         if (view.phase === 'lobby') sessionStorage.removeItem(key(view.code));
         await router.push({ path: solo ? base.replace('/rooms', '') : base, query: filterOnlyQuery(fromQuery(view.filters)) });
       } else apply(result);
+      return true;
     } catch (cause) {
       if (!background && view.code === code.value) message.error((cause as Error).message);
     }

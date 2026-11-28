@@ -16,7 +16,7 @@ import type { components } from "./schema";
 type Page = components["schemas"]["FeedbackPage"];
 type Feedback = Page['items'][number];
 const props = defineProps<{ imageId: number; admin?: boolean; group?: boolean; pendingCount?: number; photo?: Photo;
-  defaultFace?: number; defaultPerson?: number | null; draftKey?: string; submitted?: (faceId: number | null) => void }>();
+  defaultFace?: number; defaultPerson?: number | null; draftKey?: string; submitted?: (faceId: number | null, feedbackId: number) => void }>();
 const emit = defineEmits<{ changed: [] }>();
 const message = useMessage();
 const confirm = useConfirm();
@@ -73,12 +73,12 @@ async function submit() {
   busy.value = true;
   submitError.value = "";
   try {
-    await send(`/images/${imageId}/feedback`, { content: values.content.trim(), ...(face && {
+    const receipt = await send(`/images/${imageId}/feedback`, { content: values.content.trim(), ...(face && {
       face_id: face.id, face_revision: face.revision, suggested_person_id: values.personId, not_face: values.notFace }) });
     const saved = drafts[submittedKey];
     if (saved && saved.content === values.content && saved.faceId === values.faceId && saved.personId === values.personId && saved.notFace === values.notFace)
       Object.assign(saved, { content: '', faceId: null, personId: null, notFace: false });
-    notify?.(face?.id ?? null);
+    notify?.(face?.id ?? null, receipt.id);
     if (!mounted || imageId !== props.imageId) return;
     message.success("反馈已提交，仅管理员可见");
     emit("changed");

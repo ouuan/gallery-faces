@@ -3068,6 +3068,21 @@ export interface components {
              * @default false
              */
             eligible: boolean;
+            /**
+             * Disputed
+             * @default 0
+             */
+            disputed: number;
+            /**
+             * Early
+             * @default 0
+             */
+            early: number;
+            /**
+             * Late
+             * @default 0
+             */
+            late: number;
         };
         /** PostDetail */
         PostDetail: {
@@ -3558,9 +3573,11 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "settings" | "start" | "restart" | "image_loaded" | "answer" | "give_up" | "ready" | "draft" | "cancel" | "submit" | "vote" | "finish" | "leave";
+            action: "settings" | "start" | "restart" | "image_loaded" | "answer" | "give_up" | "ready" | "draft" | "cancel" | "submit" | "vote" | "dispute" | "finish" | "leave";
             /** Stage */
             stage: number;
+            /** Match Id */
+            match_id?: string | null;
             settings?: components["schemas"]["RoomSettings"] | null;
             filters?: components["schemas"]["GameFilters"] | null;
             /** Choice */
@@ -3581,6 +3598,8 @@ export interface components {
              * @default
              */
             content: string;
+            /** Feedback Id */
+            feedback_id?: number | null;
         };
         /** RoomPhoto */
         RoomPhoto: {
@@ -3686,6 +3705,8 @@ export interface components {
             players: components["schemas"]["PlayerView"][];
             photo: components["schemas"]["RoomPhoto"] | null;
             source_photo: components["schemas"]["RevealedPhoto"] | null;
+            /** Revealed Face Id */
+            revealed_face_id?: number | null;
             /** Tallies */
             tallies: components["schemas"]["ChoiceTally"][] | null;
             /** Choice */

@@ -74,6 +74,7 @@ def test_history_room_midpoint_timeout_backfill_and_reconnect(client, monkeypatc
             act(late, 'answer', guess_date='2026-01-08')
         act(member, 'answer', 422, guess_date='2026-01-11')
         act(member, 'answer', guess_date='2026-01-07')
+        game_rooms.rooms.clear()
         act(member, 'answer', 409, guess_date='2026-01-08')
         pending = read(guest)
         assert pending['history']['closest'] is None

@@ -451,6 +451,21 @@ def test_grid_life_only_eliminates_attempted_wrong_answer(match):
         assert conn.execute('SELECT count(*) FROM game_matches WHERE code=?', (start['code'],)).fetchone()[0] == 2
 
 
+def test_correction_can_restore_room_life_but_never_public_streak(match):
+    _, state, act, _ = match
+    act('settings', settings={'single_life': True, 'continue_seconds': 0})
+    act('start'); act('answer', choice=1); act('answer', 1, choice=1)
+    act('ready'); act('ready', 1)
+    act('answer', choice=2); act('answer', 1, choice=2)
+    act('draft'); act('submit', suggested_person_id=2); act('vote', 1, support=True)
+    act('ready'); act('ready', 1)
+    game_rooms.rooms.clear()
+    act('answer', choice=1); act('answer', 1, choice=2)
+    act('ready'); final = act('ready', 1)
+    assert final['phase'] == 'finished'
+    assert [(player['correct'], player['public_correct'], player['eligible']) for player in state()['players']] == [(3, 1, True), (2, 1, True)]
+
+
 def test_single_life_spectators_and_locked_roster(client, match):
     join, state, act, now = match
     join('丙'); join('丁')

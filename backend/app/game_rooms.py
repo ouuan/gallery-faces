@@ -64,8 +64,9 @@ class Membership(BaseModel):
 
 
 class RoomAction(BaseModel):
-    action: Literal['settings', 'start', 'restart', 'image_loaded', 'answer', 'give_up', 'ready', 'draft', 'cancel', 'submit', 'vote', 'finish', 'leave']
+    action: Literal['settings', 'start', 'restart', 'image_loaded', 'answer', 'give_up', 'ready', 'draft', 'cancel', 'submit', 'vote', 'dispute', 'finish', 'leave']
     stage: int
+    match_id: str | None = None
     settings: RoomSettings | None = None
     filters: GameFilters | None = None
     choice: int | None = None
@@ -74,6 +75,7 @@ class RoomAction(BaseModel):
     suggested_person_id: int | None = Field(default=None, gt=0, le=9223372036854775807)
     not_face: bool = False
     content: str = Field(default='', max_length=1000)
+    feedback_id: int | None = Field(default=None, gt=0, le=9223372036854775807)
 
 
 class Choice(BaseModel):
@@ -103,6 +105,9 @@ class PlayerView(BaseModel):
     ready: bool
     public_correct: int = 0
     eligible: bool = False
+    disputed: int = 0
+    early: int = 0
+    late: int = 0
 
 
 class Proposal(BaseModel):
@@ -170,6 +175,7 @@ class RoomView(BaseModel):
     players: list[PlayerView]
     photo: RoomPhoto | None
     source_photo: RevealedPhoto | None
+    revealed_face_id: int | None = None
     tallies: list[ChoiceTally] | None
     choice: int | None
     answer_name: str | None
@@ -203,6 +209,9 @@ class Player:
     eligible: bool = True
     public_correct: int = 0
     public_stopped: bool = False
+    disputed: int = 0
+    early: int = 0
+    late: int = 0
 
     def eliminated(self, single_life):
         return single_life and (self.withdrawn or self.wrong + self.unanswered > 0)
@@ -257,6 +266,8 @@ class Room:
     def __init__(self, code, setup, draw, validate):
         self.code, self.settings, self.filters, self.draw = code, setup.settings, setup.filters, draw
         self.solo = setup.solo
+        if self.game == 'face-game' and self.settings.single_life:
+            self.settings.round_limit = 0
         self.validate_filters = validate
         self.players = {}
         self.host = self.serial = self.version = self.stage = 0
@@ -447,7 +458,12 @@ class Room:
 
     async def act(self, player, body, save):
         action, key = body.action, player.id
-        if body.stage != self.stage:
+        same_match = body.match_id == self.match_id
+        if body.match_id and not same_match:
+            if action in ('image_loaded', 'ready'):
+                return
+            raise HTTPException(409, '原对局已结束，本次操作未计入')
+        if body.stage != self.stage and not (same_match and action in ('finish', 'leave')):
             if action in ('image_loaded', 'ready'):
                 return
             if action == 'answer':
@@ -470,6 +486,8 @@ class Room:
                 self.filters = body.filters
             if body.settings is not None:
                 self.settings = body.settings
+                if self.settings.single_life:
+                    self.settings.round_limit = 0
         elif action == 'start':
             check(self.phase in ('lobby', 'waiting') and len(self.online()) >= self.minimum, '在线人数不足')
             await self.next_question()
@@ -482,6 +500,7 @@ class Room:
                 member.eligible = True
                 member.public_correct = 0
                 member.public_stopped = False
+                member.disputed = member.early = member.late = 0
             self.reset_match()
             if len(self.players) >= self.minimum:
                 await self.next_question()
@@ -520,6 +539,16 @@ class Room:
         elif action == 'ready':
             check(self.phase == 'reveal', '尚不能进入下一题')
             self.ready.add(key)
+        elif action == 'dispute':
+            check(self.solo and self.game == 'face-game' and self.phase == 'reveal' and self.accepted is None
+                  and key in self.answers and self.answers[key] != self.correct, '本题不能标记存疑')
+            face = self.question['face']
+            with db.connect() as conn:
+                receipt = conn.execute('SELECT 1 FROM feedback WHERE id=? AND image_id=? AND face_id=? AND face_revision=?',
+                    (body.feedback_id, self.question['image_id'], face['id'], face['revision'])).fetchone()
+            check(receipt, '本次反馈不属于题目人脸')
+            self.accepted = False
+            player.disputed += 1
         elif action == 'draft':
             check(self.phase == 'reveal' and self.accepted is None, '本题不能再发起反馈')
             self.proposer = key
@@ -534,6 +563,8 @@ class Room:
                 self.proposal = Proposal.model_validate(dict(receipt))
                 if self.solo:
                     self.accepted = False
+                    if key in self.answers and self.answers[key] != self.correct:
+                        player.disputed += 1
                     self.reveal()
                 else:
                     self.votes = {key: True}
@@ -599,10 +630,12 @@ class Room:
                                             wrong=item.wrong + (len(grid.wrong_choices) if grid and not revealed and item == player else 0),
                                             unanswered=item.unanswered, eliminated=item.eliminated(self.settings.single_life), online=item.online,
                                             playing=item.id in self.playing, answered=item.id in self.answers,
-                                            ready=item.id in self.ready, public_correct=item.public_correct,
+                                            ready=item.id in self.ready, public_correct=item.public_correct, disputed=item.disputed,
+                                            early=item.early, late=item.late,
                                             eligible=self.can_upload(item)) for item in self.players.values()],
                         **self.question_view(player, question, revealed),
                         source_photo=RevealedPhoto(**question) if revealed else None,
+                        revealed_face_id=question['face']['id'] if revealed and self.solo and self.game == 'face-game' else None,
                         correct_choice=self.correct if revealed else None, void=self.void, proposer=self.proposer,
                         proposal=self.proposal, accepted=self.accepted, votes_for=sum(self.votes.values()),
                         votes_against=len(self.votes) - sum(self.votes.values()), voted=player.id in self.votes,
@@ -653,6 +686,9 @@ class HistoryRoom(Room):
         self.midpoint_total += midpoint_deviation
         for key, player in self.players.items():
             player.deviation += deviations.get(key, midpoint_deviation)
+            if key in self.answers:
+                player.early += int(self.answers[key] < correct)
+                player.late += int(self.answers[key] > correct)
             if key not in self.answers:
                 player.unanswered += 1
 
@@ -733,7 +769,7 @@ def cleanup():
     with db.connect() as conn:
         conn.execute('DELETE FROM game_matches WHERE touched<=?', (clock() - RETENTION,))
     for code, room in list(rooms.items()):
-        if not room.lock.locked() and clock() - room.touched >= RETENTION:
+        if not room.lock.locked() and clock() - room.touched >= 900:
             del rooms[code]
 
 
@@ -779,7 +815,8 @@ def router(draw, validate, save_feedback=None, *, room_type=Room):
         guard(request)
         validate(body.filters)
         cleanup()
-        check(len(rooms) < 128, '房间数量已达上限，请稍后重试', 503)
+        check(sum(room.phase != 'finished' and clock() - room.touched < 900 for room in rooms.values()) < 128,
+              '活跃对局数量已达上限，请稍后重试', 503)
         while True:
             code = ''.join(secrets.choice('23456789ABCDEFGHJKLMNPQRSTUVWXYZ') for _ in range(6))
             with db.connect() as conn:

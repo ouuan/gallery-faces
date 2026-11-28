@@ -34,7 +34,7 @@ function select(value: number) {
     <section class="controls">
       <h2>这张照片最早发布于哪一天？</h2>
       <div class="date-step"><n-button quaternary circle aria-label="前一天" title="前一天" :disabled="disabled || day <= first" @click="select(day - 1)"><ChevronLeft :size="20" /></n-button>
-        <output v-if="locked || correct || (photo && first === last)">{{ dayLabel(day) }}</output>
+        <output v-if="(locked && !preloading) || correct || (photo && first === last)">{{ dayLabel(day) }}</output>
         <label v-else class="date-picker"><span class="sr-only">选择猜测日期</span>
           <n-date-picker type="date" value-format="yyyy-MM-dd" format="yyyy-MM-dd" input-readonly :actions="null"
             :disabled="disabled" :formatted-value="photo ? dayLabel(day) : null" :is-date-disabled="outsideRange" @update:formatted-value="select(dayNumber($event))" />
@@ -43,7 +43,7 @@ function select(value: number) {
       <input type="range" aria-label="猜测日期" :aria-valuetext="photo ? dayLabel(day) : undefined" :min="first" :max="last" step="1" :value="day" :disabled="disabled || first === last" @input="select(($event.target as HTMLInputElement).valueAsNumber)" />
       <div class="bounds"><span>{{ photo?.first_date }}</span><span>{{ photo?.last_date }}</span></div>
       <div v-if="correct" class="result" role="status"><strong>最早来源：{{ correct }}</strong><span>{{ unanswered ? '未答（按居中日期计）' : '你的猜测' }}：{{ dayLabel(day) }} · {{ difference(dayLabel(day), correct) }}</span><slot name="result" /></div>
-      <n-button v-else-if="!locked" type="primary" :disabled="disabled" @click="emit('choose', dayLabel(day))">提交日期</n-button>
+      <n-button v-else-if="!locked || preloading" type="primary" :disabled="disabled" @click="emit('choose', dayLabel(day))">提交日期</n-button>
       <slot />
     </section>
   </div>

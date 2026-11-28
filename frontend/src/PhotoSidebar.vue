@@ -3,7 +3,7 @@ import type { Photo } from './api';
 import PhotoSources from './PhotoSources.vue';
 import FeedbackPanel from './FeedbackPanel.vue';
 
-const props = defineProps<{ detail: Photo; authenticated: boolean; query: Record<string, string>; inlinePost?: boolean; feedbackFirst?: boolean; defaultFace?: number; defaultPerson?: number | null; draftKey?: string; submitted?: (faceId: number | null) => void }>();
+const props = defineProps<{ detail: Photo; authenticated: boolean; query: Record<string, string>; inlinePost?: boolean; feedbackFirst?: boolean; defaultFace?: number; defaultPerson?: number | null; draftKey?: string; submitted?: (faceId: number | null, feedbackId: number) => void }>();
 const emit = defineEmits<{ changed: [] }>();
 </script>
 <template>
