@@ -65,21 +65,7 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm exec playwright test --config playwright-ja.config.ts
       - name: End-to-end tests
-        env:
-          DATA_DIR: ${{ runner.temp }}/gallery-faces-e2e/data
-          IMPORT_DIR: ${{ runner.temp }}/gallery-faces-e2e/imports
-          ADMIN_PASSWORD: test-password
-          COOKIE_SECURE: 'false'
-        run: |
-          mkdir -p "$DATA_DIR" "$IMPORT_DIR"
-          uv run --directory ../backend --frozen uvicorn app.main:app --host 127.0.0.1 --port 8000 > "$RUNNER_TEMP/backend.log" 2>&1 &
-          backend_pid=$!
-          pnpm dev --host 127.0.0.1 --port 5173 --strictPort > "$RUNNER_TEMP/frontend.log" 2>&1 &
-          frontend_pid=$!
-          trap 'kill "$backend_pid" "$frontend_pid" 2>/dev/null || true' EXIT
-          curl --fail --retry 30 --retry-connrefused --retry-delay 1 --retry-max-time 60 http://127.0.0.1:8000/api/v1/health
-          curl --fail --retry 30 --retry-connrefused --retry-delay 1 --retry-max-time 60 --output /dev/null http://127.0.0.1:5173
-          pnpm run test:e2e --retries 2 --trace retain-on-failure
+        run: pnpm run test:e2e --retries 2 --trace retain-on-failure
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -89,8 +75,6 @@ jobs:
           path: |
             frontend/test-results/
             /tmp/gallery-faces/*.png
-            ${{ runner.temp }}/backend.log
-            ${{ runner.temp }}/frontend.log
 
   image:
     name: Build and publish image

@@ -350,11 +350,13 @@ test('groups evidence and reflows the review workspace without horizontal overfl
   await expect(nav.locator('[aria-current="page"]')).toHaveText('建议复核');
   for (const width of [1280, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
-    const preview = (await group.getByAltText('图片 #41', { exact: true }).boundingBox())!;
-    const changes = (await group.getByRole('article').first().boundingBox())!;
-    if (width >= 1280) expect(preview.x + preview.width).toBeLessThanOrEqual(changes.x);
-    else expect(preview.y + preview.height).toBeLessThanOrEqual(changes.y);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await expect(async () => {
+      const preview = (await group.getByAltText('图片 #41', { exact: true }).boundingBox())!;
+      const changes = (await group.getByRole('article').first().boundingBox())!;
+      if (width >= 1280) expect(preview.x + preview.width).toBeLessThanOrEqual(changes.x);
+      else expect(preview.y + preview.height).toBeLessThanOrEqual(changes.y);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    }).toPass({ timeout: 5000 });
     if (width === 390) {
       await page.getByRole('button', { name: /^主题：/ }).click();
       await page.getByRole('menuitemradio', { name: '深色' }).click();

@@ -128,11 +128,11 @@ test("drag boxes scale to original pixels, retry, clamp, cancel and reset on ima
   await expect(save).toBeDisabled();
 });
 
-test("mobile touch drawing and pointer cancellation", async ({ browser }) => {
+test("mobile touch drawing and pointer cancellation", async ({ browser, baseURL }) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:5173",
+    baseURL,
   });
   const page = await context.newPage();
   try {

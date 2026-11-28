@@ -115,7 +115,7 @@ cd ../frontend
 pnpm run types
 ```
 
-端到端测试需先启动后端和前端，将后端管理员密码设为 `test-password`，并使用独立空白 `DATA_DIR`（如 `../data-e2e`）。测试会写入数据。
+安装前后端依赖后，可直接运行端到端测试。Playwright 会启动独立的前后端，并使用临时空白图库，不会改动开发数据。若设置 `PLAYWRIGHT_BASE_URL`，测试会向指定服务写入数据，请仅指向使用空白图库、管理员密码为 `test-password` 的测试实例。
 
 ```sh
 cd frontend
