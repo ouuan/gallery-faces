@@ -1,5 +1,4 @@
 import asyncio
-import json
 import random
 import secrets
 import time
@@ -10,8 +9,7 @@ from fractions import Fraction
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
-from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, Field, StringConstraints, TypeAdapter
+from pydantic import BaseModel, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
 from . import db
@@ -214,7 +212,6 @@ def check(condition, message, status=409):
 class GridRound:
     order: list[int]
     started: float
-    loaded: set[int] = field(default_factory=set)
     attempts: list[tuple[int, int | None, int]] = field(default_factory=list)
     credited: list[tuple[int, int, int, int]] = field(default_factory=list)
     passed: set[int] = field(default_factory=set)
@@ -348,14 +345,10 @@ class Room:
         self.proposer = self.proposal = self.accepted = None
         self.votes, self.void = {}, False
         self.loaded = set()
+        self.enter('loading', 5)
         if self.settings.grid:
             count = self.settings.grid_size ** 2
-            self.enter('loading', 5)
             self.grid = GridRound(random.sample(range(count), count), self.deadline)
-        elif self.solo:
-            self.enter('loading', 5)
-        else:
-            self.enter('answer', self.settings.answer_seconds)
 
     @property
     def minimum(self):
@@ -406,9 +399,8 @@ class Room:
                 if self.grid:
                     self.grid.started = started
                 self.enter('answer')
-                if self.solo or not self.grid:
-                    self.deadline = started + self.settings.answer_seconds + (len(self.grid.order) * self.settings.grid_seconds if self.grid else 0)
-                    expired = clock() >= self.deadline
+                self.deadline = started + self.settings.answer_seconds + (len(self.grid.order) * self.settings.grid_seconds if self.grid else 0)
+                expired = clock() >= self.deadline
         if self.phase == 'answer':
             if self.grid:
                 eligible = self.online() & self.playing
@@ -486,7 +478,10 @@ class Room:
                 person = self.question['face']['person_id']
                 correct = next((item['id'] for item in self.question['choices'] if item['id'] == person), None)
                 if not self.solo and choice != correct:
-                    self.changed()
+                    if self.settings.single_life:
+                        self.grid.passed.add(key)
+                        self.changed()
+                        await self.advance()
                     return
                 self.score()
                 self.reveal()
@@ -533,8 +528,8 @@ class Room:
             if self.settings.single_life and self.round and self.phase != 'finished':
                 player.withdrawn = True
                 if len(self.survivors()) <= 1:
-                    if self.phase in ('answer', 'waiting'):
-                        if self.phase == 'answer':
+                    if self.phase in ('loading', 'answer', 'waiting'):
+                        if self.phase in ('loading', 'answer'):
                             self.question = None
                         self.enter('finished')
                     elif self.phase == 'reveal' and self.deadline is None:
@@ -567,7 +562,8 @@ class Room:
         if self.grid and question:
             grid = GridView(order=self.grid.order, elapsed=max(0, clock() - self.grid.started),
                             gave_up=player.id in self.grid.passed,
-                            correct_cells=next((cells for _, right, _, cells in self.grid.credited if right), None), wrong_choices=[
+                            correct_cells=(self.grid.attempts[0][2] if self.solo and self.grid.attempts and revealed else
+                                           next((cells for _, right, _, cells in self.grid.credited if right), None)), wrong_choices=[
                 choice for key, choice, _ in self.grid.attempts if key == player.id and (not revealed or choice != self.correct)])
         return RoomView(match_id=self.match_id, solo=self.solo, code=self.code, version=self.version, stage=self.stage, phase=self.phase,
                         round=self.round, host=self.host, me=player.id, settings=self.settings, filters=self.filters,

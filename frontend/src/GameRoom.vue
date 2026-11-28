@@ -184,8 +184,8 @@ async function saveSettings() {
           :correct-id="room.correct_choice" :voided="room.void" :tallies="room.tallies" :answer-name="room.accepted ? room.proposal?.suggested_name : room.answer_name" @choose="choice => act('answer', { choice })">
           <p v-if="!me?.playing" role="status">{{ me?.eliminated ? '已淘汰，正在观战' : '你将从下一题起参赛' }}</p>
           <div v-else-if="room.grid && room.phase === 'answer'" class="grid-answer-help">
-            <p role="status">{{ room.grid.gave_up ? '已放弃本题，等待其他玩家' : '答对 +1 分，答错 −1 分，可继续抢答' }}</p>
-            <n-button v-if="gridComplete && !room.grid.gave_up" :disabled="busy" @click="act('give_up')">放弃作答</n-button>
+            <p role="status">{{ room.grid.gave_up ? '本题不再作答，等待揭晓' : solo ? '请选择答案' : room.settings.single_life ? '答错即淘汰' : '答对 +1 分，答错 −1 分，可继续抢答' }}</p>
+            <n-button v-if="!solo && gridComplete && !room.grid.gave_up" :disabled="busy" @click="act('give_up')">放弃作答</n-button>
           </div>
           <p v-else-if="room.phase === 'answer'" role="status">{{ me.answered ? '已提交，等待揭晓' : '请选择答案' }} · {{ room.players.filter(player => player.answered).length }}/{{ room.players.filter(player => player.playing).length }} 人已答</p>
           <div v-if="room.phase === 'reveal' && me?.playing" class="actions round-actions"><n-button type="primary" :disabled="busy || me.ready" @click="act('ready')">{{ readyLabel }}</n-button><n-button v-if="room.accepted === null" :disabled="busy" @click="act('draft')">我要反馈</n-button></div>

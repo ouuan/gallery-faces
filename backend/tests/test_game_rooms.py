@@ -26,8 +26,20 @@ def match(client, monkeypatch):
         assert response.status_code == 201
         credentials.append(response.json()['token'])
 
+    def preload(view):
+        if view.get('phase') == 'loading' and not view['grid']:
+            for player in view['players']:
+                if player['online'] and player['playing']:
+                    view = client.post(path + '/actions', headers={'X-Room-Token': credentials[player['id'] - 1]},
+                                       json={'action': 'image_loaded', 'stage': view['stage']}).json()
+        return view
+
     def state(who=0):
-        return client.get(path, headers={'X-Room-Token': credentials[who]}).json()
+        view = client.get(path, headers={'X-Room-Token': credentials[who]}).json()
+        if view.get('phase') == 'loading' and not view['grid']:
+            preload(view)
+            return client.get(path, headers={'X-Room-Token': credentials[who]}).json()
+        return view
 
     def act(action, who=0, status=200, stage=None, **fields):
         if stage is None:
@@ -35,7 +47,11 @@ def match(client, monkeypatch):
         response = client.post(path + '/actions', headers={'X-Room-Token': credentials[who]},
                                json={'action': action, 'stage': stage, **fields})
         assert response.status_code == status, response.text
-        return response.json()
+        view = response.json()
+        if view.get('phase') == 'loading' and not view['grid']:
+            preload(view)
+            return state(who)
+        return view
 
     join('乙')
     return join, state, act, now
@@ -232,7 +248,7 @@ def test_capacity_visibility_and_expiry(client, match):
     with db.connect(True) as conn:
         conn.execute('UPDATE faces SET ignored=1')
     assert act('start')['phase'] == 'waiting'
-    now[0] += 901
+    now[0] += game_rooms.RETENTION + 1
     assert state()['detail'] == '房间不存在或已失效'
 
 
@@ -275,7 +291,7 @@ def test_grid_waits_for_online_players_or_five_seconds(match):
     assert state(2)['grid']['elapsed'] == 0
     now[0] += 0.75
     assert state()['grid']['elapsed'] == 0.5
-    act('image_loaded', 2, stage=pending['stage'], status=409)
+    assert act('image_loaded', 2, stage=pending['stage'])['phase'] == 'answer'
     assert act('answer', 2, choice=1)['grid']['correct_cells'] == 1
 
 
@@ -309,9 +325,9 @@ def test_closed_room_allows_lobby_join_and_member_reconnect(client, match):
 
 def test_grid_round_privacy_timing_and_rescore(match):
     join, state, act, now = match
-    act('settings', settings={'grid': True, 'single_life': True, 'continue_seconds': 0})
+    act('settings', settings={'grid': True, 'continue_seconds': 0})
     act('start'); first = load_grid(act)
-    assert not first['settings']['single_life'] and first['remaining'] is None
+    assert not first['settings']['single_life'] and first['remaining'] == 27.5
     assert sorted(first['grid']['order']) == list(range(25))
     assert first['grid']['correct_cells'] is None
     now[0] += 0.499
@@ -415,6 +431,24 @@ def test_grid_competing_correct_answers_score_once(match):
     players = act('finish')['players']
     assert sum(player['correct'] for player in players) == 1
     assert all(player['correct_cells'] == player['correct'] for player in players)
+
+
+def test_grid_life_only_eliminates_attempted_wrong_answer(match):
+    join, state, act, now = match
+    join('丙')
+    act('settings', settings={'grid': True, 'single_life': True, 'grid_size': 2, 'answer_seconds': 3})
+    start = act('start'); load_grid(act, 3)
+    now[0] += 2
+    act('answer', choice=2); act('give_up', 1)
+    game_rooms.rooms.clear()
+    assert state()['remaining'] == 3
+    now[0] += 3
+    players = state()['players']
+    assert [player['eliminated'] for player in players] == [True, False, False]
+    act('finish'); again = act('restart')
+    assert again['match_id'] != start['match_id']
+    with db.connect() as conn:
+        assert conn.execute('SELECT count(*) FROM game_matches WHERE code=?', (start['code'],)).fetchone()[0] == 2
 
 
 def test_single_life_spectators_and_locked_roster(client, match):

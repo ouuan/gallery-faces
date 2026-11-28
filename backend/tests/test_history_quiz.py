@@ -52,14 +52,21 @@ def test_history_room_midpoint_timeout_backfill_and_reconnect(client, monkeypatc
     def read(who):
         return client.get(path, headers=headers(who)).json()
     def act(who, action, status=200, **fields):
-        response = client.post(path + '/actions', headers=headers(who), json={'action': action, 'stage': read(who)['stage'], **fields})
+        stage = fields.pop('stage') if 'stage' in fields else read(who)['stage']
+        response = client.post(path + '/actions', headers=headers(who), json={'action': action, 'stage': stage, **fields})
         assert response.status_code == status, response.text
         return response.json()
+
+    def preload(*members):
+        stage = read(member)['stage']
+        for participant in members:
+            act(participant, 'image_loaded', stage=stage)
 
     guest = join('乙')
     act(member, 'start')
     assert client.get(path.replace('history-quiz', 'face-game'), headers=headers(member)).status_code == 404
     for round_number in range(1, 5):
+        preload(member, guest)
         if round_number == 4:
             late = join('丙')
             assert read(late)['history']['total_deviations']['3'] == 9
@@ -83,6 +90,7 @@ def test_history_room_midpoint_timeout_backfill_and_reconnect(client, monkeypatc
         act(member, 'ready'); act(guest, 'ready')
         if round_number == 4:
             act(late, 'ready')
+    preload(member, guest, late)
     for _ in range(2):
         view = read(late)
         assert view['round'] == 5 and view['players'][2]['playing']
@@ -95,6 +103,7 @@ def test_history_room_midpoint_timeout_backfill_and_reconnect(client, monkeypatc
     assert result['history']['scores'] == {'1': 4, '2': 0, '3': 1}
     for who in (member, guest, late):
         act(who, 'ready')
+    preload(member, guest, late)
     act(member, 'answer', guess_date='2026-01-07')
     act(guest, 'answer', guess_date='2026-01-09')
     now[0] += 3
@@ -102,6 +111,7 @@ def test_history_room_midpoint_timeout_backfill_and_reconnect(client, monkeypatc
     assert tied['closest'] == [1, 2] and tied['scores'] == {'1': 4.5, '2': 0.5, '3': 1}
     for who in (member, guest, late):
         act(who, 'ready')
+    preload(member, guest, late)
     now[0] += 3
     empty = read(guest)['history']
     assert empty['closest'] == [] and empty['scores'] == tied['scores']
