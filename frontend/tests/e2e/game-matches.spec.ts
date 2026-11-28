@@ -9,7 +9,7 @@ test('admin sees an unfilled nickname for a solo game started without one', asyn
   await admin.goto('/admin/game-matches');
   await admin.getByPlaceholder('输入管理员密码').fill('test-password');
   await admin.getByRole('button', { name: '登录工作台' }).click();
-  await admin.getByRole('button', { name: '认脸游戏 · 单人' }).click();
+  await admin.getByRole('link', { name: '认脸游戏 · 单人' }).click();
   await expect(admin.getByText('未填写昵称', { exact: true })).toBeVisible();
 });
 
@@ -26,18 +26,26 @@ test('admin can inspect both matches from one room without uploading', async ({ 
     const path = `${base}/${host.code}`;
     await request(path + '/join', { nickname: '乙' });
     let view = await (await request(path, undefined, host.token)).json();
+    const firstMatch = view.match_id;
     for (const action of ['start', 'finish', 'restart']) view = await (await request(path + '/actions', { action, stage: view.stage, match_id: view.match_id }, host.token)).json();
     await request('/login', { password: 'test-password' });
-    return { unauthorized, code: host.code };
+    return { unauthorized, code: host.code, firstMatch, secondMatch: view.match_id };
   });
   expect(result.unauthorized).toBe(401);
   await page.reload();
-  const rooms = page.getByRole('button', { name: `认脸游戏 · ${result.code}` });
+  const rooms = page.getByRole('link', { name: `认脸游戏 · ${result.code}` });
   await expect(rooms).toHaveCount(2);
   await rooms.last().click();
+  await expect(page).toHaveURL(`/admin/game-matches/${result.firstMatch}`);
+  await page.reload();
   await expect(page.getByText(/已结束 · 第 1 题/)).toBeVisible();
-  await page.getByRole('button', { name: '返回对局列表' }).click();
+  await page.goBack();
+  await expect(page).toHaveURL('/admin/game-matches');
+  await page.goForward();
+  await expect(page.getByText(/已结束 · 第 1 题/)).toBeVisible();
+  await page.getByRole('link', { name: '返回对局列表' }).click();
   await rooms.first().click();
+  await expect(page).toHaveURL(`/admin/game-matches/${result.secondMatch}`);
   await expect(page.getByRole('heading', { name: '玩家成绩' })).toBeVisible();
   await expect(page.getByText(/已结束 · 第 1 题/)).toHaveCount(0);
 });

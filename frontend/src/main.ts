@@ -20,6 +20,7 @@ const router = createRouter({
     { path: '/history-quiz', component: () => import('./GameRoom.vue'), props: { solo: true, history: true, key: 'history-solo' } },
     { path: '/history-quiz/play/:code', component: () => import('./GameRoom.vue'), props: { solo: true, history: true, key: 'history-play' } },
     { path: '/history-quiz/rooms/:code?', component: () => import('./GameRoom.vue'), props: { history: true, key: 'history-room' } },
+    { path: '/admin/:section(game-matches)/:matchId?', component: Admin },
     { path: "/admin/:section?", component: Admin },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
