@@ -32,7 +32,7 @@ test('admin sections share one navigation across viewport changes and history', 
       const bottomInset = await navigation.evaluate(nav => nav.getBoundingClientRect().bottom - nav.querySelector('button')!.getBoundingClientRect().bottom);
       expect(bottomInset).toBeCloseTo(await navigation.evaluate(nav => parseFloat(getComputedStyle(nav).paddingBottom)), 0);
     }
-    await expect(navigation.getByRole('link')).toHaveCount(width <= 720 ? 8 : 7);
+    await expect(navigation.getByRole('link')).toHaveCount(width <= 720 ? 9 : 8);
     await expect(navigation.getByRole('combobox')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     if (width === 320) {
