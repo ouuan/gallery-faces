@@ -4,11 +4,10 @@ from collections import defaultdict
 import random
 
 from .db import connect
-from .group_index import GAME_FACE_SCORE
+from .group_index import GAME_FACE_SCORE, GAME_THRESHOLD
 from .list_queries import matching_groups
 
-THRESHOLD = "(SELECT CAST(value AS REAL) FROM settings WHERE key='face_game_threshold')"
-ELIGIBLE_FACE = f'f.ignored=0 AND {GAME_FACE_SCORE} >= {THRESHOLD}'
+ELIGIBLE_FACE = f'f.ignored=0 AND {GAME_FACE_SCORE} >= {GAME_THRESHOLD}'
 
 
 def group_query(filters, group_id=None):
@@ -33,7 +32,7 @@ def pair_query(filters, last_group):
     selected, match = filters[:2]
     sql = f'''WITH hits AS MATERIALIZED ({groups}) SELECT who.person_id,hit.group_id
         FROM hits hit CROSS JOIN public_group_people who ON who.group_id=hit.group_id
-        WHERE hit.group_id IS NOT ? AND who.game_score >= {THRESHOLD}'''
+        WHERE hit.group_id IS NOT ? AND who.game_score >= {GAME_THRESHOLD}'''
     args.append(last_group)
     if selected and match in ('any', 'all'):
         # Probe the group index once per hit, not once per selected person per hit.
@@ -48,12 +47,12 @@ def first_candidate(db, filters, last_group):
         scope = 'id IN (' + ','.join('?' for _ in selected) + ') AND ' if selected else ''
         chosen = db.execute(f'''WITH eligible AS MATERIALIZED (SELECT id FROM people WHERE {scope}
             (SELECT 1 FROM public_group_people who WHERE who.person_id=people.id AND who.group_id IS NOT ?
-             AND who.game_score >= {THRESHOLD} LIMIT 1))
+             AND who.game_score >= {GAME_THRESHOLD} LIMIT 1))
             SELECT id FROM eligible ORDER BY random() LIMIT 1''', [*selected, last_group]).fetchone()
         if not chosen:
             return None
         person = chosen[0]
-        groups, args = f'SELECT group_id FROM public_group_people WHERE person_id=? AND game_score >= {THRESHOLD}', [person]
+        groups, args = f'SELECT group_id FROM public_group_people WHERE person_id=? AND game_score >= {GAME_THRESHOLD}', [person]
     else:
         pairs, args = pair_query(filters, last_group)
         return db.execute(f'''WITH pool AS MATERIALIZED ({pairs}), chosen AS MATERIALIZED (

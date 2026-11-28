@@ -14,7 +14,10 @@ test("review reasons follow the current photo and disappear in specific filters"
     const path = new URL(route.request().url()).pathname;
     if (path.includes("/media/") || path.endsWith("/crop"))
       return route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#8799aa"/></svg>' });
-    if (path.endsWith("/admin/images")) return route.fulfill({ json: images });
+    if (path.endsWith("/admin/images")) {
+      const state = new URL(route.request().url()).searchParams.get('state');
+      return route.fulfill({ json: state === 'game_ineligible' ? [{ ...images[0], faces: [images[0].faces[2]] }] : images });
+    }
     if (path.endsWith("/session")) return route.fulfill({ json: { admin: true } });
     if (path.endsWith("/site") || path.endsWith("/settings")) return route.fulfill({ json: {} });
     if (path.endsWith("/people")) return route.fulfill({ json: [{ id: 7, name: "测试人物", groups: [], accounts: [] }] });
@@ -39,10 +42,16 @@ test("review reasons follow the current photo and disappear in specific filters"
   await page.getByRole("button", { name: "审核图片（5，共 1 个版本）", exact: true }).click();
   await expect(issues).toHaveCount(0);
   await page.getByRole("button", { name: "审核图片（1，共 1 个版本）", exact: true }).click();
-  for (const label of ["全部待审核", "全部在库图片", "未知人物", "同一人物出现多次", "无人脸", "检测失败", "来源待补全", "等待检测"]) {
+  for (const label of ["全部待审核", "全部在库图片", "未知人物", "同一人物出现多次", "不能用于出题", "无人脸", "检测失败", "来源待补全", "等待检测"]) {
     await page.locator('[aria-label="审核状态"]').click();
     await page.locator(".n-base-select-option").filter({ hasText: new RegExp(`^${label}$`) }).click();
     if (label === "同一人物出现多次") await expect(page).toHaveURL(/state=repeated_person/);
+    if (label === "不能用于出题") {
+      await expect(page).toHaveURL(/state=game_ineligible/);
+      await page.reload();
+      await expect(page.locator('.face-review')).toHaveCount(1);
+      await expect(page.locator('.face-crop')).toHaveAttribute('src', '/api/v1/admin/faces/3/crop');
+    }
     await expect(page.getByRole("button", { name: "审核图片（1，共 1 个版本）", exact: true })).toBeVisible();
     if (["全部待审核", "全部在库图片"].includes(label)) await expect(issues).toContainText("同一人物出现多次：测试人物（2 个人脸）");
     else await expect(issues).toHaveCount(0);

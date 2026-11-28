@@ -41,7 +41,7 @@ const targetImage = computed(() => {
   const id = typeof route.query.image === "string" ? Number(route.query.image) : NaN;
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 });
-const reviewStates = ["image", "review", "feedback", "unknown", "repeated_person", "no_faces", "failed", "incomplete", "pending", "trash", "all"];
+const reviewStates = ["image", "review", "feedback", "unknown", "repeated_person", "game_ineligible", "no_faces", "failed", "incomplete", "pending", "trash", "all"];
 const state = computed({
   get: () => {
     const value = route.query.state === "hidden" ? "trash" : route.query.state;
@@ -621,6 +621,7 @@ onMounted(load);
     <div class="review-filter">
       <n-select
         aria-label="审核状态"
+        :virtual-scroll="false"
         :disabled="savingBox || savingFaces || acting || deleting"
         v-model:value="state"
         :options="[
@@ -629,6 +630,7 @@ onMounted(load);
           { value: 'feedback', label: '用户反馈' },
           { value: 'unknown', label: '未知人物' },
           { value: 'repeated_person', label: '同一人物出现多次' },
+          { value: 'game_ineligible', label: '不能用于出题' },
           { value: 'no_faces', label: '无人脸' },
           { value: 'failed', label: '检测失败' },
           { value: 'incomplete', label: '来源待补全' },
@@ -796,7 +798,7 @@ onMounted(load);
                 :loading="savingFaces"
                 aria-label="全部确认"
                 aria-keyshortcuts="c"
-                title="确认当前图片中所有待确认的人脸，采用当前选择的人物"
+                title="确认当前显示的所有待确认人脸，采用当前选择的人物"
                 @click="confirmAll"
                 >全部确认<kbd class="shortcut-key" aria-hidden="true">C</kbd></n-button
               >

@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, field_validator, mo
 from .open_graph import render_open_graph
 from . import game_admin, game_boards, game_rooms, list_queries, photo_draw, publisher_avatars, publishers, review_packages, social
 from .review_format import fits
-from .group_index import REVIEW_FLAGS
+from .group_index import GAME_THRESHOLD, REVIEW_FLAGS, REVIEW_GAME_SCORE
 from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, cleanup_deleted_files, startup_phase
 from .security import download_url, cookie_bytes, save_cookie
 from .feed_scope import ImportScope, effective_scope
@@ -1671,13 +1671,14 @@ def placeholders(values):
     return ','.join('?' for _ in values)
 
 
-def review_images(db, rows, *, grouped=False):
+def review_images(db, rows, *, grouped=False, game_ineligible=False):
     items = {row['id']: dict(row, faces=[], sources=[], pending_feedback_count=0) for row in rows}
     if not items:
         return []
+    face_filter = f'AND f.ignored=0 AND f.person_id IS NOT NULL AND {REVIEW_GAME_SCORE} < {GAME_THRESHOLD}' if game_ineligible else ''
     for row in db.execute(f'''SELECT id,image_id,box,person_id,locked,ignored,candidates,revision,
-            (embedding IS NOT NULL AND length(embedding)>0) AS has_embedding FROM faces
-            WHERE image_id IN ({placeholders(items)}) ORDER BY image_id,json_extract(box,'$[0]') + json_extract(box,'$[2]') / 2.0,id''', list(items)):
+            (embedding IS NOT NULL AND length(embedding)>0) AS has_embedding FROM faces f
+            WHERE image_id IN ({placeholders(items)}) {face_filter} ORDER BY image_id,json_extract(box,'$[0]') + json_extract(box,'$[2]') / 2.0,id''', list(items)):
         items[row['image_id']]['faces'].append(dict(row, box=json.loads(row['box']), candidates=json.loads(row['candidates'])))
 
     by_owner = {item['group_id']: item for item in items.values()} if grouped else items
@@ -1780,7 +1781,7 @@ def admin_images(
             FROM {base}{where} ORDER BY {order} LIMIT ? OFFSET ?)
             SELECT i.* FROM page CROSS JOIN images i ON i.id=page.image_id ORDER BY {order}'''
         rows = db.execute(sql, [*params, limit, offset])
-        items = review_images(db, rows, grouped=grouped)
+        items = review_images(db, rows, grouped=grouped, game_ineligible=state == 'game_ineligible')
         if page is None:
             return items
         return ReviewPage(items=items, total=total, page=page, page_size=page_size)
@@ -1788,10 +1789,12 @@ def admin_images(
 
 def review_selection(state, image_id, start, end, people, match, publishers):
     ids, accounts = parse_people_publishers(people, publishers)
-    if state not in (*REVIEW_FLAGS, 'hidden', 'all'):
+    if state not in (*REVIEW_FLAGS, 'game_ineligible', 'hidden', 'all'):
         fail("状态无效")
     grouped = state != "hidden"
     conditions = [f'g.{state}=1' if state in REVIEW_FLAGS else ('1' if grouped else 'i.hidden=1')]
+    if state == 'game_ineligible':
+        conditions.append(f'g.min_game_score < {GAME_THRESHOLD}')
     params = []
     if image_id is not None:
         conditions.append('g.group_id=(SELECT group_id FROM images WHERE id=? AND hidden=0)' if grouped else 'i.id=?')

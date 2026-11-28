@@ -144,6 +144,20 @@ def test_v17_backfills_repeated_person_review_for_existing_images(client):
     assert [row['id'] for row in client.get('/api/v1/admin/images').json()] == [first]
 
 
+def test_game_ineligible_filter_backfills_existing_representatives(client):
+    with db.connect(True) as conn:
+        target = image(conn)
+        conn.execute("INSERT INTO people(name) VALUES('one')")
+        conn.execute('UPDATE faces SET person_id=1,locked=1')
+    with db.connect() as conn:
+        conn.execute('DROP INDEX review_game_score')
+        conn.execute('ALTER TABLE review_groups DROP COLUMN min_game_score')
+        conn.execute('UPDATE schema_version SET version=18')
+    db.init()
+    assert [row['id'] for row in client.get('/api/v1/admin/images?state=game_ineligible').json()] == [target]
+    assert client.get('/api/v1/admin/images').json() == []
+
+
 def test_post_candidate_boundary_with_aliases_and_cursors(client, monkeypatch):
     with db.connect(True) as conn:
         conn.execute("INSERT INTO people(name) VALUES('one')")

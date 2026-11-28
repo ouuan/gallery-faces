@@ -1024,7 +1024,7 @@ def test_nickname_schema_upgrade_preserves_existing_posts(client):
     with db.connect() as conn:
         assert conn.execute('SELECT author,author_name FROM posts').fetchone()['author'] == 'alice'
         assert 'coauthors' in {row[1] for row in conn.execute('PRAGMA table_info(posts)')}
-        assert [r[0] for r in conn.execute('SELECT version FROM schema_version')] == [18]
+        assert [r[0] for r in conn.execute('SELECT version FROM schema_version')] == [19]
 
 
 def test_reference_avatars_crop_selected_face_and_recover_legacy_uploads(client, monkeypatch):

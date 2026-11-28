@@ -313,6 +313,36 @@ def test_repeated_person_counts_only_visible_faces_on_the_representative(client)
     assert listing(client) == []
 
 
+def test_game_ineligible_filters_labeled_faces_without_marking_for_review(client):
+    small, large, _, alice, bob = seed()
+    def scores(person, score):
+        return json.dumps([{'person_id': person, 'score': score}])
+
+    with db.connect(True) as conn:
+        conn.execute('UPDATE faces SET locked=1')
+        conn.execute('UPDATE faces SET candidates=? WHERE image_id=?', (scores(bob, .3), large))
+        conn.executemany("INSERT INTO faces(image_id,box,person_id,locked,ignored) VALUES(?,'[]',?,1,?)",
+                         [(large, None, 0), (large, alice, 1)])
+    assert listing(client, 'game_ineligible') == []
+    with db.connect(True) as conn:
+        face = conn.execute("INSERT INTO faces(image_id,box,person_id,locked,candidates) VALUES(?,'[]',?,1,?)",
+                            (large, alice, scores(alice, .9))).lastrowid
+    for feature, candidates in [(None, scores(alice, .9)), (b'x', scores(bob, .9)), (b'x', scores(alice, .299))]:
+        with db.connect(True) as conn:
+            conn.execute('UPDATE faces SET embedding=?,candidates=? WHERE id=?', (feature, candidates, face))
+        result = listing(client, 'game_ineligible', page=1, page_size=1, image_id=small)
+        assert result['total'] == 1 and result['items'][0]['id'] == large
+        assert [item['id'] for item in result['items'][0]['faces']] == [face]
+        assert listing(client) == []
+    with db.connect(True) as conn:
+        conn.execute("UPDATE settings SET value='0.299' WHERE key='face_game_threshold'")
+    assert listing(client, 'game_ineligible') == []
+    with db.connect(True) as conn:
+        conn.execute("UPDATE settings SET value='0' WHERE key='face_game_threshold'")
+        conn.execute("UPDATE faces SET candidates='[]' WHERE id=?", (face,))
+    assert [row['id'] for row in listing(client, 'game_ineligible')] == [large]
+
+
 def test_review_people_use_representative_and_ignore_ignored_faces(client):
     small, large, _, alice, bob = seed()
     assert listing(client, people=str(alice)) == []

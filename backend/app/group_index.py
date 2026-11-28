@@ -6,6 +6,17 @@ REPEATED_PERSON_SQL = '''EXISTS(SELECT 1 FROM faces WHERE image_id=representativ
 SCOPES = ('public', 'review')
 GAME_FACE_SCORE = '''CASE WHEN length(f.embedding)>0 THEN (SELECT json_extract(candidate.value,'$.score')
     FROM json_each(f.candidates) candidate WHERE json_extract(candidate.value,'$.person_id')=f.person_id) END'''
+GAME_THRESHOLD = "(SELECT CAST(value AS REAL) FROM settings WHERE key='face_game_threshold')"
+REVIEW_GAME_SCORE = f'coalesce({GAME_FACE_SCORE}, -1)'
+MIN_GAME_SCORE = f'''(SELECT min({REVIEW_GAME_SCORE}) FROM faces f WHERE f.image_id=representative
+    AND f.ignored=0 AND f.person_id IS NOT NULL)'''
+
+
+def install_review_game_scores(db):
+    if 'min_game_score' not in {row[1] for row in db.execute('PRAGMA table_info(review_groups)')}:
+        db.execute('ALTER TABLE review_groups ADD COLUMN min_game_score REAL')
+        db.execute(f'UPDATE review_groups SET min_game_score={MIN_GAME_SCORE}')
+    db.execute('CREATE INDEX IF NOT EXISTS review_game_score ON review_groups(min_game_score) WHERE min_game_score IS NOT NULL')
 
 
 def install_game_scores(db):
@@ -34,6 +45,7 @@ def install(db):
                 PRIMARY KEY(group_id,{key})) WITHOUT ROWID''')
             db.execute(f'CREATE INDEX IF NOT EXISTS {table}_reverse ON {table}({key},group_id)')
     install_game_scores(db)
+    install_review_game_scores(db)
     db.execute('CREATE INDEX IF NOT EXISTS public_group_date ON public_groups(stamp,group_id)')
     db.execute('CREATE INDEX IF NOT EXISTS public_face_date ON public_groups(stamp,group_id) WHERE has_face=1')
     for flag in REVIEW_FLAGS:
@@ -107,14 +119,15 @@ def refresh(db):
                 EXISTS(SELECT 1 FROM faces WHERE image_id=representative AND ignored=0 AND locked=0) AS unlocked,
                 EXISTS(SELECT 1 FROM faces WHERE image_id=representative AND ignored=0 AND locked=0 AND person_id IS NULL) AS unknown,
                 {REPEATED_PERSON_SQL} AS repeated_person,
+                {MIN_GAME_SCORE} AS min_game_score,
                 NOT EXISTS(SELECT 1 FROM faces WHERE image_id=representative AND ignored=0) AS no_active,
                 EXISTS(SELECT 1 FROM images m WHERE m.group_id=reps.group_id AND m.hidden=0 AND NOT {complete_source_sql('m')}) AS incomplete,
                 EXISTS(SELECT 1 FROM images m JOIN feedback f ON f.image_id=m.id WHERE m.group_id=reps.group_id AND m.hidden=0 AND f.status='pending') AS feedback
                 FROM reps CROSS JOIN images i ON i.id=representative)
-                INSERT INTO review_groups SELECT group_id,representative,
+                INSERT INTO review_groups(group_id,representative,{','.join(REVIEW_FLAGS)},min_game_score) SELECT group_id,representative,
                 detection IN ('pending','failed') OR empty OR unlocked OR incomplete OR feedback OR repeated_person,unknown,
                 detection='done' AND no_active,detection='failed',detection='pending',incomplete,feedback,
-                repeated_person FROM flags''')
+                repeated_person,min_game_score FROM flags''')
         score = f',max({GAME_FACE_SCORE})' if public else ''
         db.execute(f'''INSERT INTO {scope}_group_people SELECT d.group_id,f.person_id{score} FROM dirty_groups d
             CROSS JOIN {scope}_groups g ON g.group_id=d.group_id CROSS JOIN faces f ON f.image_id=g.representative

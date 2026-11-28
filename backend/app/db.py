@@ -301,6 +301,9 @@ def init():
         if db.execute('SELECT version FROM schema_version').fetchone()[0] < 18:
             group_index.install_game_scores(db)
             db.execute('UPDATE schema_version SET version=18')
+        if db.execute('SELECT version FROM schema_version').fetchone()[0] < 19:
+            group_index.install_review_game_scores(db)
+            db.execute('UPDATE schema_version SET version=19')
     with startup_phase('interrupted restore cleanup scan'), connect(True) as db:
         recover_hidden_files(db)
     with startup_phase('media hash backfill'):
