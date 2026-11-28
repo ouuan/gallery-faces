@@ -165,8 +165,8 @@ const imageStyle = computed(() => {
 .option-tally { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
 .game-options button:disabled { cursor: default; color: var(--muted); }
 @media (hover: hover) { .game-options button:enabled:hover { border-color: var(--accent); color: var(--accent); } }
-.game-options button.right { border-color: var(--success); background: var(--success-bg); color: var(--success); }
-.game-options button.answer-key { border: 1px dashed var(--muted); color: var(--text); }
+.game-options button.right, .game-options button.answer-key { border-color: var(--success); background: var(--success-bg); color: var(--success); }
+.game-options button.answer-key { border-style: dashed; }
 .game-options button.wrong { border-color: var(--error); color: var(--error); }
 .game-options button.selected { border-color: var(--accent); color: var(--accent); }
 @media (max-width: 768px) and (orientation: portrait), (max-width: 599px) {
