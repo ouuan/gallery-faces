@@ -759,6 +759,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/game-matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Matches */
+        get: operations["matches_api_v1_admin_game_matches_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/game-matches/{match_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Match */
+        get: operations["match_api_v1_admin_game_matches__match_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/history-quiz/rooms": {
         parameters: {
             query?: never;
@@ -2759,6 +2793,94 @@ export interface components {
             face_id: number;
             /** Person Id */
             person_id: number | string | null;
+        };
+        /** MatchDetail */
+        MatchDetail: {
+            /** Id */
+            id: string;
+            /** Code */
+            code: string;
+            /**
+             * Game
+             * @enum {string}
+             */
+            game: "face-game" | "history-quiz";
+            /** Solo */
+            solo: boolean;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "lobby" | "loading" | "answer" | "reveal" | "draft" | "vote" | "waiting" | "finished";
+            /** Round */
+            round: number;
+            /** Members */
+            members: number;
+            /**
+             * Activity
+             * Format: date-time
+             */
+            activity: string;
+            settings: components["schemas"]["RoomSettings"];
+            filters: components["schemas"]["GameFilters"];
+            /** Settled */
+            settled: number;
+            /** Players */
+            players: components["schemas"]["MemberResult"][];
+        };
+        /** MatchSummary */
+        MatchSummary: {
+            /** Id */
+            id: string;
+            /** Code */
+            code: string;
+            /**
+             * Game
+             * @enum {string}
+             */
+            game: "face-game" | "history-quiz";
+            /** Solo */
+            solo: boolean;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "lobby" | "loading" | "answer" | "reveal" | "draft" | "vote" | "waiting" | "finished";
+            /** Round */
+            round: number;
+            /** Members */
+            members: number;
+            /**
+             * Activity
+             * Format: date-time
+             */
+            activity: string;
+        };
+        /** Matches */
+        Matches: {
+            /** Items */
+            items: components["schemas"]["MatchSummary"][];
+            /** Total */
+            total: number;
+        };
+        /** MemberResult */
+        MemberResult: {
+            /** Name */
+            name: string;
+            /** Correct */
+            correct: number;
+            /** Wrong */
+            wrong: number;
+            /** Unanswered */
+            unanswered: number;
+            /** Public Correct */
+            public_correct: number;
+            /** Correct Cells */
+            correct_cells: number;
+            /** Deviation */
+            deviation: number;
+            /** Points */
+            points: number;
         };
         /** Membership */
         Membership: {
@@ -5338,6 +5460,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Record"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    matches_api_v1_admin_game_matches_get: {
+        parameters: {
+            query?: {
+                game?: ("face-game" | "history-quiz") | null;
+                mode?: ("solo" | "multi") | null;
+                phase?: ("lobby" | "loading" | "answer" | "reveal" | "draft" | "vote" | "waiting" | "finished") | null;
+                page?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Matches"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    match_api_v1_admin_game_matches__match_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchDetail"];
                 };
             };
             /** @description Validation Error */

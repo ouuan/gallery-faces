@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import OpenGraphSettings from "./OpenGraphSettings.vue";
+import AdminGameMatches from './AdminGameMatches.vue';
 import MediaCacheStatus from "./MediaCacheStatus.vue";
 import LocalDateTime from "./LocalDateTime.vue";
 import LoadingOverlay from "./LoadingOverlay.vue";
@@ -310,6 +311,7 @@ onUnmounted(() => {
     <section class="admin-content">
       <h1>{{ sectionTitle }}</h1>
       <Monitors v-if="section === 'monitors'" />
+      <AdminGameMatches v-else-if="section === 'game-matches'" />
       <Publishers v-else-if="section === 'publishers'" />
       <n-alert v-if="error" type="error" closable @close="error = ''">{{
         error

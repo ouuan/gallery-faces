@@ -1,5 +1,5 @@
 <script lang="ts">
-import { AtSign, Copy, Download, Hourglass, House, LogOut, ScanFace, Settings, Users } from '@lucide/vue';
+import { AtSign, Copy, Download, Gamepad2, Hourglass, House, LogOut, ScanFace, Settings, Users } from '@lucide/vue';
 
 export const adminSections = [
   { id: 'monitors', label: '发布者监控', icon: Hourglass },
@@ -8,6 +8,7 @@ export const adminSections = [
   { id: 'review', label: '识别审核', icon: ScanFace },
   { id: 'duplicates', label: '重复图片', icon: Copy },
   { id: 'publishers', label: '未关联发布者', icon: AtSign },
+  { id: 'game-matches', label: '游戏对局', icon: Gamepad2 },
   { id: 'settings', label: '设置', icon: Settings },
 ];
 </script>

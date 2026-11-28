@@ -2778,6 +2778,165 @@
         }
       }
     },
+    "/api/v1/admin/game-matches": {
+      "get": {
+        "summary": "Matches",
+        "operationId": "matches_api_v1_admin_game_matches_get",
+        "parameters": [
+          {
+            "name": "game",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "face-game",
+                    "history-quiz"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Game"
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "solo",
+                    "multi"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          },
+          {
+            "name": "phase",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "lobby",
+                    "loading",
+                    "answer",
+                    "reveal",
+                    "draft",
+                    "vote",
+                    "waiting",
+                    "finished"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Phase"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000000,
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Matches"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/game-matches/{match_id}": {
+      "get": {
+        "summary": "Match",
+        "operationId": "match_api_v1_admin_game_matches__match_id__get",
+        "parameters": [
+          {
+            "name": "match_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Match Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/history-quiz/rooms": {
       "post": {
         "summary": "Create Room",
@@ -8682,6 +8841,222 @@
           "person_id"
         ],
         "title": "Match"
+      },
+      "MatchDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "game": {
+            "type": "string",
+            "enum": [
+              "face-game",
+              "history-quiz"
+            ],
+            "title": "Game"
+          },
+          "solo": {
+            "type": "boolean",
+            "title": "Solo"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "lobby",
+              "loading",
+              "answer",
+              "reveal",
+              "draft",
+              "vote",
+              "waiting",
+              "finished"
+            ],
+            "title": "Phase"
+          },
+          "round": {
+            "type": "integer",
+            "title": "Round"
+          },
+          "members": {
+            "type": "integer",
+            "title": "Members"
+          },
+          "activity": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Activity"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/RoomSettings"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/GameFilters"
+          },
+          "settled": {
+            "type": "integer",
+            "title": "Settled"
+          },
+          "players": {
+            "items": {
+              "$ref": "#/components/schemas/MemberResult"
+            },
+            "type": "array",
+            "title": "Players"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "game",
+          "solo",
+          "phase",
+          "round",
+          "members",
+          "activity",
+          "settings",
+          "filters",
+          "settled",
+          "players"
+        ],
+        "title": "MatchDetail"
+      },
+      "MatchSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "game": {
+            "type": "string",
+            "enum": [
+              "face-game",
+              "history-quiz"
+            ],
+            "title": "Game"
+          },
+          "solo": {
+            "type": "boolean",
+            "title": "Solo"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "lobby",
+              "loading",
+              "answer",
+              "reveal",
+              "draft",
+              "vote",
+              "waiting",
+              "finished"
+            ],
+            "title": "Phase"
+          },
+          "round": {
+            "type": "integer",
+            "title": "Round"
+          },
+          "members": {
+            "type": "integer",
+            "title": "Members"
+          },
+          "activity": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Activity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "game",
+          "solo",
+          "phase",
+          "round",
+          "members",
+          "activity"
+        ],
+        "title": "MatchSummary"
+      },
+      "Matches": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MatchSummary"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "Matches"
+      },
+      "MemberResult": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "correct": {
+            "type": "integer",
+            "title": "Correct"
+          },
+          "wrong": {
+            "type": "integer",
+            "title": "Wrong"
+          },
+          "unanswered": {
+            "type": "integer",
+            "title": "Unanswered"
+          },
+          "public_correct": {
+            "type": "integer",
+            "title": "Public Correct"
+          },
+          "correct_cells": {
+            "type": "integer",
+            "title": "Correct Cells"
+          },
+          "deviation": {
+            "type": "integer",
+            "title": "Deviation"
+          },
+          "points": {
+            "type": "number",
+            "title": "Points"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "correct",
+          "wrong",
+          "unanswered",
+          "public_correct",
+          "correct_cells",
+          "deviation",
+          "points"
+        ],
+        "title": "MemberResult"
       },
       "Membership": {
         "properties": {
