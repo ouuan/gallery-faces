@@ -20,7 +20,7 @@ const zoomed = computed(() => preview.value === 'zoom');
 const liveGrid = computed(() => !!props.order && !props.revealed);
 const canReview = computed(() => props.revealed && !!props.order && props.correctCells != null && !props.voided);
 const grid = computed(() => liveGrid.value || (canReview.value && preview.value === 'grid'));
-const crop = computed(() => props.cropped && !grid.value && !props.revealed);
+const crop = computed(() => props.cropped && (!props.revealed || grid.value));
 const liveCells = ref(0);
 const gridStart = computed(() => props.photo && imageReady.value && liveGrid.value ? props.started : null);
 const shown = computed(() => props.revealed ? props.correctCells ?? 0 : liveCells.value);
@@ -44,8 +44,8 @@ const choices = computed(() => [...(props.photo?.choices ?? []), { id: null, nam
 const bounds = computed(() => {
   const photo = props.photo;
   if (!photo) return [0, 0, 1, 1] as const;
-  if (grid.value) return gridViewport(photo.box, photo.width, photo.height);
   if (crop.value) return cropBox(photo.box, photo.width, photo.height);
+  if (grid.value) return gridViewport(photo.box, photo.width, photo.height);
   return [0, 0, photo.width, photo.height] as const;
 });
 const frame = computed(() => {
@@ -54,7 +54,7 @@ const frame = computed(() => {
   const nativeWidth = grid.value && props.photo ? Math.min(props.photo.width, props.photo.height * ratio) : width;
   return { width: `min(100%, ${crop.value ? '100%' : nativeWidth + 'px'}, ${ratio * 100}cqh)`, aspectRatio: `${width} / ${height}` };
 });
-watch([crop, () => props.revealed], () => { preview.value = null; });
+watch(() => props.revealed, () => { preview.value = null; });
 function holdPreview(event: PointerEvent, mode: 'zoom' | 'grid') {
   if (!event.isPrimary || event.button !== 0 || !imageReady.value) return;
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -99,7 +99,7 @@ const imageStyle = computed(() => {
     <div v-if="photo || pendingChoices" class="game-controls" :inert="!photo">
         <div class="game-prompt-row">
           <h2 id="game-prompt">{{ crop ? '这是谁？' : '框中的是谁？' }}</h2>
-          <n-button v-if="!crop && !liveGrid" quaternary circle :disabled="!imageReady" aria-label="按住放大人脸" title="按住放大人脸"
+          <n-button v-if="revealed || (!cropped && !liveGrid)" quaternary circle :disabled="!imageReady" aria-label="按住放大人脸" title="按住放大人脸"
             @pointerdown="holdPreview($event, 'zoom')" @lostpointercapture="releasePreview('zoom')" @contextmenu.prevent
             @keydown.space.enter.prevent="preview = 'zoom'" @keyup.space.enter.prevent="releasePreview('zoom')" @blur="releasePreview('zoom')">
             <ZoomIn :size="18" aria-hidden="true" />

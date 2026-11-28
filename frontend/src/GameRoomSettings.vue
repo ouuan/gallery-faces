@@ -9,12 +9,12 @@ defineProps<{ history?: boolean }>();
 <template>
   <fieldset class="room-settings"><legend>房间设置</legend>
     <GameRoundLimit :model-value="model.round_limit" @update:model-value="round_limit => model = { ...model, round_limit }" />
+    <FaceDisplayMode v-if="!history" :model-value="model" @update:model-value="value => model = { ...model, ...value, single_life: !value.grid && model.single_life }" />
     <div class="timing">
     <label v-if="!model.grid">每题答题时间（秒）<n-input-number aria-label="每题答题时间" :value="model.answer_seconds" :min="3" :max="300" @update:value="value => model = { ...model, answer_seconds: value ?? 15 }" /></label>
     <label>切题秒数（0 关闭）<n-input-number aria-label="自动切题等待" :value="model.continue_seconds" :min="0" :max="300" @update:value="value => model = { ...model, continue_seconds: value ?? 0 }" /></label>
     </div>
     <div class="face-options">
-      <FaceDisplayMode v-if="!history" :model-value="model" @update:model-value="value => model = { ...model, ...value, single_life: !value.grid && model.single_life }" />
       <label v-if="!history && !model.grid" class="display"><span><n-switch aria-label="一命模式" :value="model.single_life" @update:value="value => model = { ...model, single_life: value }" /> 一命模式</span></label>
       <label class="display"><span><n-switch aria-label="允许中途加入" :aria-disabled="model.single_life" :disabled="model.single_life" :value="!model.single_life && model.allow_late_join" @update:value="value => model = { ...model, allow_late_join: value }" /> 允许中途加入</span></label>
     </div>
@@ -30,6 +30,9 @@ label { display: grid; gap: 4px; }
 @media (max-width: 599px) {
   .room-settings { gap: 8px; }
   .face-options { column-gap: 8px; }
-  .face-options :deep(.n-radio-button) { padding-inline: 8px; }
+  .display-mode { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; }
+  .display-mode :deep(.mode-row) { column-gap: 8px; }
+  .display-mode :deep(.n-radio-button) { padding-inline: 8px; }
+  .display-mode :deep(.grid-settings) { width: 100%; }
 }
 </style>
