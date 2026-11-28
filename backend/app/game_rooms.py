@@ -66,7 +66,7 @@ class Membership(BaseModel):
 class RoomAction(BaseModel):
     action: Literal['settings', 'start', 'restart', 'image_loaded', 'answer', 'give_up', 'ready', 'draft', 'cancel', 'submit', 'vote', 'dispute', 'finish', 'leave']
     stage: int
-    match_id: str | None = None
+    match_id: str
     settings: RoomSettings | None = None
     filters: GameFilters | None = None
     choice: int | None = None
@@ -458,12 +458,11 @@ class Room:
 
     async def act(self, player, body, save):
         action, key = body.action, player.id
-        same_match = body.match_id == self.match_id
-        if body.match_id and not same_match:
+        if body.match_id != self.match_id:
             if action in ('image_loaded', 'ready'):
                 return
             raise HTTPException(409, '原对局已结束，本次操作未计入')
-        if body.stage != self.stage and not (same_match and action in ('finish', 'leave')):
+        if body.stage != self.stage and action not in ('finish', 'leave'):
             if action in ('image_loaded', 'ready'):
                 return
             if action == 'answer':
@@ -707,8 +706,8 @@ polls = 0
 
 
 class MatchState(BaseModel):
-    natural: bool = False
-    public_round: int = 0
+    natural: bool
+    public_round: int
     settings: RoomSettings
     filters: GameFilters
     players: dict[int, Player]

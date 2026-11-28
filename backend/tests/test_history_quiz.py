@@ -51,16 +51,17 @@ def test_history_room_midpoint_timeout_backfill_and_reconnect(client, monkeypatc
         return client.post(path + '/join', json={'nickname': name}).json()
     def read(who):
         return client.get(path, headers=headers(who)).json()
-    def act(who, action, status=200, **fields):
-        stage = fields.pop('stage') if 'stage' in fields else read(who)['stage']
-        response = client.post(path + '/actions', headers=headers(who), json={'action': action, 'stage': stage, **fields})
+    def act(who, action, status=200, view=None, **fields):
+        if view is None:
+            view = read(who)
+        response = client.post(path + '/actions', headers=headers(who), json={'action': action, 'stage': view['stage'], 'match_id': view['match_id'], **fields})
         assert response.status_code == status, response.text
         return response.json()
 
     def preload(*members):
-        stage = read(member)['stage']
+        view = read(member)
         for participant in members:
-            act(participant, 'image_loaded', stage=stage)
+            act(participant, 'image_loaded', view=view)
 
     guest = join('乙')
     act(member, 'start')

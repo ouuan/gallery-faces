@@ -3577,7 +3577,7 @@ export interface components {
             /** Stage */
             stage: number;
             /** Match Id */
-            match_id?: string | null;
+            match_id: string;
             settings?: components["schemas"]["RoomSettings"] | null;
             filters?: components["schemas"]["GameFilters"] | null;
             /** Choice */

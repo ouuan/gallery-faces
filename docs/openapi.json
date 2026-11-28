@@ -11047,14 +11047,7 @@
             "title": "Stage"
           },
           "match_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
             "title": "Match Id"
           },
           "settings": {
@@ -11152,7 +11145,8 @@
         "type": "object",
         "required": [
           "action",
-          "stage"
+          "stage",
+          "match_id"
         ],
         "title": "RoomAction"
       },

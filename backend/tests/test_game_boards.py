@@ -36,7 +36,7 @@ def test_upload_atomic_best_and_time_survive_cleanup(client, monkeypatch):
         path = f"{base}/{member['code']}"
         view = client.get(path, headers=headers).json()
         for action in ('image_loaded', 'answer', 'ready'):
-            view = client.post(path + '/actions', headers=headers, json={'stage': view['stage'], 'action': action, 'choice': choice}).json()
+            view = client.post(path + '/actions', headers=headers, json={'stage': view['stage'], 'match_id': view['match_id'], 'action': action, 'choice': choice}).json()
         assert view['players'][0]['eligible']
         return f"/api/v1/face-game/matches/{view['match_id']}/score", headers
     def upload(match, name='甲'):

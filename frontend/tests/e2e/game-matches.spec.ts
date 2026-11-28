@@ -14,7 +14,7 @@ test('admin can inspect both matches from one room without uploading', async ({ 
     const path = `${base}/${host.code}`;
     await request(path + '/join', { nickname: '乙' });
     let view = await (await request(path, undefined, host.token)).json();
-    for (const action of ['start', 'finish', 'restart']) view = await (await request(path + '/actions', { action, stage: view.stage }, host.token)).json();
+    for (const action of ['start', 'finish', 'restart']) view = await (await request(path + '/actions', { action, stage: view.stage, match_id: view.match_id }, host.token)).json();
     await request('/login', { password: 'test-password' });
     return { unauthorized, code: host.code };
   });

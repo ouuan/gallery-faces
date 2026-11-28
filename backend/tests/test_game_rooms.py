@@ -20,6 +20,7 @@ def match(client, monkeypatch):
     member = client.post(BASE, json={'nickname': '甲', 'settings': {'grid': False}, 'filters': {'people': '1,2'}}).json()
     path = f"{BASE}/{member['code']}"
     credentials = [member['token']]
+    match_id = client.get(path, headers={'X-Room-Token': member['token']}).json()['match_id']
 
     def join(name):
         response = client.post(path + '/join', json={'nickname': name})
@@ -31,7 +32,7 @@ def match(client, monkeypatch):
             for player in view['players']:
                 if player['online'] and player['playing']:
                     view = client.post(path + '/actions', headers={'X-Room-Token': credentials[player['id'] - 1]},
-                                       json={'action': 'image_loaded', 'stage': view['stage']}).json()
+                                       json={'action': 'image_loaded', 'stage': view['stage'], 'match_id': view['match_id']}).json()
         return view
 
     def state(who=0):
@@ -42,14 +43,17 @@ def match(client, monkeypatch):
         return view
 
     def act(action, who=0, status=200, stage=None, **fields):
+        nonlocal match_id
         if 'settings' in fields:
             fields['settings'].setdefault('grid', False)
         if stage is None:
             stage = state(who)['stage']
         response = client.post(path + '/actions', headers={'X-Room-Token': credentials[who]},
-                               json={'action': action, 'stage': stage, **fields})
+                               json={'action': action, 'stage': stage, 'match_id': match_id, **fields})
         assert response.status_code == status, response.text
         view = response.json()
+        if action == 'restart' and status == 200:
+            match_id = view['match_id']
         if view.get('phase') == 'loading' and not view['grid']:
             preload(view)
             return state(who)
@@ -93,6 +97,7 @@ def test_host_restarts_finished_room(match, single_life):
     for player in new['players']:
         assert player['playing'] and not any(player[key] for key in ('correct', 'wrong', 'unanswered', 'eliminated', 'ready', 'answered'))
     act('restart', stage=finished['stage'], status=409)
+    act('finish', match_id=first['match_id'], status=409)
     act('answer', 1, stage=first['stage'], choice=1, status=409)
     act('answer', 1, choice=1)
 

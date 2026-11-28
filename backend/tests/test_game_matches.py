@@ -15,6 +15,8 @@ def test_solo_restores_original_question_and_deadline(client, monkeypatch):
     def read():
         return client.get(path, headers=headers).json()
     start = read()
+    missing_id = client.post(path + '/actions', headers=headers, json={'stage': start['stage'], 'action': 'finish'})
+    assert missing_id.status_code == 422
     assert start['phase'] == 'loading' and start['source_photo'] is None
     assert start['settings']['grid_seconds'] == 0.2 and len(start['grid']['order']) == 100
     now[0] += 8
