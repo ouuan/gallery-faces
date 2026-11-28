@@ -34,7 +34,7 @@ test('solo reveals only the face and restores the winning cells during review', 
   const winningMask = await mask();
   await page.getByRole('button', { name: '人1', exact: true }).click();
   await expect(page.getByLabel('要辨认的人脸')).toBeVisible();
-  const review = page.getByRole('button', { name: '按住查看答对时的格子' });
+  const review = page.getByRole('button', { name: '按住查看作答时的格子' });
   await review.focus(); await page.keyboard.down('Space');
   await expectFaceOnly(page);
   await page.clock.fastForward(5000);
@@ -89,7 +89,7 @@ test('solo reveals the magnified viewport and averages only correct answers', as
   await zoom.focus(); await page.keyboard.down('Space');
   await expect.poll(async () => (await page.locator('.game-frame img').boundingBox())!.width).toBeCloseTo(image.width, 1);
   await page.keyboard.up('Space');
-  const review = page.getByRole('button', { name: '按住查看答对时的格子' });
+  const review = page.getByRole('button', { name: '按住查看作答时的格子' });
   await review.hover(); await page.mouse.down();
   await expect(page.getByText('已显示 1 / 9 格')).toBeVisible();
   await page.clock.fastForward(20000);
@@ -111,9 +111,17 @@ test('solo reveals the magnified viewport and averages only correct answers', as
   releaseQuestion();
   await expect(page.getByLabel('要辨认的人脸')).toBeVisible();
   await expect(page.getByText('已显示 0 / 9 格')).toBeVisible();
-  await page.clock.fastForward(10000);
+  await page.clock.fastForward(20000);
+  await expect(page.getByText('已显示 2 / 9 格')).toBeVisible();
+  const wrongMask = await mask();
   await page.getByRole('button', { name: '都不是', exact: true }).click();
-  await expect(review).toHaveCount(0);
+  await expect(page.locator('.grid-mask')).toHaveCount(0);
+  await review.focus(); await page.keyboard.down('Space');
+  await expect(page.getByText('已显示 2 / 9 格')).toBeVisible();
+  await page.clock.fastForward(20000);
+  expect(await mask()).toEqual(wrongMask);
+  await page.keyboard.up('Space');
+  await expect(page.locator('.grid-mask')).toHaveCount(0);
   await page.getByRole('button', { name: '结束本局' }).click();
   await expect(page.getByRole('region', { name: '本局结果' })).toContainText('每边 3 格 · 答对时平均 1.0 格');
   await page.reload();

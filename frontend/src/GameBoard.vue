@@ -8,22 +8,22 @@ import { visibleCells } from './face-grid';
 import LoadingOverlay from './LoadingOverlay.vue';
 import type { components } from './schema';
 
-const props = defineProps<{ photo?: components['schemas']['RoomPhoto'] | null; cropped: boolean; revealed: boolean;
+const props = withDefaults(defineProps<{ photo?: components['schemas']['RoomPhoto'] | null; cropped: boolean; revealed: boolean;
   pendingChoices?: number;
   locked: boolean; selected?: number | null; correctId?: number | null; answerName?: string | null; voided?: boolean;
-  order?: number[]; started?: number | null; interval?: number; correctCells?: number | null; wrongChoices?: (number | null)[];
-  tallies?: components['schemas']['ChoiceTally'][] | null }>();
+  order?: number[]; started?: number | null; interval?: number; reviewCells?: number | null; reviewLabel?: string; wrongChoices?: (number | null)[];
+  tallies?: components['schemas']['ChoiceTally'][] | null }>(), { reviewLabel: '按住查看答对时的格子' });
 const emit = defineEmits<{ choose: [choice: number | null, cells: number]; loaded: [] }>();
 const imageReady = ref(false), failed = ref(false);
 const preview = ref<'zoom' | 'grid' | null>(null);
 const zoomed = computed(() => preview.value === 'zoom');
 const liveGrid = computed(() => !!props.order && !props.revealed);
-const canReview = computed(() => props.revealed && !!props.order && props.correctCells != null && !props.voided);
+const canReview = computed(() => props.revealed && !!props.order && props.reviewCells != null && !props.voided);
 const grid = computed(() => liveGrid.value || (canReview.value && preview.value === 'grid'));
 const crop = computed(() => props.cropped && (!props.revealed || grid.value));
 const liveCells = ref(0);
 const gridStart = computed(() => props.photo && imageReady.value && liveGrid.value ? props.started : null);
-const shown = computed(() => props.revealed ? props.correctCells ?? 0 : liveCells.value);
+const shown = computed(() => props.revealed ? props.reviewCells ?? 0 : liveCells.value);
 watchEffect(cleanup => {
   const order = props.order, start = gridStart.value, seconds = props.interval;
   liveCells.value = 0;
@@ -104,7 +104,7 @@ const imageStyle = computed(() => {
             @keydown.space.enter.prevent="preview = 'zoom'" @keyup.space.enter.prevent="releasePreview('zoom')" @blur="releasePreview('zoom')">
             <ZoomIn :size="18" aria-hidden="true" />
           </n-button>
-          <n-button v-if="canReview" quaternary circle :disabled="!imageReady" aria-label="按住查看答对时的格子" title="按住查看答对时的格子"
+          <n-button v-if="canReview" quaternary circle :disabled="!imageReady" :aria-label="reviewLabel" :title="reviewLabel"
             @pointerdown="holdPreview($event, 'grid')" @lostpointercapture="releasePreview('grid')" @contextmenu.prevent
             @keydown.space.enter.prevent="preview = 'grid'" @keyup.space.enter.prevent="releasePreview('grid')" @blur="releasePreview('grid')">
             <Grid2X2 :size="18" aria-hidden="true" />

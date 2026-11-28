@@ -4,7 +4,7 @@ import { faceDisplay, gridOrder, type FaceDisplay } from './face-grid';
 
 export type Question = components['schemas']['GameQuestion'];
 export type Outcome = 'correct' | 'wrong' | 'disputed';
-export type Round = { question: Question; choice?: number | null; index: number; key: number; order?: number[]; started?: number; correctCells?: number };
+export type Round = { question: Question; choice?: number | null; index: number; key: number; order?: number[]; started?: number; answerCells?: number };
 export const game = reactive<{ filter: string | null; roundLimit: number; round: Round | null; outcomes: Outcome[]; display: FaceDisplay; correctCells: number }>({
   filter: null, roundLimit: 0, round: null, outcomes: [], display: faceDisplay(), correctCells: 0,
 });
@@ -55,10 +55,8 @@ export function answer(choice: number | null, cells = 0) {
   if (!round || round.choice !== undefined) return;
   round.choice = choice;
   const correct = choice === correctChoice(round.question);
-  if (correct) {
-    round.correctCells = cells;
-    game.correctCells += cells;
-  }
+  if (round.order) round.answerCells = cells;
+  if (correct) game.correctCells += cells;
   game.outcomes.push(correct ? 'correct' : 'wrong');
 }
 
