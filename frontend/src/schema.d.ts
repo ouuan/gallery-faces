@@ -5396,7 +5396,7 @@ export interface operations {
             query?: {
                 game?: ("face-game" | "history-quiz") | null;
                 mode?: ("solo" | "multi") | null;
-                phase?: ("lobby" | "loading" | "answer" | "reveal" | "draft" | "vote" | "waiting" | "finished") | null;
+                phase?: ("lobby" | "loading" | "answer" | "reveal" | "draft" | "vote" | "waiting" | "finished") | "active" | null;
                 page?: number;
                 limit?: number;
             };

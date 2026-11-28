@@ -16,6 +16,8 @@ def test_admin_lists_matches_without_advancing_or_touching(client, match):
     assert listed['total'] == 2 and listed['items'][0]['id'] == second['match_id']
     assert client.get(path, params={'page': 2, 'limit': 1}).json()['items'][0]['id'] == first['match_id']
     assert client.get(path, params={'phase': 'finished'}).json()['total'] == 1
+    active = client.get(path, params={'phase': 'active', 'limit': 1}).json()
+    assert active['total'] == 1 and active['items'][0]['id'] == second['match_id']
     assert client.get(path, params={'mode': 'solo'}).json()['total'] == 0
     detail = client.get(path + '/' + second['match_id']).json()
     assert detail['phase'] == 'answer' and detail['round'] == 1 and len(detail['players']) == 2

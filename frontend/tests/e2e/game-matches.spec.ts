@@ -1,6 +1,46 @@
 import { expect } from '@playwright/test';
 import { test } from '../room-fixture';
 
+test('admin refreshes the current filtered snapshot manually', async ({ guests }) => {
+  const page = guests[0]!;
+  const start = new Date('2026-11-28T04:00:00Z');
+  await page.clock.install({ time: start });
+  await page.clock.setFixedTime(new Date(start.valueOf() + 1000));
+  const requests: URLSearchParams[] = [];
+  await page.route('**/api/v1/admin/game-matches?*', async route => {
+    requests.push(new URL(route.request().url()).searchParams);
+    if (requests.length === 2) return route.fulfill({ status: 503, json: { detail: '暂时不可用' } });
+    return route.fulfill({ json: { total: 21, items: [{ id: 'example', code: 'ABCD', game: 'face-game', solo: false,
+      phase: requests.length === 1 ? 'answer' : 'reveal', round: 1, members: 2, activity: start.toISOString() }] } });
+  });
+  const path = '/admin/game-matches?game=face-game&mode=multi&phase=active&page=2';
+  await page.goto(path);
+  await page.getByPlaceholder('输入管理员密码').fill('test-password');
+  await page.getByRole('button', { name: '登录工作台' }).click();
+  const time = page.locator('.matches time');
+  await expect(time).toHaveText('1秒前');
+  await page.clock.fastForward(10_000);
+  await page.clock.setFixedTime(new Date(start.valueOf() + 11_000));
+  await page.clock.runFor(1000);
+  await expect(time).toHaveText('1秒前');
+  expect(requests).toHaveLength(1);
+  const refresh = page.getByRole('button', { name: '刷新', exact: true });
+  await expect(refresh).toBeVisible();
+  await refresh.click();
+  await expect(page.getByRole('alert')).toContainText('暂时不可用');
+  await expect(time).toHaveText('1秒前');
+  await refresh.click();
+  await expect(time).toHaveText('11秒前');
+  await expect(page.getByText('答案揭晓 · 第 1 题')).toBeVisible();
+  expect(requests.map(params => Object.fromEntries(params))).toEqual(Array(3).fill({ game: 'face-game', mode: 'multi', phase: 'active', page: '2' }));
+  await page.locator('.match-filters').getByText('进行中', { exact: true }).click();
+  await page.locator('.n-base-select-option').getByText('已结束', { exact: true }).click();
+  await expect(page).toHaveURL('/admin/game-matches?game=face-game&mode=multi&phase=finished');
+  await page.goBack();
+  await expect(page).toHaveURL(path);
+  await expect(page.locator('.match-filters')).toContainText('进行中');
+});
+
 test('admin sees the unfilled nickname and grid score of a solo player', async ({ guests }) => {
   const player = guests[0]!, admin = guests[1]!;
   await player.goto('/face-game?people=1,2&t=90');
@@ -39,20 +79,21 @@ test('admin can inspect both matches from one room without uploading', async ({ 
     return { unauthorized, code: host.code, firstMatch, secondMatch: view.match_id };
   });
   expect(result.unauthorized).toBe(401);
-  await page.reload();
+  const query = '?game=face-game&mode=multi';
+  await page.goto('/admin/game-matches' + query);
   const rooms = page.getByRole('link', { name: `认脸游戏 · ${result.code}` });
   await expect(rooms).toHaveCount(2);
   await rooms.last().click();
-  await expect(page).toHaveURL(`/admin/game-matches/${result.firstMatch}`);
+  await expect(page).toHaveURL(`/admin/game-matches/${result.firstMatch}${query}`);
   await page.reload();
   await expect(page.getByText(/已结束 · 第 1 题/)).toBeVisible();
   await page.goBack();
-  await expect(page).toHaveURL('/admin/game-matches');
+  await expect(page).toHaveURL('/admin/game-matches' + query);
   await page.goForward();
   await expect(page.getByText(/已结束 · 第 1 题/)).toBeVisible();
   await page.getByRole('link', { name: '返回对局列表' }).click();
   await rooms.first().click();
-  await expect(page).toHaveURL(`/admin/game-matches/${result.secondMatch}`);
+  await expect(page).toHaveURL(`/admin/game-matches/${result.secondMatch}${query}`);
   await expect(page.getByRole('heading', { name: '玩家成绩' })).toBeVisible();
   await expect(page.getByText(/已结束 · 第 1 题/)).toHaveCount(0);
 });

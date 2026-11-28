@@ -51,12 +51,16 @@ def router(admin):
     routes = APIRouter(prefix='/api/v1/admin/game-matches', dependencies=[Depends(admin)])
 
     @routes.get('', response_model=Matches)
-    def matches(game: Game | None = None, mode: Literal['solo', 'multi'] | None = None, phase: games.Phase | None = None,
+    def matches(game: Game | None = None, mode: Literal['solo', 'multi'] | None = None, phase: games.Phase | Literal['active'] | None = None,
                 page: int = Query(1, ge=1, le=1000000), limit: int = Query(20, ge=1, le=100)):
         conditions, args = ['touched>?'], [games.clock() - games.RETENTION]
-        for column, value in [('game', game), ('solo', None if mode is None else mode == 'solo'), ('phase', phase)]:
+        for column, value in [('game', game), ('solo', None if mode is None else mode == 'solo')]:
             if value is not None:
                 conditions.append(f'{column}=?'); args.append(value)
+        if phase == 'active':
+            conditions.append("phase NOT IN ('lobby', 'finished')")
+        elif phase is not None:
+            conditions.append('phase=?'); args.append(phase)
         source = ' FROM game_matches WHERE ' + ' AND '.join(conditions)
         with db.connect() as conn:
             conn.execute('BEGIN')

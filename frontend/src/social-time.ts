@@ -1,24 +1,20 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 import { dateLabel } from './api';
 
-function sharedClock(interval: number) {
-  const now = ref(Date.now());
-  let listeners = 0;
-  let timer: ReturnType<typeof setInterval>;
-  return () => {
-    onMounted(() => {
-      if (++listeners === 1) {
-        now.value = Date.now();
-        timer = setInterval(() => { now.value = Date.now(); }, interval);
-      }
-    });
-    onUnmounted(() => { if (--listeners === 0) clearInterval(timer); });
-    return now;
-  };
-}
+const now = ref(Date.now());
+let listeners = 0;
+let timer: ReturnType<typeof setInterval>;
 
-export const useClock = sharedClock(15_000);
-export const useActivityClock = sharedClock(1000);
+export function useClock() {
+  onMounted(() => {
+    if (++listeners === 1) {
+      now.value = Date.now();
+      timer = setInterval(() => { now.value = Date.now(); }, 15_000);
+    }
+  });
+  onUnmounted(() => { if (--listeners === 0) clearInterval(timer); });
+  return now;
+}
 
 export function activityTime(value: string, current: number) {
   const seconds = Math.floor((current - Date.parse(value)) / 1000);
