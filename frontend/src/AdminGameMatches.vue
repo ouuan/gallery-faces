@@ -3,7 +3,9 @@ import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { NButton, NSelect } from 'naive-ui';
 import { api } from './api';
+import { averageCells } from './face-grid';
 import { fromQuery } from './filters';
+import { average, formatPoints } from './history-quiz';
 import GameFilterSummary from './GameFilterSummary.vue';
 import GameRoomRules from './GameRoomRules.vue';
 import ListPagination from './ListPagination.vue';
@@ -39,7 +41,22 @@ watch([query, matchId, retry], async (_, __, cleanup) => {
     <template v-else-if="detail"><h2>{{ games[detail.game] }} · {{ detail.solo ? '单人' : `房间 ${detail.code}` }}</h2>
       <p>{{ phases[detail.phase] }} · 第 {{ detail.round }} 题 · {{ detail.members }} 人</p>
       <GameRoomRules :settings="detail.settings" :history="detail.game === 'history-quiz'" :solo="detail.solo" /><GameFilterSummary :filter="fromQuery(detail.filters)" />
-      <h3>玩家成绩</h3><p v-for="member in detail.players" :key="member.name"><strong>{{ member.name || '未填写昵称' }}</strong> · <template v-if="detail.game === 'history-quiz'">{{ member.points }} 分 · 平均偏差 {{ detail.settled ? (member.deviation / detail.settled).toFixed(1) + ' 天' : '—' }}</template><template v-else>正确 {{ member.correct }} · 错误 {{ member.wrong }}</template> · 未答 {{ member.unanswered }}</p>
+      <h3>玩家成绩</h3>
+      <p v-for="member in detail.players" :key="member.name" class="player-result">
+        <strong>{{ member.name || '未填写昵称' }}</strong>
+        <template v-if="detail.game === 'history-quiz'">
+          <span>{{ formatPoints(member.points) }} 分</span><span>平均偏差 {{ average(member.deviation, detail.settled) }}</span>
+          <span>已答 {{ detail.settled - member.unanswered }} 题</span>
+        </template>
+        <template v-else>
+          <template v-if="detail.settings.grid">
+            <span>{{ member.correct - member.wrong }} 分</span><span>答对时平均 {{ averageCells(member.correct_cells, member.correct) }}</span>
+          </template>
+          <span v-else>已答 {{ member.correct + member.wrong }} 题</span>
+          <span>正确 {{ member.correct }}</span><span>错误 {{ member.wrong }}</span>
+        </template>
+        <span>未答 {{ member.unanswered }}</span>
+      </p>
     </template>
     <template v-else-if="list"><p v-if="!list.total">暂无符合条件的对局</p><table v-else><thead><tr><th>对局</th><th>状态</th><th>最近活动</th></tr></thead><tbody>
       <tr v-for="item in list.items" :key="item.id"><td><router-link :to="`/admin/game-matches/${item.id}`">{{ games[item.game] }} · {{ item.solo ? '单人' : item.code }}</router-link></td><td>{{ phases[item.phase] }} · 第 {{ item.round }} 题</td><td>{{ new Date(item.activity).toLocaleString() }}</td></tr>
@@ -50,6 +67,7 @@ watch([query, matchId, retry], async (_, __, cleanup) => {
 <style scoped>
 .matches { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; justify-items: start; gap: 16px; overflow-wrap: anywhere; }
 .match-filters { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 8em), 1fr)); gap: 12px; }
+.player-result { display: flex; flex-wrap: wrap; gap: 4px 16px; font-variant-numeric: tabular-nums; }
 label { display: grid; gap: 4px; } table { width: 100%; border-collapse: collapse; }
 th, td { text-align: start; padding: 8px 4px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; } .matches a { display: inline-flex; align-items: center; min-height: 44px; }
 </style>

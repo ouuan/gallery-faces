@@ -1,9 +1,9 @@
 import { expect } from '@playwright/test';
 import { test } from '../room-fixture';
 
-test('admin sees an unfilled nickname for a solo game started without one', async ({ guests }) => {
+test('admin sees the unfilled nickname and grid score of a solo player', async ({ guests }) => {
   const player = guests[0]!, admin = guests[1]!;
-  await player.goto('/face-game');
+  await player.goto('/face-game?people=1,2&t=90');
   await player.getByRole('button', { name: '开始游戏' }).click();
   await expect(player.getByRole('button', { name: '结束本局' })).toBeVisible();
   await admin.goto('/admin/game-matches');
@@ -11,6 +11,13 @@ test('admin sees an unfilled nickname for a solo game started without one', asyn
   await admin.getByRole('button', { name: '登录工作台' }).click();
   await admin.getByRole('link', { name: '认脸游戏 · 单人' }).click();
   await expect(admin.getByText('未填写昵称', { exact: true })).toBeVisible();
+  await expect(admin.getByText('答对时平均 —', { exact: true })).toBeVisible();
+  await player.getByRole('button', { name: '人1', exact: true }).click();
+  const averageCells = player.getByRole('group', { name: '本局统计' }).getByText(/^答对时平均 \d+\.\d 格$/);
+  await expect(averageCells).toBeVisible();
+  await admin.reload();
+  await expect(admin.getByText(await averageCells.innerText(), { exact: true })).toBeVisible();
+  await expect(admin.getByText('1 分', { exact: true })).toBeVisible();
 });
 
 test('admin can inspect both matches from one room without uploading', async ({ guests }) => {
