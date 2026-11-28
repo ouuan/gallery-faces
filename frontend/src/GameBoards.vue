@@ -6,6 +6,7 @@ import { api } from './api';
 import { filterOnlyQuery, fromQuery } from './filters';
 import { parseRules, ruleQuery } from './game-rules';
 import GameFilterSummary from './GameFilterSummary.vue';
+import GameBoardRecords from './GameBoardRecords.vue';
 import { usePageTitle } from './page-title';
 import type { components } from './schema';
 
@@ -39,25 +40,32 @@ function label(board: Board) {
 </script>
 <template>
   <main class="boards"><header><h1>{{ title }}</h1><router-link :to="{ path, query: rules }">返回游戏</router-link></header>
+    <GameFilterSummary v-if="scope === 'filters'" class="scope-filter" :filter="filter" />
     <p v-if="error" role="alert">{{ error }} <n-button @click="retry++">重试</n-button></p>
-    <template v-else-if="detail"><h2>{{ label(detail.board) }}</h2><GameFilterSummary :filter="fromQuery(detail.board.filters)" />
-      <router-link :to="{ path, query: boardQuery(detail.board) }">按此规则开局</router-link>
-      <table v-if="detail.records.length"><thead><tr><th>名次</th><th>昵称</th><th>成绩</th><th>上榜时间</th></tr></thead>
-      <tbody><tr v-for="record in detail.records" :key="record.nickname"><td>{{ record.rank }}</td><th scope="row">{{ record.nickname }}</th>
-        <td>{{ history ? `平均偏差 ${(record.deviation / record.rounds).toFixed(1)} 天` : `${record.correct} 题` }}<template v-if="!history && detail.board.settings.grid && record.correct"> · 平均 {{ (record.cells / record.correct).toFixed(1) }} 格</template></td>
-        <td><time :datetime="record.recorded_at">{{ new Date(record.recorded_at).toLocaleString() }}</time></td></tr></tbody></table><p v-else>暂无上榜成绩</p>
+    <template v-else-if="detail"><div class="board-row"><div class="board-info"><h2>{{ label(detail.board) }}</h2><GameFilterSummary :filter="fromQuery(detail.board.filters)" /></div>
+      <router-link :to="{ path, query: boardQuery(detail.board) }">按此规则开局</router-link></div>
+      <GameBoardRecords :board="detail" />
     </template>
-    <template v-else-if="boards"><p v-if="!boards.length">暂无榜单</p><article v-for="board in boards" :key="board.id">
-      <h2><router-link :to="{ path: path + '/boards/current', query: boardQuery(board) }">{{ label(board) }}</router-link></h2><span>{{ board.members }} 人上榜</span>
-      <GameFilterSummary :filter="fromQuery(board.filters)" /><router-link :to="{ path, query: boardQuery(board) }">按此规则开局</router-link></article></template>
+    <template v-else-if="boards"><p v-if="!boards.length">暂无榜单</p><div v-else><article v-for="board in boards" :key="board.id" class="board-row">
+      <div class="board-info"><h2><router-link :to="{ path: path + '/boards/current', query: boardQuery(board) }">{{ label(board) }}</router-link></h2>
+        <GameFilterSummary v-if="scope === 'all'" :filter="fromQuery(board.filters)" /></div>
+      <div class="board-actions"><span>{{ board.members }} 人上榜</span><router-link :to="{ path, query: boardQuery(board) }">按此规则开局</router-link></div></article></div></template>
     <p v-else role="status">正在读取榜单…</p>
   </main>
 </template>
 <style scoped>
-.boards { max-width: 960px; margin: auto; padding: 16px clamp(12px, 3vw, 28px); }
-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-h2 { font-size: 1.1rem; } article { border-bottom: 1px solid var(--line); padding-block: 12px; }
+.boards { width: min(100%, 960px); margin-inline: auto; padding: 20px 28px 40px; display: grid; align-content: start; gap: 20px; }
+header, .board-row, .board-actions { display: flex; align-items: baseline; justify-content: space-between; gap: 0 16px; flex-wrap: wrap; }
+header, article, .scope-filter { border-bottom: 1px solid var(--line); }
+.scope-filter { padding-bottom: 16px; }
+article { padding-block: 8px 12px; }
+.board-info { flex: 1 1 24rem; min-width: 0; display: grid; gap: 8px; }
+.board-actions { align-items: center; }
+.board-actions span { color: var(--muted); }
+h2 { font-size: 1.1rem; }
 a { display: inline-flex; min-height: 44px; align-items: center; }
-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-td, th { border-bottom: 1px solid var(--line); text-align: start; padding: 10px 4px; overflow-wrap: anywhere; }
+@media (max-width: 599px) {
+  .boards { padding: 8px 16px 28px; gap: 16px; }
+  .board-actions { width: 100%; }
+}
 </style>

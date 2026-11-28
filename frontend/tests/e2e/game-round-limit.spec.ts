@@ -3,7 +3,7 @@ import { test } from '../room-fixture';
 
 test.use({ timezoneId: 'America/Los_Angeles' });
 
-for (const game of ['face-game', 'history-quiz']) test(`${game} solo stops at the configured question count`, async ({ guests }) => {
+for (const game of ['face-game', 'history-quiz']) test(`${game} solo stops at the configured question count`, async ({ guests }, info) => {
   const page = guests[0]!;
   await page.goto(`/${game}`);
   await expect(page.getByRole('radio', { name: '固定局数' })).toBeChecked();
@@ -21,7 +21,11 @@ for (const game of ['face-game', 'history-quiz']) test(`${game} solo stops at th
   await page.getByRole('link', { name: '当前榜单', exact: true }).click();
   await expect(page.getByRole('row', { name: /小林/ })).toBeVisible();
   const time = page.locator('time');
-  await expect(time).toHaveText(await time.evaluate(element => new Date(element.dateTime).toLocaleString()));
+  await expect(time).toHaveText(await time.evaluate(element => {
+    const local = new Date(element.dateTime), pad = (value: number) => String(value).padStart(2, '0');
+    return `${local.getFullYear()}/${pad(local.getMonth() + 1)}/${pad(local.getDate())} ${pad(local.getHours())}:${pad(local.getMinutes())}:${pad(local.getSeconds())}`;
+  }));
+  await page.screenshot({ path: info.outputPath('record-time.png') });
   await page.getByRole('link', { name: '按此规则开局' }).click();
   await expect(page.getByLabel('题数', { exact: true })).toHaveValue('2');
   for (const name of ['当前筛选的榜单', '全部榜单']) {
