@@ -11,7 +11,7 @@ type FilterInput = Partial<Schema['GameFilters']>;
 type RoomAction = Omit<Schema['RoomAction'], 'filters'> & { filters?: FilterInput };
 export type Settings = Required<Schema['RoomSettings']>;
 
-export function useGameRoom(history = false) {
+export function useGameRoom(history = false, solo = false) {
   const message = useMessage();
   const base = history ? '/history-quiz/rooms' : '/face-game/rooms';
   const key = (code: string) => `${history ? 'history' : 'face'}-room:${code}`;
@@ -69,11 +69,11 @@ export function useGameRoom(history = false) {
     try {
       const existing = target && sessionStorage.getItem(key(target));
       const member = existing ? { code: target, token: existing } : await api<Schema['Membership']>(create ? base : `${base}/${encodeURIComponent(target)}/join`, {
-        method: 'POST', body: JSON.stringify({ nickname, ...create }),
+        method: 'POST', body: JSON.stringify({ nickname, ...create, solo }),
       });
       sessionStorage.setItem(key(member.code), member.token);
       if (member.code === code.value) token.value = member.token;
-      else await router.push({ path: `${base}/${member.code}`, query: create ? filterOnlyQuery(fromQuery(create.filters)) : route.query });
+      else await router.push({ path: `${solo ? base.replace('/rooms', '/play') : base}/${member.code}`, query: create ? filterOnlyQuery(fromQuery(create.filters)) : route.query });
     } catch (cause) { error.value = (cause as Error).message; }
     finally { busy.value = false; }
   }
@@ -88,7 +88,7 @@ export function useGameRoom(history = false) {
       if (view.code !== code.value) return;
       if (action === 'leave') {
         if (view.phase === 'lobby') sessionStorage.removeItem(key(view.code));
-        await router.push({ path: base, query: filterOnlyQuery(fromQuery(view.filters)) });
+        await router.push({ path: solo ? base.replace('/rooms', '') : base, query: filterOnlyQuery(fromQuery(view.filters)) });
       } else apply(result);
     } catch (cause) {
       if (!background && view.code === code.value) message.error((cause as Error).message);

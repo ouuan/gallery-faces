@@ -9,7 +9,7 @@ import LoadingOverlay from './LoadingOverlay.vue';
 import type { components } from './schema';
 
 const props = withDefaults(defineProps<{ photo?: components['schemas']['RoomPhoto'] | null; cropped: boolean; revealed: boolean;
-  pendingChoices?: number;
+  pendingChoices?: number; preloading?: boolean;
   locked: boolean; selected?: number | null; correctId?: number | null; answerName?: string | null; voided?: boolean;
   order?: number[]; started?: number | null; interval?: number; reviewCells?: number | null; reviewLabel?: string; wrongChoices?: (number | null)[];
   tallies?: components['schemas']['ChoiceTally'][] | null }>(), { reviewLabel: '按住查看答对时的格子' });
@@ -87,13 +87,13 @@ const imageStyle = computed(() => {
     <div class="game-picture">
       <slot v-if="!photo" name="placeholder" />
       <div v-else-if="failed" role="alert">照片加载失败 <n-button @click="failed = false">重试加载照片</n-button></div>
-      <div v-else class="game-frame" :style="frame">
+      <div v-else class="game-frame" :class="{ preloading }" :style="frame">
         <img :src="photo.image_url" :style="imageStyle" alt="题目照片" @load="imageReady = true; emit('loaded')" @error="imageReady = false; failed = true" />
         <div v-if="grid && order" class="grid-mask" aria-hidden="true" :style="{ '--side': Math.sqrt(order.length) }">
           <i v-for="cell in order.length" :key="cell" :class="{ covered: !visible.has(cell - 1) }" />
         </div>
         <span v-if="imageReady && !crop && !zoomed" class="target-face" :class="{ 'grid-target': grid }" :style="targetStyle" aria-label="要辨认的人脸" />
-        <LoadingOverlay :show="!imageReady" center label="正在加载照片…" />
+        <LoadingOverlay :show="!imageReady || !!preloading" center label="正在加载照片…" />
       </div>
     </div>
     <div v-if="photo || pendingChoices" class="game-controls" :inert="!photo">
@@ -136,6 +136,7 @@ const imageStyle = computed(() => {
 .game-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 28px; align-items: start; }
 .game-picture { position: sticky; top: calc(var(--site-header-height) + 16px); display: grid; grid-template: 100% / 100%; place-items: center; container-type: size; height: 64svh; }
 .game-frame { position: relative; overflow: hidden; border-radius: 4px; }
+.preloading img, .preloading .target-face, .preloading .grid-mask { visibility: hidden; }
 .grid-mask { position: absolute; inset: -1px; display: grid; grid-template: repeat(var(--side), 1fr) / repeat(var(--side), 1fr); pointer-events: none; }
 .grid-mask .covered { background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
 .grid-progress { margin-inline-start: 8px; color: var(--muted); font-variant-numeric: tabular-nums; }

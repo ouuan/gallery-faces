@@ -16,6 +16,9 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version(version INTEGER PRIMARY KEY);
 INSERT INTO schema_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM schema_version);
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS game_matches(id TEXT PRIMARY KEY, code TEXT NOT NULL, game TEXT NOT NULL, solo INTEGER NOT NULL, phase TEXT NOT NULL, touched REAL NOT NULL, state TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS game_room_current ON game_matches(code);
+CREATE INDEX IF NOT EXISTS game_match_activity ON game_matches(touched DESC);
 INSERT OR IGNORE INTO settings VALUES('reference_version','0'),('threshold','0.5'),('margin','0.1'),('phash_distance','4'),('aspect_tolerance','0.01'),('ssim_threshold','0.98');
 INSERT OR IGNORE INTO settings VALUES('site_title','Gallery Faces');
 INSERT OR IGNORE INTO settings VALUES('agent_review_rules','');

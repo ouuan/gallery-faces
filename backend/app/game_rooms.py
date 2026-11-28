@@ -1,4 +1,5 @@
 import asyncio
+import json
 import random
 import secrets
 import time
@@ -9,17 +10,21 @@ from fractions import Fraction
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from fastapi.encoders import jsonable_encoder
+from pydantic import BaseModel, Field, StringConstraints, TypeAdapter
 from starlette.concurrency import run_in_threadpool
+
+from . import db
 
 
 Nickname = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=24)]
 Phase = Literal['lobby', 'loading', 'answer', 'reveal', 'draft', 'vote', 'waiting', 'finished']
-clock = time.monotonic
+clock = time.time
+RETENTION = 24 * 3600
 
 
 class RoomSettings(BaseModel):
-    round_limit: int = Field(default=0, ge=0, le=999)
+    round_limit: int = Field(default=25, ge=0, le=999)
     answer_seconds: int = Field(default=15, ge=3, le=300)
     continue_seconds: int = Field(default=10, ge=0, le=300)
     cropped: bool = True
@@ -28,13 +33,6 @@ class RoomSettings(BaseModel):
     grid: bool = False
     grid_size: int = Field(default=5, ge=2, le=16)
     grid_seconds: float = Field(default=0.5, ge=0.1, le=60)
-
-    @model_validator(mode='after')
-    def disable_grid_elimination(self):
-        if self.grid:
-            self.single_life = False
-        return self
-
 
 class GameFilters(BaseModel):
     people: str = ''
@@ -57,6 +55,7 @@ class RoomPreview(BaseModel):
 
 
 class CreateRoom(JoinRoom):
+    solo: bool = False
     settings: RoomSettings = Field(default_factory=RoomSettings)
     filters: GameFilters = Field(default_factory=GameFilters)
 
@@ -156,6 +155,8 @@ class GridView(BaseModel):
 
 
 class RoomView(BaseModel):
+    match_id: str
+    solo: bool
     code: str
     version: int
     stage: int
@@ -253,6 +254,7 @@ class Room:
 
     def __init__(self, code, setup, draw, validate):
         self.code, self.settings, self.filters, self.draw = code, setup.settings, setup.filters, draw
+        self.solo = setup.solo
         self.validate_filters = validate
         self.players = {}
         self.host = self.serial = self.version = self.stage = 0
@@ -262,6 +264,8 @@ class Room:
         self.reset_match()
 
     def reset_match(self):
+        self.match_id = secrets.token_hex(16)
+        self.loaded = set()
         self.grid = None
         self.round = 0
         self.question = self.deadline = self.correct = self.proposer = self.proposal = self.accepted = None
@@ -282,6 +286,7 @@ class Room:
         self.changed()
 
     def join(self, name):
+        check(not self.solo or not self.players, '单人对局不能加入')
         check(self.phase != 'finished' and not self.ending, '对战已经结束')
         check(not self.settings.single_life or not self.round, '一命模式开局后不能加入')
         check(self.settings.allow_late_join or not self.round, '本房间不允许中途加入')
@@ -324,10 +329,10 @@ class Room:
     async def next_question(self):
         participants = self.survivors() if self.settings.single_life else self.online()
         if (self.settings.round_limit and self.round >= self.settings.round_limit) or (
-                self.settings.single_life and self.round and len(participants) <= 1):
+                self.settings.single_life and self.round and len(participants) < self.minimum):
             self.enter('finished')
             return
-        if len(participants) < 2:
+        if len(participants) < self.minimum:
             self.message = '等待至少两位玩家在线'
             self.enter('waiting')
             return
@@ -342,12 +347,19 @@ class Room:
         self.playing, self.answers, self.ready, self.outcomes = participants, {}, set(), {}
         self.proposer = self.proposal = self.accepted = None
         self.votes, self.void = {}, False
+        self.loaded = set()
         if self.settings.grid:
             count = self.settings.grid_size ** 2
             self.enter('loading', 5)
             self.grid = GridRound(random.sample(range(count), count), self.deadline)
+        elif self.solo:
+            self.enter('loading', 5)
         else:
             self.enter('answer', self.settings.answer_seconds)
+
+    @property
+    def minimum(self):
+        return 1 if self.solo else 2
 
     def score(self):
         person = self.question['face']['person_id']
@@ -374,8 +386,8 @@ class Room:
         return body.choice
 
     def reveal(self):
-        final_round = self.settings.single_life and len(self.survivors()) <= 1
-        self.enter('reveal', self.settings.continue_seconds or (10 if final_round else None))
+        final_round = self.settings.single_life and len(self.survivors()) < self.minimum
+        self.enter('reveal', None if self.solo else self.settings.continue_seconds or (10 if final_round else None))
 
     def settle(self):
         self.accepted = len(self.votes) >= 2 and sum(self.votes.values()) * 2 > len(self.votes)
@@ -389,15 +401,22 @@ class Room:
     async def advance(self):
         expired = self.deadline is not None and clock() >= self.deadline
         if self.phase == 'loading':
-            if expired or (self.online() & self.playing) <= self.grid.loaded:
-                self.grid.started = min(clock(), self.deadline)
+            if expired or (self.online() & self.playing) <= self.loaded:
+                started = min(clock(), self.deadline)
+                if self.grid:
+                    self.grid.started = started
                 self.enter('answer')
-        elif self.phase == 'answer':
+                if self.solo or not self.grid:
+                    self.deadline = started + self.settings.answer_seconds + (len(self.grid.order) * self.settings.grid_seconds if self.grid else 0)
+                    expired = clock() >= self.deadline
+        if self.phase == 'answer':
             if self.grid:
                 eligible = self.online() & self.playing
-                if not eligible or not eligible <= self.grid.passed:
+                if not expired and (not eligible or not eligible <= self.grid.passed):
                     return
                 self.grid.ended_by_pass = True
+                if self.solo and not self.grid.attempts:
+                    self.players[self.host].unanswered += 1
             elif not expired and not self.playing <= self.answers.keys():
                 return
             self.score()
@@ -438,7 +457,7 @@ class Room:
             if body.settings is not None:
                 self.settings = body.settings
         elif action == 'start':
-            check(self.phase in ('lobby', 'waiting') and len(self.online()) >= 2, '至少需要两位在线玩家')
+            check(self.phase in ('lobby', 'waiting') and len(self.online()) >= self.minimum, '在线人数不足')
             await self.next_question()
         elif action == 'restart':
             check(self.phase == 'finished', '仅可在对战结束后重新开始')
@@ -447,13 +466,13 @@ class Room:
                 member.correct = member.wrong = member.correct_cells = member.unanswered = member.deviation = 0
                 member.withdrawn = False
             self.reset_match()
-            if len(self.players) >= 2:
+            if len(self.players) >= self.minimum:
                 await self.next_question()
             else:
                 self.enter('lobby')
         elif action == 'image_loaded':
             check(self.phase == 'loading', '当前不在加载照片')
-            self.grid.loaded.add(key)
+            self.loaded.add(key)
             await self.advance()
             return
         elif action == 'answer':
@@ -461,9 +480,13 @@ class Room:
             choice = self.answer(body)
             if self.grid:
                 self.grid.submit(key, choice, self.settings.grid_seconds)
+                if self.solo:
+                    self.answers[key] = choice
+                    self.grid.ended_by_pass = True
                 person = self.question['face']['person_id']
                 correct = next((item['id'] for item in self.question['choices'] if item['id'] == person), None)
-                if choice != correct:
+                if not self.solo and choice != correct:
+                    self.changed()
                     return
                 self.score()
                 self.reveal()
@@ -489,8 +512,12 @@ class Room:
             else:
                 receipt = await run_in_threadpool(save, self.question, body)
                 self.proposal = Proposal.model_validate(dict(receipt))
-                self.votes = {key: True}
-                self.enter('vote', 30)
+                if self.solo:
+                    self.accepted = False
+                    self.reveal()
+                else:
+                    self.votes = {key: True}
+                    self.enter('vote', 30)
         elif action == 'vote':
             check(self.phase == 'vote' and key not in self.votes and body.support is not None, '当前不能投票')
             self.votes[key] = body.support
@@ -502,7 +529,7 @@ class Room:
                     self.question = None
                 self.enter('finished')
         elif action == 'leave':
-            player.seen = float('-inf')
+            player.seen = clock() - RETENTION
             if self.settings.single_life and self.round and self.phase != 'finished':
                 player.withdrawn = True
                 if len(self.survivors()) <= 1:
@@ -542,7 +569,7 @@ class Room:
                             gave_up=player.id in self.grid.passed,
                             correct_cells=next((cells for _, right, _, cells in self.grid.credited if right), None), wrong_choices=[
                 choice for key, choice, _ in self.grid.attempts if key == player.id and (not revealed or choice != self.correct)])
-        return RoomView(code=self.code, version=self.version, stage=self.stage, phase=self.phase,
+        return RoomView(match_id=self.match_id, solo=self.solo, code=self.code, version=self.version, stage=self.stage, phase=self.phase,
                         round=self.round, host=self.host, me=player.id, settings=self.settings, filters=self.filters,
                         remaining=None if self.deadline is None else max(0, self.deadline - clock()),
                         grid=grid, players=[PlayerView(id=item.id, name=item.name, correct=item.correct, correct_cells=item.correct_cells,
@@ -615,9 +642,68 @@ rooms = {}
 polls = 0
 
 
+class MatchState(BaseModel):
+    settings: RoomSettings
+    filters: GameFilters
+    players: dict[int, Player]
+    host: int
+    serial: int
+    version: int
+    stage: int
+    round: int
+    question: dict | None
+    deadline: float | None
+    correct: int | None
+    proposer: int | None
+    proposal: Proposal | None
+    accepted: bool | None
+    ending: bool
+    void: bool
+    message: str
+    loaded: set[int]
+    playing: set[int]
+    ready: set[int]
+    outcomes: dict[int, str]
+    answers: dict[int, int | date | None]
+    votes: dict[int, bool]
+    grid: GridRound | None
+    settled: int = 0
+    midpoint_total: int = 0
+    scores: dict[int, Fraction] = Field(default_factory=dict)
+    closest: list[int] = Field(default_factory=list)
+
+
+def persist(room):
+    state = MatchState.model_validate(room, from_attributes=True).model_dump_json()
+    with db.connect() as conn:
+        conn.execute('INSERT INTO game_matches VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET '
+                     'phase=excluded.phase,touched=excluded.touched,state=excluded.state',
+                     (room.match_id, room.code, room.game, room.solo, room.phase, room.touched, state))
+
+
+def restore(code, room_type, draw, validate):
+    with db.connect() as conn:
+        row = conn.execute('SELECT * FROM game_matches WHERE code=? AND game=? AND touched>? ORDER BY rowid DESC LIMIT 1',
+                           (code, room_type.game, clock() - RETENTION)).fetchone()
+    if not row:
+        return None
+    state = MatchState.model_validate_json(row['state'])
+    setup = CreateRoom(nickname='恢复', settings=state.settings, filters=state.filters, solo=bool(row['solo']))
+    room = room_type(code, setup, draw, validate)
+    for key, value in state:
+        setattr(room, key, value)
+    if room.game == 'history-quiz' and room.question:
+        for key in ('first_date', 'last_date', 'correct_date'):
+            room.question[key] = date.fromisoformat(room.question[key])
+    room.match_id, room.phase, room.touched = row['id'], row['phase'], row['touched']
+    return room
+
+
 def cleanup():
+    with db.connect() as conn:
+        conn.execute('DELETE FROM game_matches WHERE touched<=?', (clock() - RETENTION,))
     for code, room in list(rooms.items()):
-        if not room.lock.locked() and clock() - room.touched >= 900:
+        if not room.lock.locked() and clock() - room.touched >= RETENTION:
             del rooms[code]
 
 
@@ -640,8 +726,13 @@ async def service():
 def router(draw, validate, save_feedback=None, *, room_type=Room):
     routes = APIRouter(prefix=f'/api/v1/{room_type.game}/rooms')
     def room_for(code):
-        room = rooms.get(code.upper())
-        check(room and room.game == room_type.game and clock() - room.touched < 900, '房间不存在或已失效', 404)
+        code = code.upper()
+        room = rooms.get(code)
+        if not room:
+            room = restore(code, room_type, draw, validate)
+            if room:
+                rooms[code] = room
+        check(room and room.game == room_type.game and clock() - room.touched < RETENTION, '房间不存在或已失效', 404)
         return room
 
     def identify(room, token):
@@ -661,10 +752,15 @@ def router(draw, validate, save_feedback=None, *, room_type=Room):
         check(len(rooms) < 128, '房间数量已达上限，请稍后重试', 503)
         while True:
             code = ''.join(secrets.choice('23456789ABCDEFGHJKLMNPQRSTUVWXYZ') for _ in range(6))
-            if code not in rooms:
-                break
+            with db.connect() as conn:
+                if code not in rooms and not conn.execute('SELECT 1 FROM game_matches WHERE code=?', (code,)).fetchone():
+                    break
         rooms[code] = room = room_type(code, body, draw, validate)
-        return room.join(body.nickname)
+        member = room.join(body.nickname)
+        if room.solo:
+            await room.next_question()
+        persist(room)
+        return member
 
     @routes.post('/{code}/join', response_model=Membership, status_code=201)
     async def join_room(code: str, body: JoinRoom, request: Request):
@@ -672,7 +768,9 @@ def router(draw, validate, save_feedback=None, *, room_type=Room):
         room = room_for(code)
         async with room.lock:
             await room.advance()
-            return room.join(body.nickname)
+            member = room.join(body.nickname)
+            persist(room)
+            return member
 
     @routes.get('/{code}/preview', response_model=RoomPreview)
     async def preview_room(code: str):
@@ -686,6 +784,7 @@ def router(draw, validate, save_feedback=None, *, room_type=Room):
         async with room.lock:
             player = identify(room, x_room_token)
             await room.advance()
+            persist(room)
             if after != room.version:
                 return room.view(player)
             check(polls < 32, '同步繁忙，请稍后重试', 503)
@@ -700,6 +799,7 @@ def router(draw, validate, save_feedback=None, *, room_type=Room):
         async with room.lock:
             room.presence()
             await room.advance()
+            persist(room)
             return room.view(player)
 
     @routes.post('/{code}/actions', response_model=RoomView)
@@ -709,7 +809,10 @@ def router(draw, validate, save_feedback=None, *, room_type=Room):
         async with room.lock:
             player = identify(room, x_room_token)
             await room.advance()
-            await room.act(player, body, lambda question, proposal: save_feedback(question, proposal, request))
+            try:
+                await room.act(player, body, lambda question, proposal: save_feedback(question, proposal, request))
+            finally:
+                persist(room)
             return room.view(player)
 
     return routes

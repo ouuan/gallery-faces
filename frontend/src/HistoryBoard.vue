@@ -5,8 +5,8 @@ import { ChevronLeft, ChevronRight } from '@lucide/vue';
 import { dayLabel, dayNumber, difference, middleDay, type HistoryPhoto } from './history-quiz';
 import LoadingOverlay from './LoadingOverlay.vue';
 
-const props = defineProps<{ photo: HistoryPhoto | null; selected?: string | null; correct?: string | null; locked?: boolean; unanswered?: boolean }>();
-const emit = defineEmits<{ choose: [date: string]; change: [date: string] }>();
+const props = defineProps<{ photo: HistoryPhoto | null; selected?: string | null; correct?: string | null; locked?: boolean; unanswered?: boolean; preloading?: boolean }>();
+const emit = defineEmits<{ choose: [date: string]; change: [date: string]; loaded: [] }>();
 const midpoint = computed(() => props.photo ? middleDay(props.photo) : 0);
 const draft = ref(midpoint.value);
 const day = computed(() => props.selected ? dayNumber(props.selected) : props.unanswered ? midpoint.value : draft.value);
@@ -28,8 +28,8 @@ function select(value: number) {
   <div class="history-board">
     <div class="picture">
       <div v-if="failed" role="alert">照片加载失败 <n-button @click="failed = false">重试加载照片</n-button></div>
-      <img v-else-if="photo" :src="photo.image_url" :width="photo.width" :height="photo.height" alt="题目照片" @load="loaded = true" @error="loaded = false; failed = true" />
-      <LoadingOverlay :show="!loaded && !failed" center :label="photo ? '正在加载照片…' : '正在出题…'" />
+      <img v-else-if="photo" :style="{ visibility: preloading ? 'hidden' : undefined }" :src="photo.image_url" :width="photo.width" :height="photo.height" alt="题目照片" @load="loaded = true; emit('loaded')" @error="loaded = false; failed = true" />
+      <LoadingOverlay :show="(!loaded || !!preloading) && !failed" center :label="photo ? '正在加载照片…' : '正在出题…'" />
     </div>
     <section class="controls">
       <h2>这张照片最早发布于哪一天？</h2>

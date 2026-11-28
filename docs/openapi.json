@@ -6593,6 +6593,11 @@
             "minLength": 1,
             "title": "Nickname"
           },
+          "solo": {
+            "type": "boolean",
+            "title": "Solo",
+            "default": false
+          },
           "settings": {
             "$ref": "#/components/schemas/RoomSettings"
           },
@@ -10463,7 +10468,7 @@
             "maximum": 999.0,
             "minimum": 0.0,
             "title": "Round Limit",
-            "default": 0
+            "default": 25
           },
           "answer_seconds": {
             "type": "integer",
@@ -10519,6 +10524,14 @@
       },
       "RoomView": {
         "properties": {
+          "match_id": {
+            "type": "string",
+            "title": "Match Id"
+          },
+          "solo": {
+            "type": "boolean",
+            "title": "Solo"
+          },
           "code": {
             "type": "string",
             "title": "Code"
@@ -10727,6 +10740,8 @@
         },
         "type": "object",
         "required": [
+          "match_id",
+          "solo",
           "code",
           "version",
           "stage",

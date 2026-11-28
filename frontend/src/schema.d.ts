@@ -1976,6 +1976,11 @@ export interface components {
         CreateRoom: {
             /** Nickname */
             nickname: string;
+            /**
+             * Solo
+             * @default false
+             */
+            solo: boolean;
             settings?: components["schemas"]["RoomSettings"];
             filters?: components["schemas"]["GameFilters"];
         };
@@ -3357,7 +3362,7 @@ export interface components {
         RoomSettings: {
             /**
              * Round Limit
-             * @default 0
+             * @default 25
              */
             round_limit: number;
             /**
@@ -3403,6 +3408,10 @@ export interface components {
         };
         /** RoomView */
         RoomView: {
+            /** Match Id */
+            match_id: string;
+            /** Solo */
+            solo: boolean;
             /** Code */
             code: string;
             /** Version */
