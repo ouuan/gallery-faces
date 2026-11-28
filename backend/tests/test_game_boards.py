@@ -15,6 +15,16 @@ def test_equivalent_rules_use_the_same_board():
     assert first != board('1-2', 'x:abc,person:1-2', '2026-01-01T00:00:00Z', grid=False, answer_seconds=30)
 
 
+def test_only_active_grid_settings_distinguish_boards():
+    def board(game, **settings):
+        return game_boards.board_for(game, game_boards.BoardRules(settings=settings), main.parse_people_publishers, main.date_bounds)
+    assert board('face-game', grid=True, grid_size=8).id != board('face-game', grid=True, grid_size=10).id
+    assert board('history-quiz', grid=True, grid_size=8, cropped=True).id == board('history-quiz', grid=False, cropped=False).id
+    direct = board('face-game', grid=False, grid_size=8).settings
+    defaults = game_rooms.RoomSettings()
+    assert (direct.grid_size, direct.grid_seconds) == (defaults.grid_size, defaults.grid_seconds)
+
+
 def test_upload_atomic_best_and_time_survive_cleanup(client, monkeypatch):
     monkeypatch.setattr('app.photo_draw.random.random', lambda: 1)
     with db.connect(True) as conn:

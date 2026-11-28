@@ -58,9 +58,13 @@ def board_for(game, rules, parse, bounds):
     face = game == 'face-game'
     life = face and source.single_life
     grid = face and source.grid
-    settings = games.RoomSettings(round_limit=0 if life else source.round_limit, single_life=life, cropped=face and source.cropped,
-        grid=grid, grid_size=source.grid_size if grid else 5, grid_seconds=source.grid_seconds if grid else 0.5, answer_seconds=source.answer_seconds)
-    key = json.dumps([game, settings.model_dump(), filters.model_dump()], sort_keys=True).encode()
+    rules_key = dict(round_limit=0 if life else source.round_limit, answer_seconds=source.answer_seconds)
+    if face:
+        rules_key.update(single_life=life, cropped=source.cropped, grid=grid)
+    if grid:
+        rules_key.update(grid_size=source.grid_size, grid_seconds=source.grid_seconds)
+    settings = games.RoomSettings(**(dict(cropped=False, grid=False) | rules_key))
+    key = json.dumps([game, rules_key, filters.model_dump()], sort_keys=True).encode()
     return Board(id=hashlib.sha256(key).hexdigest(), game=game, settings=settings, filters=filters)
 
 
