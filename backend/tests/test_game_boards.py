@@ -74,3 +74,15 @@ def test_board_scopes_population_and_unrounded_history_ties(client):
     assert [board['members'] for board in client.post(base + 'list?scope=all', json={}).json()] == [3, 1]
     assert [board['id'] for board in client.post(base + 'list', json={}).json()] == [first.id]
     assert client.post('/api/v1/face-game/boards/list?scope=all', json={}).json() == []
+
+
+def test_board_lists_sort_equal_populations_by_latest_record(client):
+    rules = game_boards.BoardRules()
+    with db.connect(True) as conn:
+        for board, seconds in [('a', [10, 20]), ('b', [1, 30]), ('c', [40])]:
+            conn.execute('INSERT INTO game_boards VALUES(?,?,?,?)', (board, 'face-game', rules.settings.model_dump_json(), rules.filters.model_dump_json()))
+            for second in seconds:
+                conn.execute('INSERT INTO game_records VALUES(?,?,1,1,0,1,?)', (board, str(second), f'2026-11-28T00:00:{second:02d}Z'))
+    for scope in ['filters', 'all']:
+        boards = client.post(f'/api/v1/face-game/boards/list?scope={scope}', json={}).json()
+        assert [board['id'] for board in boards] == ['b', 'a', 'c']

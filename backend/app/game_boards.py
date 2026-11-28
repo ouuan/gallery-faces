@@ -98,7 +98,7 @@ def router(parse, bounds):
         board = board_for(game, rules, parse, bounds)
         with db.connect() as conn:
             rows = conn.execute('SELECT b.*,count(*) AS members FROM game_boards b JOIN game_records r ON b.id=r.board '
-                'WHERE b.game=? AND (? OR b.filters=?) GROUP BY b.id ORDER BY members DESC,b.id',
+                'WHERE b.game=? AND (? OR b.filters=?) GROUP BY b.id ORDER BY members DESC,max(r.recorded_at) DESC,b.id',
                 (game, scope == 'all', board.filters.model_dump_json()))
             return [Board(id=row['id'], game=game, settings=json.loads(row['settings']), filters=json.loads(row['filters']), members=row['members']) for row in rows]
 
