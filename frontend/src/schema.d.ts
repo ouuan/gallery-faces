@@ -3251,24 +3251,6 @@ export interface components {
             /** Rank */
             rank: number;
         };
-        /** Record */
-        Record: {
-            /** Nickname */
-            nickname: string;
-            /** Correct */
-            correct: number;
-            /** Cells */
-            cells: number;
-            /** Deviation */
-            deviation: number;
-            /** Rounds */
-            rounds: number;
-            /**
-             * Recorded At
-             * Format: date-time
-             */
-            recorded_at: string;
-        };
         /** Recycle */
         Recycle: {
             /** Id */
@@ -3735,6 +3717,26 @@ export interface components {
         Upload: {
             /** Nickname */
             nickname?: string | null;
+        };
+        /** UploadResult */
+        UploadResult: {
+            /** Nickname */
+            nickname: string;
+            /** Correct */
+            correct: number;
+            /** Cells */
+            cells: number;
+            /** Deviation */
+            deviation: number;
+            /** Rounds */
+            rounds: number;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Updated */
+            updated: boolean;
         };
         /** UploadedReference */
         UploadedReference: {
@@ -5323,7 +5325,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Record"];
+                    "application/json": components["schemas"]["UploadResult"];
                 };
             };
             /** @description Validation Error */

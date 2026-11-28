@@ -36,8 +36,17 @@ for (const index of [0, 1]) test(`solo review and public one-life score at viewp
   await page.screenshot({ path: info.outputPath('result.png') });
   await page.getByText('上榜昵称').locator('input').fill('甲');
   await page.getByRole('button', { name: '上传个人成绩' }).click();
+  await expect(page.getByText('已更新榜单成绩')).toBeVisible();
   await expect(page.getByRole('button', { name: '成绩已提交' })).toBeVisible();
   await page.getByRole('link', { name: '当前榜单', exact: true }).click();
   await expect(page.getByRole('row', { name: /甲/ })).toContainText('0 题');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByRole('link', { name: '按此规则开局' }).click();
+  await page.getByRole('button', { name: '开始游戏' }).click();
+  await choice.click();
+  await page.getByRole('button', { name: '查看结果' }).click();
+  await page.getByRole('button', { name: '上传个人成绩' }).click();
+  await expect(page.getByText('本次未超过最佳成绩，已保留原纪录')).toBeVisible();
+  await expect(page.getByRole('button', { name: '成绩已提交' })).toBeDisabled();
+  await expect(page.getByRole('region', { name: '榜单前五' }).getByRole('row', { name: /甲/ })).toContainText('0 题');
 });

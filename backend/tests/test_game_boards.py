@@ -44,13 +44,16 @@ def test_upload_atomic_best_and_time_survive_cleanup(client, monkeypatch):
         return client.post(path, headers=headers, json={'nickname': name})
     low, high, tie = play(2), play(1), play(1)
     original = upload(low).json()
-    assert original['correct'] == 0 and upload(low).json() == original
+    assert original['updated'] and original['correct'] == 0
+    assert upload(low).json() == original | {'updated': False}
     assert upload(low, '乙').status_code == 409
     with ThreadPoolExecutor(2) as pool:
         winners = list(pool.map(lambda match: upload(match).json(), [high, tie]))
+    assert sorted(item.pop('updated') for item in winners) == [False, True]
     assert winners[0] == winners[1] and winners[0]['correct'] == 1
     assert datetime.fromisoformat(winners[0]['recorded_at']) > datetime.fromisoformat(original['recorded_at'])
-    assert upload(low).json() == winners[0]
+    assert upload(low).json() == winners[0] | {'updated': False}
+    assert upload(play(2)).json() == winners[0] | {'updated': False}
     monkeypatch.setattr(game_rooms, 'clock', lambda: 10**12)
     game_rooms.cleanup()
     with db.connect() as conn:

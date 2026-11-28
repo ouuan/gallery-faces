@@ -44,6 +44,10 @@ class RankedRecord(Record):
     rank: int
 
 
+class UploadResult(Record):
+    updated: bool
+
+
 class BoardView(BaseModel):
     board: Board
     records: list[RankedRecord]
@@ -102,7 +106,7 @@ def router(parse, bounds):
                 (game, scope == 'all', board.filters.model_dump_json()))
             return [Board(id=row['id'], game=game, settings=json.loads(row['settings']), filters=json.loads(row['filters']), members=row['members']) for row in rows]
 
-    @routes.post('/matches/{match_id}/score', response_model=Record)
+    @routes.post('/matches/{match_id}/score', response_model=UploadResult)
     def upload(game: Game, match_id: str, body: Upload, request: Request, x_room_token: Annotated[str, Header()]):
         games.check(request.headers.get('x-gallery-request') == '1', '缺少请求校验', 403)
         with db.connect(True) as conn:
@@ -124,12 +128,13 @@ def router(parse, bounds):
             best = conn.execute('SELECT * FROM game_records WHERE board=? AND nickname=?', (board.id, nickname)).fetchone()
             result = Record(nickname=nickname, correct=player.public_correct, cells=player.correct_cells, deviation=player.deviation,
                             rounds=state.round, recorded_at=datetime.now(timezone.utc))
-            if best and (prior or rank_key(board, Record(**best)) <= rank_key(board, result)):
-                result = Record(**best)
-            else:
+            updated = best is None or (prior is None and rank_key(board, result) < rank_key(board, Record(**best)))
+            if updated:
                 conn.execute('INSERT OR REPLACE INTO game_records VALUES(?,?,?,?,?,?,?)',
                     (board.id, nickname, result.correct, result.cells, result.deviation, result.rounds, result.recorded_at.isoformat()))
+            else:
+                result = Record(**best)
             conn.execute('INSERT OR IGNORE INTO game_uploads VALUES(?,?,?)', (match_id, player.id, nickname))
-            return result
+            return UploadResult(**result.model_dump(), updated=updated)
 
     return routes

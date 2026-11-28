@@ -25,10 +25,11 @@ async function upload() {
   if (busy.value || submittedName.value) return;
   busy.value = true;
   try {
-    const result = await api<components['schemas']['Record']>(`${props.gamePath}/matches/${props.room.match_id}/score`, { method: 'POST', headers: { 'X-Room-Token': props.token },
+    const result = await api<components['schemas']['UploadResult']>(`${props.gamePath}/matches/${props.room.match_id}/score`, { method: 'POST', headers: { 'X-Room-Token': props.token },
       body: JSON.stringify(props.room.solo ? { nickname: nickname.value.trim() } : {}) });
     submittedName.value = result.nickname; sessionStorage.setItem(submissionKey, result.nickname);
-    message.success('已提交成绩，同昵称保留最佳成绩');
+    if (result.updated) message.success('已更新榜单成绩');
+    else message.info('本次未超过最佳成绩，已保留原纪录');
   } catch (error) { message.error((error as Error).message); }
   finally { busy.value = false; }
 }

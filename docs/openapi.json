@@ -2514,7 +2514,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Record"
+                  "$ref": "#/components/schemas/UploadResult"
                 }
               }
             }
@@ -10064,45 +10064,6 @@
         ],
         "title": "RankedRecord"
       },
-      "Record": {
-        "properties": {
-          "nickname": {
-            "type": "string",
-            "title": "Nickname"
-          },
-          "correct": {
-            "type": "integer",
-            "title": "Correct"
-          },
-          "cells": {
-            "type": "integer",
-            "title": "Cells"
-          },
-          "deviation": {
-            "type": "integer",
-            "title": "Deviation"
-          },
-          "rounds": {
-            "type": "integer",
-            "title": "Rounds"
-          },
-          "recorded_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Recorded At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "nickname",
-          "correct",
-          "cells",
-          "deviation",
-          "rounds",
-          "recorded_at"
-        ],
-        "title": "Record"
-      },
       "Recycle": {
         "properties": {
           "id": {
@@ -11332,6 +11293,50 @@
         },
         "type": "object",
         "title": "Upload"
+      },
+      "UploadResult": {
+        "properties": {
+          "nickname": {
+            "type": "string",
+            "title": "Nickname"
+          },
+          "correct": {
+            "type": "integer",
+            "title": "Correct"
+          },
+          "cells": {
+            "type": "integer",
+            "title": "Cells"
+          },
+          "deviation": {
+            "type": "integer",
+            "title": "Deviation"
+          },
+          "rounds": {
+            "type": "integer",
+            "title": "Rounds"
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Recorded At"
+          },
+          "updated": {
+            "type": "boolean",
+            "title": "Updated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nickname",
+          "correct",
+          "cells",
+          "deviation",
+          "rounds",
+          "recorded_at",
+          "updated"
+        ],
+        "title": "UploadResult"
       },
       "UploadedReference": {
         "properties": {
