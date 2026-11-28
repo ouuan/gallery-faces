@@ -4,7 +4,7 @@ test("review reasons follow the current photo and disappear in specific filters"
   const source = { id: 1, platform: "x", author: "fixture", published_at: "2026-01-01", url: "https://x.com/fixture/status/1" };
   const face = { id: 1, box: [0, 0, 20, 20], person_id: null, locked: 0, ignored: 0, candidates: [], revision: 0 };
   const images = [
-    { id: 1, detection: "done", faces: [face, { ...face, id: 2, person_id: 7 }], sources: [] },
+    { id: 1, detection: "done", faces: [face, { ...face, id: 2, person_id: 7 }, { ...face, id: 3, person_id: 7, locked: 1 }, { ...face, id: 4, person_id: 7, ignored: 1 }], sources: [] },
     { id: 2, detection: "done", faces: [], sources: [source] },
     { id: 3, detection: "failed", faces: [], sources: [source] },
     { id: 4, detection: "pending", faces: [], sources: [source] },
@@ -39,11 +39,12 @@ test("review reasons follow the current photo and disappear in specific filters"
   await page.getByRole("button", { name: "审核图片（5，共 1 个版本）", exact: true }).click();
   await expect(issues).toHaveCount(0);
   await page.getByRole("button", { name: "审核图片（1，共 1 个版本）", exact: true }).click();
-  for (const label of ["全部待审核", "全部在库图片", "未知人物", "无人脸", "检测失败", "来源待补全", "等待检测"]) {
+  for (const label of ["全部待审核", "全部在库图片", "未知人物", "同一人物出现多次", "无人脸", "检测失败", "来源待补全", "等待检测"]) {
     await page.locator('[aria-label="审核状态"]').click();
     await page.locator(".n-base-select-option").filter({ hasText: new RegExp(`^${label}$`) }).click();
+    if (label === "同一人物出现多次") await expect(page).toHaveURL(/state=repeated_person/);
     await expect(page.getByRole("button", { name: "审核图片（1，共 1 个版本）", exact: true })).toBeVisible();
-    if (["全部待审核", "全部在库图片"].includes(label)) await expect(issues).toBeVisible();
+    if (["全部待审核", "全部在库图片"].includes(label)) await expect(issues).toContainText("同一人物出现多次：测试人物（2 个人脸）");
     else await expect(issues).toHaveCount(0);
   }
 });

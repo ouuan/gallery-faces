@@ -41,7 +41,7 @@ const targetImage = computed(() => {
   const id = typeof route.query.image === "string" ? Number(route.query.image) : NaN;
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 });
-const reviewStates = ["image", "review", "feedback", "unknown", "no_faces", "failed", "incomplete", "pending", "trash", "all"];
+const reviewStates = ["image", "review", "feedback", "unknown", "repeated_person", "no_faces", "failed", "incomplete", "pending", "trash", "all"];
 const state = computed({
   get: () => {
     const value = route.query.state === "hidden" ? "trash" : route.query.state;
@@ -261,6 +261,15 @@ const reviewIssues = computed(() => {
   const automatic = unresolved.length - unknown;
   if (unknown) issues.push(`未知人物（${unknown} 个人脸）`);
   if (automatic) issues.push(`自动识别结果待确认（${automatic} 个人脸）`);
+  const counts = new Map<number, number>();
+  for (const { person_id } of visibleFaces.value) {
+    if (person_id != null) counts.set(person_id, (counts.get(person_id) ?? 0) + 1);
+  }
+  for (const [id, count] of counts) {
+    if (count < 2) continue;
+    const name = store.people.find(person => person.id === id)?.name ?? `#${id}`;
+    issues.push(`同一人物出现多次：${name}（${count} 个人脸）`);
+  }
   if (image.pending_feedback_count) issues.push(`用户反馈（${image.pending_feedback_count} 条待处理）`);
   return issues;
 });
@@ -619,6 +628,7 @@ onMounted(load);
           { value: 'review', label: '全部待审核' },
           { value: 'feedback', label: '用户反馈' },
           { value: 'unknown', label: '未知人物' },
+          { value: 'repeated_person', label: '同一人物出现多次' },
           { value: 'no_faces', label: '无人脸' },
           { value: 'failed', label: '检测失败' },
           { value: 'incomplete', label: '来源待补全' },

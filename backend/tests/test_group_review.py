@@ -293,6 +293,26 @@ def test_review_dates_use_exclusive_end_and_validate_range(client):
         assert client.get('/api/v1/admin/images', params=params).status_code == 400
 
 
+def test_repeated_person_counts_only_visible_faces_on_the_representative(client):
+    small, large, _, alice, bob = seed()
+    with db.connect(True) as conn:
+        conn.executemany("INSERT INTO faces(image_id,box,person_id) VALUES(?,'[]',?)",
+                         [(small, bob), (small, bob), (large, alice), (large, None), (large, None)])
+        extra = conn.execute("INSERT INTO faces(image_id,box,person_id,ignored) VALUES(?,'[]',?,1)",
+                             (large, bob)).lastrowid
+        conn.execute('UPDATE faces SET locked=1')
+    assert listing(client, 'repeated_person') == []
+    assert listing(client) == []
+    with db.connect(True) as conn:
+        conn.execute('UPDATE faces SET ignored=0 WHERE id=?', (extra,))
+    assert [row['id'] for row in listing(client, 'repeated_person')] == [large]
+    assert [row['id'] for row in listing(client)] == [large]
+    with db.connect(True) as conn:
+        conn.execute('UPDATE faces SET person_id=NULL WHERE id=?', (extra,))
+    assert listing(client, 'repeated_person') == []
+    assert listing(client) == []
+
+
 def test_review_people_use_representative_and_ignore_ignored_faces(client):
     small, large, _, alice, bob = seed()
     assert listing(client, people=str(alice)) == []

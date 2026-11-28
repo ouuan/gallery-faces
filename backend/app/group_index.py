@@ -1,6 +1,8 @@
 """Transactional group indexes shared by the API and worker."""
 
-REVIEW_FLAGS = ('review', 'unknown', 'no_faces', 'failed', 'pending', 'incomplete', 'feedback')
+REVIEW_FLAGS = ('review', 'unknown', 'no_faces', 'failed', 'pending', 'incomplete', 'feedback', 'repeated_person')
+REPEATED_PERSON_SQL = '''EXISTS(SELECT 1 FROM faces WHERE image_id=representative AND ignored=0
+    AND person_id IS NOT NULL GROUP BY person_id HAVING count(*) > 1)'''
 SCOPES = ('public', 'review')
 
 
@@ -88,13 +90,15 @@ def refresh(db):
                 NOT EXISTS(SELECT 1 FROM faces WHERE image_id=representative) AS empty,
                 EXISTS(SELECT 1 FROM faces WHERE image_id=representative AND ignored=0 AND locked=0) AS unlocked,
                 EXISTS(SELECT 1 FROM faces WHERE image_id=representative AND ignored=0 AND locked=0 AND person_id IS NULL) AS unknown,
+                {REPEATED_PERSON_SQL} AS repeated_person,
                 NOT EXISTS(SELECT 1 FROM faces WHERE image_id=representative AND ignored=0) AS no_active,
                 EXISTS(SELECT 1 FROM images m WHERE m.group_id=reps.group_id AND m.hidden=0 AND NOT {complete_source_sql('m')}) AS incomplete,
                 EXISTS(SELECT 1 FROM images m JOIN feedback f ON f.image_id=m.id WHERE m.group_id=reps.group_id AND m.hidden=0 AND f.status='pending') AS feedback
                 FROM reps CROSS JOIN images i ON i.id=representative)
                 INSERT INTO review_groups SELECT group_id,representative,
-                detection IN ('pending','failed') OR empty OR unlocked OR incomplete OR feedback,unknown,
-                detection='done' AND no_active,detection='failed',detection='pending',incomplete,feedback FROM flags''')
+                detection IN ('pending','failed') OR empty OR unlocked OR incomplete OR feedback OR repeated_person,unknown,
+                detection='done' AND no_active,detection='failed',detection='pending',incomplete,feedback,
+                repeated_person FROM flags''')
         db.execute(f'''INSERT INTO {scope}_group_people SELECT DISTINCT d.group_id,f.person_id FROM dirty_groups d
             CROSS JOIN {scope}_groups g ON g.group_id=d.group_id CROSS JOIN faces f ON f.image_id=g.representative
             WHERE f.ignored=0 AND f.person_id IS NOT NULL''')
