@@ -1239,6 +1239,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/site/manifest.webmanifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Site Manifest */
+        get: operations["site_manifest_api_v1_site_manifest_webmanifest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -6491,6 +6508,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    site_manifest_api_v1_site_manifest_webmanifest_get: {
+        parameters: {
+            query?: {
+                entry?: "gallery" | "daily" | "random" | "heatmap" | "face-game" | "history-quiz" | "posts";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/manifest+json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

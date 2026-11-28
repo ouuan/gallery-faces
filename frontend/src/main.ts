@@ -29,4 +29,11 @@ const router = createRouter({
     return saved || { top: 0 };
   },
 });
+router.afterEach(to => {
+  const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+  const section = to.path.split('/')[1];
+  const entry = ['daily', 'random', 'heatmap', 'face-game', 'history-quiz'].includes(section) ? `?entry=${section}` : '';
+  const href = `/api/v1/site/manifest.webmanifest${entry}`;
+  if (manifest && manifest.getAttribute('href') !== href) manifest.href = href;
+});
 createApp(App).use(createPinia()).use(router).mount("#app");

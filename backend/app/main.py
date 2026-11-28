@@ -26,7 +26,7 @@ from fastapi import (
     File,
     Query,
 )
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, field_validator, model_validator
 from .open_graph import render_open_graph
@@ -2456,6 +2456,36 @@ def site():
     with connect() as db:
         config = settings(db)
         return {"site_title": config["site_title"]}
+
+
+class ManifestResponse(JSONResponse):
+    media_type = "application/manifest+json"
+
+
+PWA_PAGES = {
+    "daily": "每日一图", "random": "随机图片", "heatmap": "热力图",
+    "face-game": "认脸游戏", "history-quiz": "史官测验",
+}
+
+
+@app.get("/api/v1/site/manifest.webmanifest", response_class=ManifestResponse)
+def site_manifest(entry: Literal["gallery", "daily", "random", "heatmap", "face-game", "history-quiz", "posts"] = "gallery"):
+    with connect() as db:
+        title = settings(db)["site_title"]
+    page = PWA_PAGES.get(entry)
+    path = f"/{entry}" if page else "/"
+    return {
+        "id": path, "start_url": path, "scope": path, "display": "standalone",
+        "name": f"{title} · {page}" if page else title, "short_name": page or title,
+        **({"shortcuts": [{"name": name, "url": f"/{slug}"} for slug, name in PWA_PAGES.items()]} if entry == "gallery" else {}),
+        "theme_color": "#f6f7f9", "background_color": "#f6f7f9",
+        "icons": [{
+            "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 32 32'%3E"
+                   "%3Crect width='32' height='32' rx='6' fill='%23245ec7'/%3E"
+                   "%3Cpath d='M7 23V9h18v14H7m0-3 6-6 5 5 3-3 4 4' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E",
+            "sizes": "any", "type": "image/svg+xml",
+        }],
+    }
 
 
 @app.get("/api/v1/health")

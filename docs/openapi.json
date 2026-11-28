@@ -4344,6 +4344,53 @@
         }
       }
     },
+    "/api/v1/site/manifest.webmanifest": {
+      "get": {
+        "summary": "Site Manifest",
+        "operationId": "site_manifest_api_v1_site_manifest_webmanifest_get",
+        "parameters": [
+          {
+            "name": "entry",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "gallery",
+                "daily",
+                "random",
+                "heatmap",
+                "face-game",
+                "history-quiz",
+                "posts"
+              ],
+              "type": "string",
+              "default": "gallery",
+              "title": "Entry"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/manifest+json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "summary": "Health",
