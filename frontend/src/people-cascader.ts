@@ -60,7 +60,7 @@ export function pickerIndex(groups: PickerGroup[]) {
       ? paths[0] : paths.find(alias => alias.groupName.includes(query));
     return match?.key === option.value;
   }
-  function tagKeys(selected: Set<string>) {
+  function tags(selected: Set<string>) {
     const remaining = new Set(selected);
     const keys = new Set<string>();
     for (const group of groups) {
@@ -74,8 +74,11 @@ export function pickerIndex(groups: PickerGroup[]) {
       const alias = aliases.get(id)?.[0];
       if (alias) keys.add(alias.key);
     }
-    return groups.flatMap(group => keys.has(group.value) ? [group.value]
-      : group.children.filter(child => keys.has(child.value)).map(child => child.value));
+    return groups.flatMap<{ value: string; label: string }>(group => keys.has(group.value) ? [group]
+      : group.children.filter(child => keys.has(child.value)));
   }
-  return { members, tagKeys, filter };
+  function tagLabels(selected: Set<string>, fallback: (id: string) => string) {
+    return [...tags(selected).map(tag => tag.label), ...[...selected].filter(id => !aliases.has(id)).map(fallback)];
+  }
+  return { members, tagKeys: (selected: Set<string>) => tags(selected).map(tag => tag.value), tagLabels, filter };
 }

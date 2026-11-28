@@ -36,6 +36,11 @@ describe("people cascader selection", () => {
       expect(tags.flatMap(key => index.members.get(key)!).sort()).toEqual(selected);
     }
   });
+  it("summarizes complete groups once and keeps partial and unknown selections visible", () => {
+    const { tagLabels } = pickerIndex(options);
+    const selected = new Set(["person:3", "person:2", "person:1", "person:99", "x:alice"]);
+    expect(tagLabels(selected, value => value)).toEqual(["朋友", "同事乙", "person:99", "x:alice"]);
+  });
   it("deduplicates name and group matches by identity, not by name", () => {
     const namedAlike = peopleOptions([...people, { ...people[0], id: 5 }], groups);
     const { filter } = pickerIndex(namedAlike);
