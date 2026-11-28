@@ -14,11 +14,18 @@ export function parseRules(query: Record<string, unknown>, history: boolean): Se
 }
 
 export function ruleQuery(settings: Settings, filter: Filter, history: boolean, multiplayer = false) {
-  const query: Record<string, string> = { people: '', publishers: '', match: 'any', start: '', end: '', include_no_faces: 'false', ...filterOnlyQuery(filter),
-    mode: settings.single_life ? 'life' : settings.round_limit ? 'fixed' : 'endless', answer_seconds: String(settings.answer_seconds) };
-  if (query.mode === 'fixed') query.round_limit = String(settings.round_limit);
-  if (!history) Object.assign(query, { cropped: String(settings.cropped), grid: String(settings.grid) });
-  if (!history && settings.grid) Object.assign(query, { grid_size: String(settings.grid_size), grid_seconds: String(settings.grid_seconds) });
-  if (multiplayer) Object.assign(query, { continue_seconds: String(settings.continue_seconds), ...(!settings.single_life && { allow_late_join: String(settings.allow_late_join) }) });
+  const query = filterOnlyQuery(filter), defaults = parseRules({}, history);
+  if (settings.single_life && !history) query.mode = 'life';
+  else if (!settings.round_limit) query.mode = 'endless';
+  else if (settings.round_limit !== defaults.round_limit) query.round_limit = String(settings.round_limit);
+  if (settings.answer_seconds !== defaults.answer_seconds) query.answer_seconds = String(settings.answer_seconds);
+  if (!history && !settings.cropped) query.cropped = 'false';
+  if (!history && settings.grid) {
+    query.grid = 'true';
+    if (settings.grid_size !== defaults.grid_size) query.grid_size = String(settings.grid_size);
+    if (settings.grid_seconds !== defaults.grid_seconds) query.grid_seconds = String(settings.grid_seconds);
+  }
+  if (multiplayer && settings.continue_seconds !== defaults.continue_seconds) query.continue_seconds = String(settings.continue_seconds);
+  if (multiplayer && !settings.single_life && !settings.allow_late_join) query.allow_late_join = 'false';
   return query;
 }
