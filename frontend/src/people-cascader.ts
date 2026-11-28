@@ -61,16 +61,22 @@ export function pickerIndex(groups: PickerGroup[]) {
     return match?.key === option.value;
   }
   function tags(selected: Set<string>) {
-    const remaining = new Set(selected);
+    const fullGroups = groups.filter(group => group.children.length && members.get(group.value)!.every(id => selected.has(id)));
+    const coverage = new Map<string, number>();
+    for (const group of fullGroups) {
+      for (const id of members.get(group.value)!) coverage.set(id, (coverage.get(id) ?? 0) + 1);
+    }
     const keys = new Set<string>();
-    for (const group of groups) {
+    for (const group of fullGroups.reverse().sort((left, right) => left.children.length - right.children.length)) {
       const ids = members.get(group.value)!;
-      if (ids.length && ids.every(id => remaining.has(id))) {
+      if (ids.every(id => coverage.get(id)! > 1)) {
+        for (const id of ids) coverage.set(id, coverage.get(id)! - 1);
+      } else {
         keys.add(group.value);
-        ids.forEach(id => remaining.delete(id));
       }
     }
-    for (const id of remaining) {
+    for (const id of selected) {
+      if (coverage.has(id)) continue;
       const alias = aliases.get(id)?.[0];
       if (alias) keys.add(alias.key);
     }

@@ -28,18 +28,18 @@ describe("people cascader selection", () => {
     ]);
     expect(pickerIndex(options).members.get("group:0")).toEqual(["person:4"]);
   });
-  it("represents each person exactly once even when whole groups overlap", () => {
+  it("displays both overlapping groups and preserves the union for every selection", () => {
     const index = pickerIndex(options);
-    for (const ids of [[1], [1, 3], [1, 2, 3, 4]]) {
-      const selected = ids.map(id => `person:${id}`);
-      const tags = index.tagKeys(new Set(selected));
-      expect(tags.flatMap(key => index.members.get(key)!).sort()).toEqual(selected);
+    expect(index.tagKeys(new Set(["person:1", "person:2", "person:3"]))).toEqual(["group:1", "group:2"]);
+    for (let mask = 0; mask < 2 ** people.length; mask++) {
+      const selected = new Set(people.filter((_, index) => mask & (1 << index)).map(person => `person:${person.id}`));
+      expect(new Set(index.tagKeys(selected).flatMap(key => index.members.get(key)!))).toEqual(selected);
     }
   });
   it("summarizes complete groups once and keeps partial and unknown selections visible", () => {
     const { tagLabels } = pickerIndex(options);
     const selected = new Set(["person:3", "person:2", "person:1", "person:99", "x:alice"]);
-    expect(tagLabels(selected, value => value)).toEqual(["朋友", "同事乙", "person:99", "x:alice"]);
+    expect(tagLabels(selected, value => value)).toEqual(["朋友", "同事", "person:99", "x:alice"]);
   });
   it("deduplicates name and group matches by identity, not by name", () => {
     const namedAlike = peopleOptions([...people, { ...people[0], id: 5 }], groups);

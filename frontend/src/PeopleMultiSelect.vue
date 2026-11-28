@@ -26,10 +26,11 @@ function checkbox({ option, node }: { option: CascaderOption; node: VNode | null
     indeterminate: checked > 0 && checked < members.length,
   });
 }
-function toggle(members: string[]) {
+function toggle(members: string[], retained: Set<string>) {
   const next = new Set(selected.value);
   const remove = members.every(id => next.has(id));
   for (const id of members) {
+    if (remove && retained.has(id)) continue;
     if (remove) next.delete(id);
     else next.add(id);
   }
@@ -39,7 +40,11 @@ function update(keys: (string | number)[] | null) {
   if (!keys?.length) return emit("update:modelValue", []);
   const changed = keys.find(key => !value.value.includes(String(key)))
     ?? value.value.find(key => !keys.includes(key));
-  if (changed != null) toggle(index.value.members.get(String(changed))!);
+  if (changed != null) {
+    const retained = value.value.includes(String(changed))
+      ? keys.flatMap(key => index.value.members.get(String(key))!) : [];
+    toggle(index.value.members.get(String(changed))!, new Set(retained));
+  }
 }
 </script>
 <template>

@@ -602,6 +602,11 @@ test("people cascader groups, shared members, search and mobile apply", async ({
   await expect
     .poll(() => new URL(page.url()).searchParams.get("people"))
     .toBe("1-2");
+  await option("同事").locator(".n-checkbox").click();
+  await expect(picker.locator(".n-tag")).toHaveText(["朋友", "同事"]);
+  await picker.locator(".n-tag").filter({ hasText: "同事" }).locator(".n-tag__close").click();
+  await expect(picker.locator(".n-tag")).toHaveText(["朋友"]);
+  await expect.poll(() => new URL(page.url()).searchParams.get("people")).toBe("1-2");
   await option("同事").locator(".n-cascader-option__label").click();
   await expect(option("共同成员").getByRole("checkbox")).toHaveAttribute(
     "aria-checked",
