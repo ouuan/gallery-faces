@@ -30,7 +30,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, field_validator, model_validator
 from .open_graph import render_open_graph
-from . import game_rooms, list_queries, photo_draw, publisher_avatars, publishers, review_packages, social
+from . import game_boards, game_rooms, list_queries, photo_draw, publisher_avatars, publishers, review_packages, social
 from .review_format import fits
 from .group_index import REVIEW_FLAGS
 from .db import DATA, IMPORT, connect, init, settings, schedule_rematch, cleanup_deleted_files, startup_phase
@@ -1624,6 +1624,7 @@ def save_room_feedback(question, proposal, request):
 
 
 app.include_router(game_rooms.router(draw_room_question, game_scope, save_room_feedback))
+app.include_router(game_boards.router(parse_people_publishers, date_bounds))
 
 
 def draw_history_room_question(filters, previous):

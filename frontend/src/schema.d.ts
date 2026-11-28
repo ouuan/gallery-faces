@@ -708,6 +708,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/{game}/matches/{match_id}/score": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload */
+        post: operations["upload_api_v1__game__matches__match_id__score_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/history-quiz/rooms": {
         parameters: {
             query?: never;
@@ -2857,6 +2874,16 @@ export interface components {
             answered: boolean;
             /** Ready */
             ready: boolean;
+            /**
+             * Public Correct
+             * @default 0
+             */
+            public_correct: number;
+            /**
+             * Eligible
+             * @default false
+             */
+            eligible: boolean;
         };
         /** PostDetail */
         PostDetail: {
@@ -3086,6 +3113,24 @@ export interface components {
             page_count: number;
             /** Page Size */
             page_size: number;
+        };
+        /** Record */
+        Record: {
+            /** Nickname */
+            nickname: string;
+            /** Correct */
+            correct: number;
+            /** Cells */
+            cells: number;
+            /** Deviation */
+            deviation: number;
+            /** Rounds */
+            rounds: number;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
         };
         /** Recycle */
         Recycle: {
@@ -3542,6 +3587,11 @@ export interface components {
         TaskResult: {
             /** Task Id */
             task_id: number;
+        };
+        /** Upload */
+        Upload: {
+            /** Nickname */
+            nickname?: string | null;
         };
         /** UploadedReference */
         UploadedReference: {
@@ -5096,6 +5146,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoomView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_api_v1__game__matches__match_id__score_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-room-token": string;
+            };
+            path: {
+                game: "face-game" | "history-quiz";
+                match_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Upload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Record"];
                 };
             };
             /** @description Validation Error */

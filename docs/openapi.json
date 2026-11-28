@@ -2583,6 +2583,77 @@
         }
       }
     },
+    "/api/v1/{game}/matches/{match_id}/score": {
+      "post": {
+        "summary": "Upload",
+        "operationId": "upload_api_v1__game__matches__match_id__score_post",
+        "parameters": [
+          {
+            "name": "game",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "face-game",
+                "history-quiz"
+              ],
+              "type": "string",
+              "title": "Game"
+            }
+          },
+          {
+            "name": "match_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Match Id"
+            }
+          },
+          {
+            "name": "x-room-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Room-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Upload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Record"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/history-quiz/rooms": {
       "post": {
         "summary": "Create Room",
@@ -8897,6 +8968,16 @@
           "ready": {
             "type": "boolean",
             "title": "Ready"
+          },
+          "public_correct": {
+            "type": "integer",
+            "title": "Public Correct",
+            "default": 0
+          },
+          "eligible": {
+            "type": "boolean",
+            "title": "Eligible",
+            "default": false
           }
         },
         "type": "object",
@@ -9720,6 +9801,45 @@
           "page_size"
         ],
         "title": "QueuePage"
+      },
+      "Record": {
+        "properties": {
+          "nickname": {
+            "type": "string",
+            "title": "Nickname"
+          },
+          "correct": {
+            "type": "integer",
+            "title": "Correct"
+          },
+          "cells": {
+            "type": "integer",
+            "title": "Cells"
+          },
+          "deviation": {
+            "type": "integer",
+            "title": "Deviation"
+          },
+          "rounds": {
+            "type": "integer",
+            "title": "Rounds"
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Recorded At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nickname",
+          "correct",
+          "cells",
+          "deviation",
+          "rounds",
+          "recorded_at"
+        ],
+        "title": "Record"
       },
       "Recycle": {
         "properties": {
@@ -10901,6 +11021,25 @@
           "task_id"
         ],
         "title": "TaskResult"
+      },
+      "Upload": {
+        "properties": {
+          "nickname": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 24,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nickname"
+          }
+        },
+        "type": "object",
+        "title": "Upload"
       },
       "UploadedReference": {
         "properties": {

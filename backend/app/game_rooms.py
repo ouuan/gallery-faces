@@ -101,6 +101,8 @@ class PlayerView(BaseModel):
     playing: bool
     answered: bool
     ready: bool
+    public_correct: int = 0
+    eligible: bool = False
 
 
 class Proposal(BaseModel):
@@ -198,6 +200,9 @@ class Player:
     unanswered: int = 0
     deviation: int = 0
     withdrawn: bool = False
+    eligible: bool = True
+    public_correct: int = 0
+    public_stopped: bool = False
 
     def eliminated(self, single_life):
         return single_life and (self.withdrawn or self.wrong + self.unanswered > 0)
@@ -263,6 +268,8 @@ class Room:
     def reset_match(self):
         self.match_id = secrets.token_hex(16)
         self.loaded = set()
+        self.public_round = 0
+        self.natural = False
         self.grid = None
         self.round = 0
         self.question = self.deadline = self.correct = self.proposer = self.proposal = self.accepted = None
@@ -291,6 +298,7 @@ class Room:
         check(all(player.name != name for player in self.players.values()), '房间内已有相同昵称')
         self.serial += 1
         player = self.new_player(name)
+        player.eligible = self.round == 0
         self.players[player.id] = player
         if self.phase in ('loading', 'answer'):
             self.playing.add(player.id)
@@ -324,9 +332,20 @@ class Room:
             self.changed()
 
     async def next_question(self):
+        if self.round > self.public_round:
+            self.public_round = self.round
+            if self.game == 'face-game':
+                for key, player in self.players.items():
+                    if player.public_stopped:
+                        continue
+                    right = not self.accepted and not self.void and key in self.answers and self.answers[key] == self.correct
+                    player.public_correct += int(right)
+                    if self.settings.single_life and not right:
+                        player.public_stopped = True
         participants = self.survivors() if self.settings.single_life else self.online()
         if (self.settings.round_limit and self.round >= self.settings.round_limit) or (
                 self.settings.single_life and self.round and len(participants) < self.minimum):
+            self.natural = True
             self.enter('finished')
             return
         if len(participants) < self.minimum:
@@ -341,6 +360,9 @@ class Room:
             return
         self.question, self.message = question, ''
         self.round += 1
+        for key, player in self.players.items():
+            if key not in participants and not player.eliminated(self.settings.single_life):
+                player.eligible = False
         self.playing, self.answers, self.ready, self.outcomes = participants, {}, set(), {}
         self.proposer = self.proposal = self.accepted = None
         self.votes, self.void = {}, False
@@ -457,6 +479,9 @@ class Room:
             for member in self.players.values():
                 member.correct = member.wrong = member.correct_cells = member.unanswered = member.deviation = 0
                 member.withdrawn = False
+                member.eligible = True
+                member.public_correct = 0
+                member.public_stopped = False
             self.reset_match()
             if len(self.players) >= self.minimum:
                 await self.next_question()
@@ -524,6 +549,8 @@ class Room:
                     self.question = None
                 self.enter('finished')
         elif action == 'leave':
+            if self.phase != 'finished':
+                player.eligible = False
             player.seen = clock() - RETENTION
             if self.settings.single_life and self.round and self.phase != 'finished':
                 player.withdrawn = True
@@ -572,13 +599,18 @@ class Room:
                                             wrong=item.wrong + (len(grid.wrong_choices) if grid and not revealed and item == player else 0),
                                             unanswered=item.unanswered, eliminated=item.eliminated(self.settings.single_life), online=item.online,
                                             playing=item.id in self.playing, answered=item.id in self.answers,
-                                            ready=item.id in self.ready) for item in self.players.values()],
+                                            ready=item.id in self.ready, public_correct=item.public_correct,
+                                            eligible=self.can_upload(item)) for item in self.players.values()],
                         **self.question_view(player, question, revealed),
                         source_photo=RevealedPhoto(**question) if revealed else None,
                         correct_choice=self.correct if revealed else None, void=self.void, proposer=self.proposer,
                         proposal=self.proposal, accepted=self.accepted, votes_for=sum(self.votes.values()),
                         votes_against=len(self.votes) - sum(self.votes.values()), voted=player.id in self.votes,
                         ending=self.ending, message=self.message)
+
+    def can_upload(self, player):
+        return bool(self.phase == 'finished' and self.natural and player.eligible and self.round and
+                    (self.settings.round_limit or self.settings.single_life) and (self.solo or not self.settings.grid))
 
 
 class HistoryRoom(Room):
@@ -639,6 +671,8 @@ polls = 0
 
 
 class MatchState(BaseModel):
+    natural: bool = False
+    public_round: int = 0
     settings: RoomSettings
     filters: GameFilters
     players: dict[int, Player]

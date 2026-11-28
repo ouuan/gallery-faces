@@ -16,6 +16,7 @@ import GameRoomRules from './GameRoomRules.vue';
 import { api } from './api';
 import type { components } from './schema';
 import RoomPersonalResult from './RoomPersonalResult.vue';
+import GameUpload from './GameUpload.vue';
 import GameFilterEditor from './GameFilterEditor.vue';
 import GameFilterSummary from './GameFilterSummary.vue';
 import GameRoomSources from './GameRoomSources.vue';
@@ -198,6 +199,7 @@ async function saveSettings() {
         <span class="spacer" /><router-link v-if="inRound" :to="{ path: gamePath, query: rules }">单人游戏</router-link><n-button quaternary :disabled="busy" @click="act('leave')">离开房间</n-button></div>
       <n-input v-if="showLink && canInvite" readonly :value="invite" :input-props="{ 'aria-label': '邀请链接' }" />
       <RoomPersonalResult v-if="me && room.phase === 'finished'" :room="room" :player="me" :rank="showRank ? myRank : null" :tied="tied" />
+      <GameUpload v-if="me && room.phase === 'finished'" :key="room.match_id" :room="room" :token="token" :game-path="gamePath" />
       <div v-if="solo" class="actions"><n-button v-if="inRound" :disabled="busy" @click="act('finish')">结束本局</n-button><router-link v-else :to="{ path: gamePath, query: rules }">返回设置</router-link></div>
       <section v-else class="standings"><div class="standings-heading"><h2>{{ room.phase === 'finished' ? '最终排名' : room.phase === 'lobby' ? '房间成员' : '排行榜' }}</h2>
         <n-button v-if="host && room.phase === 'finished'" type="primary" :disabled="busy" @click="act('restart')"><RotateCcw :size="16" aria-hidden="true" />再来一局</n-button></div>
