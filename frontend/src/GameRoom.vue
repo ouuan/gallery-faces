@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowLeft, Copy, RotateCcw } from '@lucide/vue';
+import { Copy, RotateCcw } from '@lucide/vue';
 import { NAlert, NButton, NCheckbox, NInput, useMessage } from 'naive-ui';
 import { filterOnlyQuery, fromQuery, type Filter } from './filters';
 import { rangeError } from './date-range';
@@ -41,7 +41,10 @@ const nickname = ref(localStorage.getItem('game:nickname') ?? sessionStorage.get
 watch(nickname, value => localStorage.setItem('game:nickname', value.trim()), { immediate: true });
 const setupPath = props.solo ? gamePath : gamePath + '/rooms';
 const settings = ref(parseRules(route.query, !!props.history)), draftSettings = ref<Settings>({ ...settings.value });
-const rules = computed(() => ruleQuery(room.value?.settings ?? settings.value, activeFilter.value, !!props.history));
+const activeSettings = computed(() => room.value?.settings ?? settings.value);
+const rules = computed(() => ruleQuery(activeSettings.value, activeFilter.value, !!props.history));
+const boardUnavailable = computed(() => !activeSettings.value.single_life && !activeSettings.value.round_limit ? '无尽模式不设榜单'
+  : !props.solo && activeSettings.value.grid ? '多人逐格模式不参与公开排名' : '');
 watch(() => route.fullPath, () => {
   if (route.path !== setupPath) return;
   const current = ruleQuery(settings.value, filters.value, !!props.history, !props.solo);
@@ -137,12 +140,9 @@ async function saveSettings() {
 <template>
   <main class="room-page" :class="{ 'game-start': !token || !inRound }">
     <header v-if="inRound && room" class="round-bar"><h1><template v-if="room.round">第 {{ room.round }}<template v-if="room.settings.round_limit">/{{ room.settings.round_limit }}</template> 题 · </template>{{ phaseName[room.phase] }}</h1><strong v-if="seconds !== null" role="timer">{{ seconds }} 秒</strong></header>
-    <header v-else><h1>{{ solo ? gameName : history ? '史官测验 · 多人对战' : '多人对战' }}</h1><nav><router-link :to="{ path: solo ? gamePath + '/rooms' : gamePath, query: rules }"><ArrowLeft :size="16" />{{ solo ? '多人对战' : '单人游戏' }}</router-link><router-link :to="{ path: '/', query }">返回图库</router-link></nav></header>
+    <header v-else class="game-heading"><h1>{{ solo ? gameName : history ? '史官测验 · 多人对战' : '多人对战' }}</h1><nav><router-link :to="{ path: solo ? gamePath + '/rooms' : gamePath, query: rules }">{{ solo ? '多人对战' : '单人游戏' }}</router-link><router-link :to="{ path: '/', query }">返回图库</router-link></nav></header>
     <n-alert v-if="error" type="error" role="alert" closable @close="error = ''">{{ error }}</n-alert>
     <p v-if="syncError" role="status">{{ syncError }}</p>
-    <nav v-if="(!token && !code && !joining) || room?.phase === 'finished'" class="board-links" aria-label="公开排行榜">
-      <router-link :to="{ path: gamePath + '/boards/current', query: rules }">当前榜单</router-link><router-link :to="{ path: gamePath + '/boards/filters', query: rules }">当前筛选的榜单</router-link><router-link :to="{ path: gamePath + '/boards/all', query: rules }">全部榜单</router-link>
-    </nav>
     <form v-if="!token" class="entry setup-entry" aria-label="开局设置" @submit.prevent="enterRoom">
       <h2 v-if="code">加入房间 {{ code }}</h2>
       <div v-else-if="!solo" class="tabs" aria-label="对战入口"><button type="button" :aria-pressed="!joining" @click="joining = false">创建房间</button><button type="button" :aria-pressed="joining" @click="joining = true">加入房间</button></div>
@@ -223,20 +223,23 @@ async function saveSettings() {
         :detail="record ? `累计偏差 ${deviation(me.id)} 天 · 未答 ${me.unanswered} 题` : `答对 ${me.correct} 题 · 未答 ${me.unanswered} 题${room.grid ? ` · 每边 ${room.settings.grid_size} 格 · 答对时平均 ${averageCells(me.correct_cells ?? 0, me.correct)}` : ''}`"
         :breakdown="record ? [{ label: '猜早', count: me.early ?? 0, tone: 'amber' }, { label: '正好', count: myAnswered - (me.early ?? 0) - (me.late ?? 0), tone: 'success' }, { label: '猜晚', count: me.late ?? 0, tone: 'accent' }] : [{ label: '正确', count: me.correct, tone: 'success' }, { label: '错误', count: me.wrong - (me.disputed ?? 0), tone: 'error' }, { label: '存疑', count: me.disputed ?? 0, tone: 'muted' }]" @setup="router.push({ path: gamePath, query: rules })" />
       <RoomPersonalResult v-else-if="me && room.phase === 'finished'" :room="room" :player="me" :rank="showRank ? myRank : null" :tied="tied" />
-      <GameUpload v-if="me && room.phase === 'finished'" :key="room.match_id" v-model:nickname="nickname" :room="room" :token="token" :game-path="gamePath" />
-      <div v-if="solo" class="actions"><n-button v-if="inRound" :disabled="busy" @click="act('finish')">结束本局</n-button><router-link v-if="inRound" :to="{ path: gamePath + '/rooms', query: rules }">多人对战</router-link><router-link v-if="inRound" :to="{ path: '/', query }">返回图库</router-link></div>
-      <section v-else class="standings"><div class="standings-heading"><h2>{{ room.phase === 'finished' ? '最终排名' : room.phase === 'lobby' ? '房间成员' : '排行榜' }}</h2>
+      <div v-if="solo && inRound" class="actions"><n-button :disabled="busy" @click="act('finish')">结束本局</n-button><router-link :to="{ path: gamePath + '/rooms', query: rules }">多人对战</router-link><router-link :to="{ path: '/', query }">返回图库</router-link></div>
+      <section v-if="!solo" class="standings"><div class="standings-heading"><h2>{{ room.phase === 'finished' ? '最终排名' : room.phase === 'lobby' ? '房间成员' : '排行榜' }}</h2>
         <n-button v-if="host && room.phase === 'finished'" type="primary" :disabled="busy" @click="act('restart')"><RotateCcw :size="16" aria-hidden="true" />再来一局</n-button></div>
         <p v-if="room.phase === 'finished' && eliminationOver">{{ survivors.length ? `获胜：${survivors[0]!.name}` : '无人存活' }}</p>
-        <table aria-label="房间排行榜"><thead><tr><th v-if="showRank" class="place-col" scope="col">名次</th><th class="player-col" scope="col">玩家</th><template v-if="record"><th v-if="showGuess" scope="col">本题猜测</th><th scope="col">分数</th><th scope="col">平均偏差</th><th scope="col">未答</th></template><th v-else-if="room.settings.single_life" scope="col">通过题数</th><template v-else><th v-if="room.settings.grid" scope="col">分数</th><th scope="col">正确</th><th scope="col">错误</th><th scope="col">{{ room.settings.grid ? '平均格数' : '未答' }}</th></template></tr></thead>
+        <div class="table-scroll"><table aria-label="房间排行榜"><thead><tr><th v-if="showRank" class="place-col" scope="col">名次</th><th class="player-col" scope="col">玩家</th><template v-if="record"><th v-if="showGuess" scope="col">本题猜测</th><th scope="col">分数</th><th scope="col">平均偏差</th><th scope="col">未答</th></template><th v-else-if="room.settings.single_life" scope="col">通过题数</th><template v-else><th v-if="room.settings.grid" scope="col">分数</th><th scope="col">正确</th><th scope="col">错误</th><th scope="col">{{ room.settings.grid ? '平均格数' : '未答' }}</th></template></tr></thead>
           <tbody><tr v-for="player in ranking" :key="player.id" :class="{ 'own-row': player.id === room.me }"><td v-if="showRank" class="place-col">{{ rank(player) }}</td><th scope="row" class="player-col">{{ player.name }}
             <small>{{ [player.id === room.me ? '你' : '', player.id === room.host ? '房主' : '', player.eliminated ? '已淘汰' : '', !player.online ? '离线' : '', player.ready && room.phase === 'reveal' ? '已准备' : ''].filter(Boolean).join(' · ') }}</small></th>
             <template v-if="record"><td v-if="showGuess && record.photo && record.correct_date"><span>{{ record.guesses?.[player.id] ?? '未答（按居中日期计）' }}</span><small>{{ difference(record.guesses?.[player.id] ?? dayLabel(middleDay(record.photo)), record.correct_date) }}</small></td><td>{{ formatPoints(record.scores[player.id]!) }}</td><td>{{ average(deviation(player.id), record.settled) }}</td><td>{{ player.unanswered }}</td></template>
-            <template v-else><td v-if="room.settings.grid">{{ player.correct - player.wrong }}</td><td>{{ player.correct }}</td><template v-if="!room.settings.single_life"><td>{{ player.wrong }}</td><td>{{ room.settings.grid ? averageCells(player.correct_cells ?? 0, player.correct) : player.unanswered }}</td></template></template></tr></tbody></table>
+            <template v-else><td v-if="room.settings.grid">{{ player.correct - player.wrong }}</td><td>{{ player.correct }}</td><template v-if="!room.settings.single_life"><td>{{ player.wrong }}</td><td>{{ room.settings.grid ? averageCells(player.correct_cells ?? 0, player.correct) : player.unanswered }}</td></template></template></tr></tbody></table></div>
         <n-button v-if="host && inRound" :disabled="busy || room.ending" @click="act('finish')">{{ room.ending ? '投票结束后结算' : '结束对战' }}</n-button>
         <GameFilterSummary v-if="room.phase === 'finished'" :filter="activeFilter" />
       </section>
+      <GameUpload v-if="me?.eligible && room.phase === 'finished'" :key="room.match_id" v-model:nickname="nickname" :room="room" :token="token" :game-path="gamePath" />
     </template>
+    <nav v-if="(!token && !code && !joining) || room?.phase === 'finished'" class="board-links" aria-label="公开排行榜">
+      <strong>公开排行榜</strong><div><span v-if="boardUnavailable" role="link" aria-disabled="true" :title="boardUnavailable">当前榜单</span><router-link v-else :to="{ path: gamePath + '/boards/current', query: rules }">当前榜单</router-link><router-link :to="{ path: gamePath + '/boards/filters', query: rules }">当前筛选的榜单</router-link><router-link :to="{ path: gamePath + '/boards/all', query: rules }">全部榜单</router-link></div>
+    </nav>
   </main>
   <PostDetail v-if="postKey" :post-key="postKey" :return-path="route.path" />
 </template>
@@ -246,8 +249,12 @@ async function saveSettings() {
 header, header a, .room-bar, .round-bar, .actions, .tabs, .my-record { display: flex; align-items: center; gap: 10px; }
 header, .round-bar { justify-content: space-between; }
 header nav { display: flex; flex-wrap: wrap; gap: 12px; }
-.board-links { display: flex; flex-wrap: wrap; gap: 0 16px; }
-.board-links a { display: inline-flex; align-items: center; min-height: 44px; }
+.game-heading { flex-wrap: wrap; gap: 0 16px; border-bottom: 1px solid var(--line); }
+.board-links, .board-links > div { display: flex; flex-wrap: wrap; align-items: center; gap: 0 16px; }
+.board-links { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 24px; }
+.board-links a, .board-links span { display: inline-flex; align-items: center; min-height: 44px; }
+.board-links span { color: var(--muted); cursor: not-allowed; }
+.table-scroll { overflow-x: auto; }
 header a, .room-bar button, .actions button, .entry > button, .standings > button { min-height: 44px; }
 .room-bar { flex-wrap: wrap; border-bottom: 1px solid var(--line); padding: 4px 0; }
 .code { font-variant-numeric: tabular-nums; user-select: all; }

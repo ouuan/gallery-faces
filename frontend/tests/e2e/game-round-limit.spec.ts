@@ -36,3 +36,35 @@ for (const game of ['face-game', 'history-quiz']) test(`${game} solo stops at th
   await page.getByRole('link', { name: '当前榜单', exact: true }).click();
   await expect(page.getByRole('row', { name: /小林/ })).toBeVisible();
 });
+
+test('board access follows the active rules and empty lists retain their filters', async ({ guests }) => {
+  const page = guests[0]!;
+  const current = page.getByRole('link', { name: '当前榜单', exact: true });
+  await page.goto('/face-game/rooms?grid=true&people=1');
+  await expect(current).toBeDisabled();
+  await expect(current).not.toHaveAttribute('href', /.+/);
+  await page.getByRole('link', { name: '单人游戏' }).click();
+  await expect(current).toBeEnabled();
+  const count = page.getByLabel('题数', { exact: true });
+  await count.fill('12'); await count.press('Tab');
+  await page.getByText('无尽', { exact: true }).click();
+  await expect(current).toBeDisabled();
+  await page.getByText('一命模式', { exact: true }).click();
+  await expect(page.getByRole('radio', { name: '一命模式' })).toBeChecked();
+  await expect(count).toHaveCount(0);
+  await expect(current).toBeEnabled();
+  await page.getByText('固定局数', { exact: true }).click();
+  await expect(count).toHaveValue('12');
+  await expect(current).toBeEnabled();
+  await page.getByRole('link', { name: '当前筛选的榜单' }).click();
+  await expect(page.getByRole('region', { name: '出题筛选' })).toContainText('人1');
+  await expect(page.getByText('暂无榜单')).toBeVisible();
+  await page.goto('/history-quiz?mode=endless');
+  await expect(page.getByRole('radiogroup', { name: '游戏局数' }).getByRole('radio')).toHaveCount(2);
+  await expect(current).toBeDisabled();
+  await page.getByRole('button', { name: '开始游戏' }).click();
+  await page.getByRole('button', { name: '结束本局' }).click();
+  await expect(page.getByRole('region', { name: '本局结果' })).toBeVisible();
+  await expect(page.getByRole('region', { name: '公开成绩' })).toHaveCount(0);
+  await expect(page.getByText('本局不参与公开排名')).toHaveCount(0);
+});
