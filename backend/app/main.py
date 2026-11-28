@@ -2311,6 +2311,7 @@ class SettingsInput(BaseModel):
     og_image_ja: str = Field(default="", max_length=2048)
     og_url_ja: str = Field(default="", max_length=2048)
     detection_threshold: float = Field(default=0.5, ge=0, le=1)
+    face_game_threshold: float = Field(default=0.3, ge=0, le=1)
     threshold: float = Field(ge=0, le=1)
     margin: float = Field(ge=0, le=2)
     phash_distance: int = Field(ge=0, le=64)

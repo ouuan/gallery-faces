@@ -3767,6 +3767,11 @@ export interface components {
              * @default 0.5
              */
             detection_threshold: number;
+            /**
+             * Face Game Threshold
+             * @default 0.3
+             */
+            face_game_threshold: number;
             /** Threshold */
             threshold: number;
             /** Margin */

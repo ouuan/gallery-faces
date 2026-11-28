@@ -469,6 +469,14 @@ onUnmounted(() => {
               :max="2"
               :step="0.01"
           /></label>
+          <h2>认脸游戏</h2>
+          <label class="field-label">出题最低相似度<n-input-number
+            :value="settings.face_game_threshold === null ? null : Number(settings.face_game_threshold ?? 0.3)"
+            @update:value="settings.face_game_threshold = $event"
+            :input-props="{ 'aria-label': '出题最低相似度', 'aria-describedby': 'face-game-threshold-help' }"
+            :min="0" :max="1" :step="0.01" :disabled="savingSettings"
+          /></label>
+          <p id="face-game-threshold-help" class="hint">默认 0.3。只有当前标注人物的识别相似度达到此值，才可用于出题。手动补框或没有该人物识别分数的人脸不参与。</p>
           <h2>视觉去重</h2>
           <label class="field-label"
             >pHash 最大距离<n-input-number
@@ -494,7 +502,7 @@ onUnmounted(() => {
             type="primary"
             attr-type="submit"
             :loading="savingSettings"
-            :disabled="savingSettings || !settings.site_title?.trim() || settings.detection_threshold == null"
+            :disabled="savingSettings || !settings.site_title?.trim() || settings.detection_threshold == null || settings.face_game_threshold === null"
             >保存设置</n-button
           >
         </form>

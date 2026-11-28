@@ -28,6 +28,7 @@ INSERT OR IGNORE INTO settings VALUES('site_title','Gallery Faces');
 INSERT OR IGNORE INTO settings VALUES('agent_review_rules','');
 INSERT OR IGNORE INTO settings VALUES('og_title',''),('og_description',''),('og_image',''),('og_url',''),('og_title_ja',''),('og_description_ja',''),('og_image_ja',''),('og_url_ja','');
 INSERT OR IGNORE INTO settings VALUES('detection_threshold','0.5');
+INSERT OR IGNORE INTO settings VALUES('face_game_threshold','0.3');
 INSERT OR IGNORE INTO settings SELECT 'review_ssim_threshold',CAST(min(0.5,CAST(value AS REAL)) AS TEXT) FROM settings WHERE key='ssim_threshold';
 CREATE TABLE IF NOT EXISTS people(id INTEGER PRIMARY KEY, name TEXT NOT NULL CHECK(length(trim(name))>0));
 CREATE TABLE IF NOT EXISTS groups(id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE CHECK(length(trim(name))>0));
@@ -297,6 +298,9 @@ def init():
                 db.execute('CREATE INDEX review_group_repeated_person ON review_groups(group_id) WHERE repeated_person=1')
                 db.execute('UPDATE review_groups SET review=1 WHERE repeated_person=1 AND review=0')
             db.execute('UPDATE schema_version SET version=17')
+        if db.execute('SELECT version FROM schema_version').fetchone()[0] < 18:
+            group_index.install_game_scores(db)
+            db.execute('UPDATE schema_version SET version=18')
     with startup_phase('interrupted restore cleanup scan'), connect(True) as db:
         recover_hidden_files(db)
     with startup_phase('media hash backfill'):

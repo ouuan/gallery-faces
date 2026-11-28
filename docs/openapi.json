@@ -11373,6 +11373,13 @@
             "title": "Detection Threshold",
             "default": 0.5
           },
+          "face_game_threshold": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Face Game Threshold",
+            "default": 0.3
+          },
           "threshold": {
             "type": "number",
             "maximum": 1.0,

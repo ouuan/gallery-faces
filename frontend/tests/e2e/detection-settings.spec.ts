@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test("detection threshold can be saved and restored", async ({ page }) => {
   let settings = {
-    site_title: "Gallery Faces", detection_threshold: "0.5",
+    site_title: "Gallery Faces", detection_threshold: "0.5", face_game_threshold: "0.3",
     threshold: "0.5", margin: "0.1", phash_distance: "4",
     aspect_tolerance: "0.01", ssim_threshold: "0.98", review_ssim_threshold: "0.5",
     timezone: "Asia/Shanghai", cookies: {}, models_ready: true,
@@ -24,6 +24,13 @@ test("detection threshold can be saved and restored", async ({ page }) => {
   await page.goto("/admin/settings");
   const input = page.getByRole("textbox", { name: "人脸检测阈值" });
   await expect(input).toHaveValue("0.5");
+  const game = page.getByRole("textbox", { name: "出题最低相似度" });
+  await expect(game).toHaveValue("0.3");
+  await game.fill("");
+  await game.blur();
+  await expect(page.getByRole("button", { name: "保存设置" })).toBeDisabled();
+  await game.fill("0");
+  await game.blur();
   const lower = page.getByRole("slider", { name: "待审核 SSIM 下限" });
   const upper = page.getByRole("slider", { name: "自动合并 SSIM 下限" });
   await lower.focus(); await page.keyboard.press("ArrowRight");
@@ -40,4 +47,5 @@ test("detection threshold can be saved and restored", async ({ page }) => {
   await page.reload();
   await expect(lower).toHaveAttribute("aria-valuenow", "0.51");
   await expect(input).toHaveValue("0.3");
+  await expect(game).toHaveValue("0");
 });

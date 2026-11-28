@@ -14,16 +14,14 @@ def serve(port=0):
         os.environ.update(DATA_DIR=directory, IMPORT_DIR=str(Path(directory) / 'imports'), ADMIN_PASSWORD='test-password')
         from app import db
         from app.main import app
-        from test_face_game import seed
-        from test_photo_draw import photo
+        from test_face_game import game_photo, seed
 
         db.init()
         with db.connect(True) as conn:
             identifier = seed(conn)
             images = [identifier]
             if os.environ.get('FIXTURE_DATE_RANGE') == '1':
-                images.append(photo(conn, date='2026-01-10T12:00:00Z'))
-                conn.execute('UPDATE faces SET person_id=1')
+                images.append(game_photo(conn, date='2026-01-10T12:00:00Z'))
             conn.execute("UPDATE faces SET box='[10,10,40,30]'")
         image = Image.new('RGB', (100, 100), '#dfdfdf')
         ImageDraw.Draw(image).rectangle((10, 10, 49, 39), fill='#3167aa')

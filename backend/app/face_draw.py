@@ -4,7 +4,11 @@ from collections import defaultdict
 import random
 
 from .db import connect
+from .group_index import GAME_FACE_SCORE
 from .list_queries import matching_groups
+
+THRESHOLD = "(SELECT CAST(value AS REAL) FROM settings WHERE key='face_game_threshold')"
+ELIGIBLE_FACE = f'f.ignored=0 AND {GAME_FACE_SCORE} >= {THRESHOLD}'
 
 
 def group_query(filters, group_id=None):
@@ -28,7 +32,8 @@ def pair_query(filters, last_group):
     groups, args = group_query(filters)
     selected, match = filters[:2]
     sql = f'''WITH hits AS MATERIALIZED ({groups}) SELECT who.person_id,hit.group_id
-        FROM hits hit CROSS JOIN public_group_people who ON who.group_id=hit.group_id WHERE hit.group_id IS NOT ?'''
+        FROM hits hit CROSS JOIN public_group_people who ON who.group_id=hit.group_id
+        WHERE hit.group_id IS NOT ? AND who.game_score >= {THRESHOLD}'''
     args.append(last_group)
     if selected and match in ('any', 'all'):
         # Probe the group index once per hit, not once per selected person per hit.
@@ -42,15 +47,13 @@ def first_candidate(db, filters, last_group):
     if not source and (not selected or match == 'any'):
         scope = 'id IN (' + ','.join('?' for _ in selected) + ') AND ' if selected else ''
         chosen = db.execute(f'''WITH eligible AS MATERIALIZED (SELECT id FROM people WHERE {scope}
-            (SELECT 1 FROM public_group_people who WHERE who.person_id=people.id AND who.group_id IS NOT ? LIMIT 1))
+            (SELECT 1 FROM public_group_people who WHERE who.person_id=people.id AND who.group_id IS NOT ?
+             AND who.game_score >= {THRESHOLD} LIMIT 1))
             SELECT id FROM eligible ORDER BY random() LIMIT 1''', [*selected, last_group]).fetchone()
         if not chosen:
             return None
         person = chosen[0]
-        groups, args = 'SELECT group_id FROM public_group_people WHERE person_id=?', [person]
-    elif selected and match in ('all', 'exact'):
-        person = random.choice(selected)
-        groups, args = group_query(filters)
+        groups, args = f'SELECT group_id FROM public_group_people WHERE person_id=? AND game_score >= {THRESHOLD}', [person]
     else:
         pairs, args = pair_query(filters, last_group)
         return db.execute(f'''WITH pool AS MATERIALIZED ({pairs}), chosen AS MATERIALIZED (
@@ -98,6 +101,6 @@ def candidates(filters, last_group, last_face):
         with connect() as db:
             previous = db.execute(f'''SELECT f.person_id,g.group_id,g.representative FROM ({groups}) hit
                 JOIN public_groups g USING(group_id) JOIN faces f ON f.image_id=g.representative
-                WHERE f.ignored=0 AND f.person_id IS NOT NULL{scope} GROUP BY f.person_id
+                WHERE {ELIGIBLE_FACE} AND f.person_id IS NOT NULL{scope} GROUP BY f.person_id
                 ORDER BY min(f.id IS ?),random()''', [*args, *selected, last_face]).fetchall()
         yield from previous

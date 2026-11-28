@@ -72,7 +72,7 @@ def game_question(filters, last_group, last_face, pin):
             groups, args = face_draw.group_query(filters, group)
             face = db.execute(f'''SELECT f.id,f.box,f.revision,f.locked,f.person_id,f.candidates,p.name AS answer_name
                 FROM ({groups}) hit JOIN public_groups g USING(group_id) JOIN faces f ON f.image_id=g.representative
-                JOIN people p ON p.id=f.person_id WHERE g.representative=? AND f.ignored=0 AND f.person_id=?
+                JOIN people p ON p.id=f.person_id WHERE g.representative=? AND {face_draw.ELIGIBLE_FACE} AND f.person_id=?
                 ORDER BY f.id IS ?,random() LIMIT 1''', [*args, representative, person, last_face]).fetchone()
             if face:
                 return group, asset, dict(id=face['id'], box=json.loads(face['box']), revision=face['revision'],

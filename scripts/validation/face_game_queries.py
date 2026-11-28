@@ -71,6 +71,7 @@ if __name__ == '__main__':
             conn.execute('DELETE FROM faces WHERE image_id%211=0')
             conn.execute('UPDATE faces SET person_id=NULL WHERE image_id%223=0')
             conn.execute('UPDATE faces SET ignored=1 WHERE image_id%433=0')
+            conn.execute("UPDATE faces SET embedding=x'01', candidates=json_array(json_object('person_id',person_id,'score',0.7))")
         with db.connect() as conn:
             conn.execute('ANALYZE')
             print(f'{args.size} images; {args.repeats}-run median SQL milliseconds\n{"filter":26} {"before":>8} {"after":>8}')
