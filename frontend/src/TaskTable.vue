@@ -6,7 +6,7 @@ export const taskStatusLabels: Record<string, string> = {
 };
 export interface TaskRecord {
   id: number; kind: string; subtype: string; tier: string; status: string; stage: string; image_id?: number;
-  payload: { url?: string; directory?: string; start?: string; end?: string; hashtags?: string[]; scope?: Partial<FeedScope>; mode?: string; refresh_all?: boolean };
+  payload: { platform?: string; username?: string; url?: string; directory?: string; start?: string; end?: string; hashtags?: string[]; scope?: Partial<FeedScope>; mode?: string; refresh_all?: boolean };
   result: { imported?: number; skipped_existing?: number; skipped_trashed?: number };
   done: number; total: number; speed: number; rounds?: number; cancel_requested?: number;
   created_at?: string; started_at?: string | null; round_started_at?: string | null; finished_at?: string; error?: string;
@@ -18,7 +18,7 @@ export interface TaskRecord {
 import { computed, ref } from "vue";
 import { ChevronRight } from "@lucide/vue";
 import { NButton } from "naive-ui";
-import { dateLabel } from "./api";
+import { dateLabel, platformLabel } from "./api";
 import { formatHashtags } from "./HashtagField.vue";
 
 const props = defineProps<{ tasks: TaskRecord[]; loading: boolean }>();
@@ -95,6 +95,7 @@ function duration(seconds: number) {
       <tr v-if="expanded === task.id" :id="`task-detail-${task.id}`" class="detail-row"><td colspan="5">
         <div class="detail">
           <span v-if="task.tier">调度档：{{ tierLabels[task.tier] }}</span>
+          <span v-if="task.kind === 'avatar' && task.payload.username">发布者账号：{{ platformLabel(task.payload.platform) }} @{{ task.payload.username }}</span>
           <span v-if="task.payload.url || task.payload.directory">{{ task.payload.url ? '链接' : '目录' }}：{{ task.payload.url || task.payload.directory }}</span>
           <span v-if="expandedScope">抓取范围：{{ expandedScope }}</span>
           <span v-if="task.payload.hashtags?.length">标签：{{ formatHashtags(task.payload.hashtags) }}</span>
