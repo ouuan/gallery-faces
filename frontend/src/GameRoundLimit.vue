@@ -25,7 +25,7 @@ function changeMode(mode: string) {
 </template>
 
 <style scoped>
-.round-limit, .controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
-.round-limit > span { font-weight: 600; }
+.round-limit { display: grid; grid-template-columns: 5em minmax(0, 1fr); align-items: baseline; gap: 12px; min-width: 0; }
+.controls { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
 .n-input-number { width: 8rem; }
 </style>

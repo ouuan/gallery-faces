@@ -5,7 +5,7 @@ test('room creation remembers preferences across reloads', async ({ page }) => {
   await page.goto('/face-game/rooms');
   await page.evaluate(() => localStorage.setItem('face-room:settings', '{'));
   await page.reload();
-  const cropped = page.getByRole('switch', { name: '只看人脸' });
+  const cropped = page.getByRole('switch', { name: '仅截取人脸' });
   const singleLife = page.getByRole('switch', { name: '一命模式' });
   const lateJoin = page.getByRole('switch', { name: '允许中途加入' });
   const times = page.locator('.n-input-number input');
@@ -32,7 +32,7 @@ test('three guests share a cropped round, a correction and the final score', asy
   test.setTimeout(60000);
     const [host, guest, late] = guests;
     await host.goto('/face-game?people=1,2&publishers=x:alice&start=2025-01-01T00:00:00Z');
-    const mode = host.getByRole('switch', { name: '只看人脸' });
+    const mode = host.getByRole('switch', { name: '仅截取人脸' });
     await expect(mode).toBeChecked();
     await host.getByRole('button', { name: '开始游戏' }).click();
     await expect(host.getByRole('heading', { name: '这是谁？' })).toBeVisible();

@@ -30,9 +30,5 @@ label { display: grid; gap: 4px; }
 @media (max-width: 599px) {
   .room-settings { gap: 8px; }
   .face-options { column-gap: 8px; }
-  .display-mode { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; }
-  .display-mode :deep(.mode-row) { column-gap: 8px; }
-  .display-mode :deep(.n-radio-button) { padding-inline: 8px; }
-  .display-mode :deep(.grid-settings) { width: 100%; }
 }
 </style>

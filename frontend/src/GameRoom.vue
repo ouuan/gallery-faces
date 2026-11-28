@@ -243,6 +243,7 @@ header a, .room-bar button, .actions button, .entry > button, .standings > butto
 .setup-entry > button { min-width: 8rem; }
 @media (max-width: 599px) {
   .setup-entry, .setup-columns, .setup-fields { gap: 10px; }
+  .setup-fields > label { grid-template-columns: 5em minmax(0, 1fr); align-items: center; column-gap: 12px; }
   .setup-entry { margin-top: 12px; }
   .setup-entry > button { justify-self: stretch; }
 }

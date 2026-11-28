@@ -49,7 +49,16 @@ for (const width of [375, 1280]) test(`filtered face game, shared feedback and s
   await page.getByRole('link', { name: '认脸游戏' }).click();
   await expect(page).toHaveURL(/face-game\?people=1-2$/);
   const button = (name: string) => page.getByRole('button', { name, exact: true });
-  const cropped = page.getByRole('switch', { name: '只看人脸' });
+  const filterToggle = page.getByRole('button', { name: /筛选照片/ });
+  await expect(filterToggle).toHaveAttribute('aria-expanded', String(width === 1280));
+  await expect(button('开始游戏')).toBeInViewport({ ratio: 1 });
+  if (width === 1280) {
+    const position = await button('开始游戏').boundingBox();
+    await filterToggle.click();
+    await expect(filterToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(await button('开始游戏').boundingBox()).toEqual(position);
+  }
+  const cropped = page.getByRole('switch', { name: '仅截取人脸' });
   await expect(cropped).not.toBeChecked();
   await cropped.press('Space');
   await expect(cropped).toBeChecked();

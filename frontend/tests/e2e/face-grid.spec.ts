@@ -22,7 +22,7 @@ test('solo reveals only the face and restores the winning cells during review', 
   await expect(seconds).toHaveCount(0);
   await page.getByText('逐格显示', { exact: true }).click();
   await expect(seconds).toHaveValue('5');
-  await expect(page.getByRole('switch', { name: '只看人脸' })).toBeChecked();
+  await expect(page.getByRole('switch', { name: '仅截取人脸' })).toBeChecked();
   await page.screenshot({ path: info.outputPath('grid-setup.png') });
   await page.clock.install();
   await page.getByRole('button', { name: '开始游戏' }).click();
@@ -47,7 +47,7 @@ test('solo reveals only the face and restores the winning cells during review', 
 test('solo reveals the magnified viewport and averages only correct answers', async ({ guests }, info) => {
   const [page] = guests;
   await page.goto('/face-game?people=1,2');
-  await page.getByRole('switch', { name: '只看人脸' }).click();
+  await page.getByRole('switch', { name: '仅截取人脸' }).click();
   await page.getByText('逐格显示', { exact: true }).click();
   const inputs = page.locator('.grid-settings input');
   await expect(inputs.nth(0)).toHaveValue('5');
@@ -118,7 +118,7 @@ test('solo reveals the magnified viewport and averages only correct answers', as
   await expect(page.getByRole('region', { name: '本局结果' })).toContainText('每边 3 格 · 答对时平均 1.0 格');
   await page.reload();
   await expect(page.getByRole('radio', { name: '逐格显示' })).toBeChecked();
-  await expect(page.getByRole('switch', { name: '只看人脸' })).not.toBeChecked();
+  await expect(page.getByRole('switch', { name: '仅截取人脸' })).not.toBeChecked();
   await expect(inputs.nth(0)).toHaveValue('3');
 });
 
@@ -131,11 +131,11 @@ test('grid players can retry privately and see all attempted options after the r
   await host.getByRole('textbox', { name: '昵称' }).fill('甲');
   await host.getByRole('button', { name: '创建并进入' }).click();
   await expect(host.getByRole('heading', { name: /等待开局/ })).toBeVisible();
-  await expect(host.getByRole('region', { name: '对战规则' })).toContainText('只看人脸 · 逐格显示');
+  await expect(host.getByRole('region', { name: '对战规则' })).toContainText('仅截取人脸 · 逐格显示');
   const path = new URL(host.url()).pathname;
   async function join(player: typeof host, name: string) {
     await player.goto(path);
-    await expect(player.getByRole('region', { name: '对战规则' })).toContainText('只看人脸 · 逐格显示');
+    await expect(player.getByRole('region', { name: '对战规则' })).toContainText('仅截取人脸 · 逐格显示');
     await player.getByRole('textbox', { name: '昵称' }).fill(name);
     await player.getByRole('button', { name: '进入房间' }).click();
   }
@@ -189,7 +189,7 @@ test('grid players can retry privately and see all attempted options after the r
 test('players can pass a fully revealed grid and reveal the answer together', async ({ guests }) => {
   const [host, guest] = guests;
   await host.goto('/face-game/rooms?people=1,2');
-  await host.getByRole('switch', { name: '只看人脸' }).click();
+  await host.getByRole('switch', { name: '仅截取人脸' }).click();
   await host.getByText('逐格显示', { exact: true }).click();
   const size = host.locator('.grid-settings input').first();
   await size.fill('2'); await size.press('Tab');
