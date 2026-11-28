@@ -7,7 +7,8 @@ import type { components } from './schema';
 
 const props = defineProps<{ room: RoomView; token: string; gamePath: string }>();
 const player = computed(() => props.room.players.find(member => member.id === props.room.me)!);
-const name = ref(''), busy = ref(false), uploaded = ref(false), message = useMessage();
+const name = defineModel<string>('nickname', { required: true });
+const busy = ref(false), uploaded = ref(false), message = useMessage();
 async function upload() {
   busy.value = true;
   try {
