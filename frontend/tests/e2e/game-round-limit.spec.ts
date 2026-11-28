@@ -5,19 +5,44 @@ test.use({ timezoneId: 'America/Los_Angeles' });
 
 for (const game of ['face-game', 'history-quiz']) test(`${game} solo stops at the configured question count`, async ({ guests }, info) => {
   const page = guests[0]!;
-  await page.goto(`/${game}`);
+  const otherGame = game === 'face-game' ? 'history-quiz' : 'face-game';
+  await page.goto(`/${otherGame}/rooms`);
+  await page.getByRole('textbox', { name: '昵称' }).fill('阿林');
+  await page.goto(`/${game}?mode=fixed&round_limit=25&answer_seconds=15&people=&match=any&include_no_faces=false`);
+  await expect(page).toHaveURL(new URL(`/${game}`, page.url()).href);
+  await expect(page.getByRole('textbox', { name: '昵称' })).toHaveValue('阿林');
+  let boardRequests = 0;
+  page.on('request', request => { if (request.url().endsWith('/boards/current')) boardRequests++; });
   await expect(page.getByRole('radio', { name: '固定局数' })).toBeChecked();
   const count = page.getByLabel('题数', { exact: true });
   await count.fill('2'); await count.press('Tab');
+  await expect(page).toHaveURL(new URL(`/${game}?round_limit=2`, page.url()).href);
   await page.getByRole('button', { name: '开始游戏' }).click();
   for (const number of [1, 2]) {
     await page.getByRole('button', { name: game === 'face-game' ? '都不是' : '提交日期', exact: true }).click();
     await expect(page.getByRole('heading', { name: `第 ${number}/2 题 · 答案揭晓` })).toBeVisible();
     await page.getByRole('button', { name: number === 1 ? '下一题' : '查看结果', exact: true }).click();
   }
-  await page.getByText('上榜昵称').locator('input').fill('小林');
+  const preview = page.getByRole('region', { name: '榜单前五' });
+  await expect(preview).toHaveCount(0);
+  const name = page.getByText('上榜昵称').locator('input');
+  await expect(name).toHaveValue('阿林');
+  await name.fill('小林');
+  await page.route('**/matches/*/score', route => route.fulfill({ status: 503, json: { detail: '提交失败，请重试' } }), { times: 1 });
+  await page.getByRole('button', { name: '上传个人成绩' }).click();
+  await expect(page.getByText('提交失败，请重试')).toBeVisible();
+  await expect(preview).toHaveCount(0);
+  expect(boardRequests).toBe(0);
   await page.getByRole('button', { name: '上传个人成绩' }).click();
   await expect(page.getByRole('button', { name: '成绩已提交' })).toBeDisabled();
+  await expect(preview.getByRole('row', { name: /小林/ })).toBeVisible();
+  await page.reload();
+  await expect(preview.getByRole('row', { name: /小林/ })).toBeVisible();
+  await page.screenshot({ path: info.outputPath('submitted.png'), fullPage: true });
+  const nextTab = await page.context().newPage();
+  await nextTab.goto(`/${otherGame}/rooms`);
+  await expect(nextTab.getByRole('textbox', { name: '昵称' })).toHaveValue('小林');
+  await nextTab.close();
   await page.getByRole('link', { name: '当前榜单', exact: true }).click();
   await expect(page.getByRole('row', { name: /小林/ })).toBeVisible();
   const time = page.locator('time');
